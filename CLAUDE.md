@@ -16,10 +16,9 @@ The working user is **P1**: backend architect and project lead. P1 owns `service
 
 ## Commands
 
-Requires **JDK 21**. The machine default `java` is 17, so set `JAVA_HOME` first:
+Requires **JDK 21**. The system `JAVA_HOME` points to Temurin 21, which `mvnw` uses. Bare `java` on the PATH may still resolve to Oracle JDK 17 (`javapath`), so use `./mvnw` and not `java -jar`, or check `java -version` first.
 
 ```bash
-export JAVA_HOME="C:/Program Files/Eclipse Adoptium/jdk-21.0.10.7-hotspot"
 cd services
 ./mvnw verify                                   # build + test all modules
 ./mvnw -pl risk-service -am verify              # one service (+ common)
