@@ -1,0 +1,101 @@
+openapi: 3.1.0
+info:
+  title: notification-service
+  version: 1.0.0
+  description: |
+    In-app notifications for BLOCAGE and REVUE decisions, stored and pushed live over SSE.
+    Port 8085, schema `notification`. Consumes `transaction.decided.review` and
+    `transaction.decided.blocked` (queue `notification.alerts`), then re-broadcasts on the
+    fanout exchange `notifications.live` so every replica pushes to its own SSE clients (§3.4).
+servers:
+  - url: http://localhost:8085
+security:
+  - bearerJwt: []
+tags:
+  - name: notifications
+paths:
+  /api/v1/notifications:
+    get:
+      tags: [notifications]
+      summary: List notifications, newest first (ADMIN, ANALYSTE)
+      parameters:
+        - $ref: './common.yaml#/components/parameters/Page'
+        - $ref: './common.yaml#/components/parameters/Size'
+        - name: unreadOnly
+          in: query
+          schema: { type: boolean, default: false }
+        - name: type
+          in: query
+          schema: { $ref: '#/components/schemas/NotificationType' }
+      responses:
+        '200':
+          description: Page of notifications
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/NotificationPage' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+  /api/v1/notifications/{id}/read:
+    patch:
+      tags: [notifications]
+      summary: Mark as read (ADMIN, ANALYSTE). Idempotent.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '204': { description: Marked as read }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+  /api/v1/notifications/stream:
+    get:
+      tags: [notifications]
+      summary: Live notification stream, Server-Sent Events (ADMIN, ANALYSTE)
+      description: |
+        Each new notification is sent as `event: notification` with the `Notification` JSON as `data`.
+        A comment heartbeat (`: ping`) is sent every 15 s to keep proxies from closing the connection.
+        Auth uses the normal `Authorization` header: the frontend uses `@microsoft/fetch-event-source`
+        because the browser `EventSource` cannot set headers (no token in the URL, it would be logged).
+        Traefik and the gateway route this path with a long idle timeout and no buffering (§6.11).
+      responses:
+        '200':
+          description: SSE stream
+          content:
+            text/event-stream:
+              schema:
+                type: string
+                examples:
+                  - "event: notification\nid: 9b2…\ndata: {\"id\":\"9b2…\",\"type\":\"BLOCAGE\",…}\n\n"
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+components:
+  securitySchemes:
+    bearerJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    NotificationType:
+      type: string
+      enum: [BLOCAGE, REVUE]
+    Notification:
+      type: object
+      required: [id, type, transactionId, message, read, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/NotificationType' }
+        transactionId: { type: string, format: uuid }
+        amount: { type: number }
+        reason: { $ref: './common.yaml#/components/schemas/DecisionReason' }
+        message: { type: string, examples: ['Transaction 842.17 USD bloquée (probabilité de fraude 0.87)'] }
+        read: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    NotificationPage:
+      type: object
+      required: [content, page]
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/Notification' }
+        page: { $ref: './common.yaml#/components/schemas/PageMeta' }

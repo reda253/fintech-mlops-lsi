@@ -1,0 +1,315 @@
+openapi: 3.1.0
+info:
+  title: risk-service
+  version: 1.0.0
+  description: |
+    Calls the model, applies the decision policy, owns the human review queue and the
+    label feedback loop. Port 8084, schema `risk`.
+
+    Decision policy (§2.5), applied to the conformal prediction set returned by ml-service:
+    `[0]` -> APPROUVER, `[1]` -> BLOQUER, `[0,1]` or `[]` -> REVUE.
+    ml-service down / timeout (800 ms, 1 retry) / circuit open -> REVUE with reason
+    `ML_INDISPONIBLE`. Nothing is ever auto-approved without the model.
+servers:
+  - url: http://localhost:8084
+security:
+  - bearerJwt: []
+tags:
+  - name: assessment
+  - name: reviews
+  - name: feedback
+  - name: internal
+paths:
+  /internal/risk/assess:
+    post:
+      tags: [internal]
+      summary: Assess a transaction (transaction-service only, not routed by the gateway)
+      description: |
+        Idempotent on `transactionId`: a second call returns the stored assessment.
+        Creates an OUVERTE review when the decision is REVUE.
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/AssessRequest' }
+      responses:
+        '200':
+          description: Assessment (always a decision, possibly REVUE in fail-safe mode)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assessment' }
+        '400': { $ref: './common.yaml#/components/responses/BadRequest' }
+        '503': { $ref: './common.yaml#/components/responses/ServiceUnavailable' }
+  /internal/risk/labels:
+    get:
+      tags: [internal]
+      summary: Production labels for the ML pipeline (section 5.9)
+      parameters:
+        - $ref: './common.yaml#/components/parameters/Page'
+        - $ref: './common.yaml#/components/parameters/Size'
+        - name: since
+          in: query
+          description: Labels received at or after this instant
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Page of labelled decisions
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LabelPage' }
+  /api/v1/risk/assessments/{transactionId}:
+    get:
+      tags: [assessment]
+      summary: Assessment of a transaction (ADMIN, ANALYSTE)
+      parameters:
+        - name: transactionId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Assessment
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Assessment' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+  /api/v1/risk/reviews:
+    get:
+      tags: [reviews]
+      summary: Review queue (ANALYSTE)
+      parameters:
+        - $ref: './common.yaml#/components/parameters/Page'
+        - $ref: './common.yaml#/components/parameters/Size'
+        - $ref: './common.yaml#/components/parameters/Sort'
+        - name: status
+          in: query
+          schema: { $ref: '#/components/schemas/ReviewStatus' }
+      responses:
+        '200':
+          description: Page of reviews, oldest first by default
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReviewPage' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+  /api/v1/risk/reviews/{id}:
+    get:
+      tags: [reviews]
+      summary: Review detail (ANALYSTE)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Review
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Review' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+  /api/v1/risk/reviews/{id}/decision:
+    post:
+      tags: [reviews]
+      summary: Decide a review (ANALYSTE)
+      description: |
+        Optimistic lock (`@Version`): `version` must match the value read by the analyst.
+        If another analyst decided first, or the review is already TRAITEE -> `409`.
+        Publishes `review.completed` through the outbox.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReviewDecisionRequest' }
+      responses:
+        '200':
+          description: Review closed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Review' }
+        '400': { $ref: './common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+  /api/v1/risk/stats:
+    get:
+      tags: [assessment]
+      summary: Approval / review / block rates (ADMIN, ANALYSTE)
+      parameters:
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Stats
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Stats' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+  /api/v1/risk/feedback:
+    post:
+      tags: [feedback]
+      summary: Delayed true label, simulated chargeback (SIMULATEUR, decision D19)
+      description: |
+        Idempotent on `transNum`. Matched with the stored assessment and counted in
+        `risk_feedback_total{decision,truth}` and `risk_conformal_covered_total{truth}`.
+        If the assessment does not exist yet, the label is stored and matched later.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/FeedbackRequest' }
+      responses:
+        '202': { description: Label accepted }
+        '400': { $ref: './common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+components:
+  securitySchemes:
+    bearerJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AssessRequest:
+      type: object
+      required: [transactionId, transNum, customerId, transDateTime, amount, category, merchLat, merchLong]
+      properties:
+        transactionId: { type: string, format: uuid }
+        transNum: { type: string }
+        customerId: { type: string, format: uuid }
+        transDateTime: { type: string, examples: ['2020-07-14T02:13:45'] }
+        amount: { type: number, exclusiveMinimum: 0 }
+        category: { $ref: './common.yaml#/components/schemas/Category' }
+        merchLat: { type: number }
+        merchLong: { type: number }
+    UncertaintyLevel:
+      type: string
+      enum: [FAIBLE, ELEVEE]
+    Assessment:
+      type: object
+      required: [id, transactionId, decision, reason, assessedAt]
+      properties:
+        id: { type: string, format: uuid }
+        transactionId: { type: string, format: uuid }
+        decision: { $ref: './common.yaml#/components/schemas/RiskDecision' }
+        reason: { $ref: './common.yaml#/components/schemas/DecisionReason' }
+        fraudProbability: { type: [number, 'null'], minimum: 0, maximum: 1 }
+        predictionSet:
+          type: [array, 'null']
+          items: { type: integer, enum: [0, 1] }
+        uncertainty: { type: [number, 'null'], minimum: 0, maximum: 1 }
+        uncertaintyLevel:
+          oneOf:
+            - $ref: '#/components/schemas/UncertaintyLevel'
+            - type: 'null'
+        alpha: { type: [number, 'null'] }
+        modelName: { type: [string, 'null'], examples: [fraud-detector] }
+        modelVersion: { type: [string, 'null'], examples: ['8'] }
+        mlLatencyMs: { type: [number, 'null'] }
+        reviewId: { type: [string, 'null'], format: uuid }
+        assessedAt: { type: string, format: date-time }
+    ReviewStatus:
+      type: string
+      enum: [OUVERTE, TRAITEE]
+    Review:
+      type: object
+      required: [id, transactionId, status, version, openedAt, assessment]
+      properties:
+        id: { type: string, format: uuid }
+        transactionId: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/ReviewStatus' }
+        version: { type: integer, description: "Optimistic-lock version, send it back when deciding" }
+        assessment: { $ref: '#/components/schemas/Assessment' }
+        transaction:
+          type: object
+          description: Snapshot shown to the analyst
+          properties:
+            transNum: { type: string }
+            amount: { type: number }
+            category: { $ref: './common.yaml#/components/schemas/Category' }
+            transDateTime: { type: string }
+            customerId: { type: string, format: uuid }
+        analyst: { type: [string, 'null'], description: Username of the deciding analyst }
+        finalDecision:
+          oneOf:
+            - type: string
+              enum: [APPROUVEE, BLOQUEE]
+            - type: 'null'
+        comment: { type: [string, 'null'] }
+        openedAt: { type: string, format: date-time }
+        closedAt: { type: [string, 'null'], format: date-time }
+    ReviewPage:
+      type: object
+      required: [content, page]
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/Review' }
+        page: { $ref: './common.yaml#/components/schemas/PageMeta' }
+    ReviewDecisionRequest:
+      type: object
+      required: [decision, version]
+      properties:
+        decision:
+          type: string
+          enum: [APPROUVER, BLOQUER]
+        comment: { type: string, maxLength: 1000 }
+        version: { type: integer }
+    Stats:
+      type: object
+      required: [total, approved, review, blocked, approvalRate, reviewRate, blockRate]
+      properties:
+        from: { type: [string, 'null'], format: date-time }
+        to: { type: [string, 'null'], format: date-time }
+        total: { type: integer, format: int64 }
+        approved: { type: integer, format: int64 }
+        review: { type: integer, format: int64 }
+        blocked: { type: integer, format: int64 }
+        approvalRate: { type: number }
+        reviewRate: { type: number }
+        blockRate: { type: number }
+        openReviews: { type: integer, format: int64 }
+    FeedbackRequest:
+      type: object
+      required: [transNum, isFraud]
+      properties:
+        transNum: { type: string }
+        isFraud: { type: boolean, description: Sparkov `is_fraud` }
+        reportedAt: { type: string, format: date-time }
+    Label:
+      type: object
+      required: [transNum, transactionId, truth, source, labelledAt]
+      properties:
+        transNum: { type: string }
+        transactionId: { type: string, format: uuid }
+        decision: { $ref: './common.yaml#/components/schemas/RiskDecision' }
+        predictionSet:
+          type: [array, 'null']
+          items: { type: integer, enum: [0, 1] }
+        fraudProbability: { type: [number, 'null'] }
+        modelVersion: { type: [string, 'null'] }
+        truth: { type: integer, enum: [0, 1] }
+        source:
+          type: string
+          enum: [CHARGEBACK, ANALYSTE]
+        labelledAt: { type: string, format: date-time }
+    LabelPage:
+      type: object
+      required: [content, page]
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/Label' }
+        page: { $ref: './common.yaml#/components/schemas/PageMeta' }

@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://fintech.local/contracts/events.schema.json",
+  "title": "Event envelope",
+  "type": "object",
+  "required": ["eventId", "type", "version", "occurredAt", "producer", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "eventId": { "type": "string", "format": "uuid" },
+    "type": {
+      "type": "string",
+      "enum": [
+        "transaction.decided.approved",
+        "transaction.decided.review",
+        "transaction.decided.blocked",
+        "review.completed",
+        "auth.login.succeeded",
+        "auth.login.failed"
+      ]
+    },
+    "version": { "type": "integer", "minimum": 1 },
+    "occurredAt": { "type": "string", "format": "date-time" },
+    "correlationId": { "type": ["string", "null"] },
+    "producer": {
+      "type": "string",
+      "enum": ["auth-service", "transaction-service", "risk-service"]
+    },
+    "actor": { "type": ["string", "null"] },
+    "payload": { "type": "object" }
+  }
+}

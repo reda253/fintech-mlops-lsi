@@ -1,0 +1,85 @@
+openapi: 3.1.0
+info:
+  title: audit-service
+  version: 1.0.0
+  description: |
+    Append-only audit log of every event (queue `audit.all`, binding `#`). Port 8086, schema `audit`.
+    The database user `audit_user` has INSERT and SELECT only: no UPDATE, no DELETE (§3.4).
+    Read-only API: there is no write endpoint.
+servers:
+  - url: http://localhost:8086
+security:
+  - bearerJwt: []
+tags:
+  - name: audit
+paths:
+  /api/v1/audit:
+    get:
+      tags: [audit]
+      summary: Search the audit log, newest first (ADMIN)
+      parameters:
+        - $ref: './common.yaml#/components/parameters/Page'
+        - $ref: './common.yaml#/components/parameters/Size'
+        - $ref: './common.yaml#/components/parameters/Sort'
+        - name: type
+          in: query
+          description: Event type or prefix, e.g. `transaction.decided` matches all three
+          schema: { type: string }
+        - name: actor
+          in: query
+          description: Username, or `system` for automatic decisions
+          schema: { type: string }
+        - name: entityId
+          in: query
+          description: Transaction id, review id, user id…
+          schema: { type: string }
+        - name: correlationId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          schema: { type: string, format: date-time }
+      responses:
+        '200':
+          description: Page of audit events
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuditEventPage' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+components:
+  securitySchemes:
+    bearerJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AuditEvent:
+      type: object
+      required: [id, eventId, type, producer, occurredAt, receivedAt, payload]
+      properties:
+        id: { type: integer, format: int64 }
+        eventId: { type: string, format: uuid, description: "Unique, from the event envelope" }
+        type: { type: string, examples: [transaction.decided.blocked] }
+        producer: { type: string, examples: [transaction-service] }
+        entityType:
+          type: [string, 'null']
+          enum: [TRANSACTION, REVIEW, USER, null]
+        entityId: { type: [string, 'null'] }
+        actor: { type: [string, 'null'] }
+        modelVersion: { type: [string, 'null'] }
+        correlationId: { type: [string, 'null'], format: uuid }
+        payload: { type: object, description: Raw event payload (JSONB) }
+        occurredAt: { type: string, format: date-time }
+        receivedAt: { type: string, format: date-time }
+    AuditEventPage:
+      type: object
+      required: [content, page]
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/AuditEvent' }
+        page: { $ref: './common.yaml#/components/schemas/PageMeta' }

@@ -1,0 +1,69 @@
+spring:
+  application:
+    name: api-gateway
+
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          jwk-set-uri: ${JWKS_URI:http://localhost:8081/.well-known/jwks.json}
+
+  cloud:
+    gateway:
+      server:
+        webflux:
+          httpclient:
+            connect-timeout: 1000
+            response-timeout: 3s          # Gateway -> services timeout (§3.6)
+            pool:
+              max-life-time: 30s          # rebalance onto new pods after scale-up (§6.11)
+          routes:
+            - id: auth
+              uri: ${AUTH_URI:http://localhost:8081}
+              predicates: [ "Path=/api/v1/auth/**" ]
+            - id: customers
+              uri: ${CUSTOMER_URI:http://localhost:8082}
+              predicates: [ "Path=/api/v1/customers/**" ]
+            - id: transactions
+              uri: ${TRANSACTION_URI:http://localhost:8083}
+              predicates: [ "Path=/api/v1/transactions/**" ]
+            - id: risk
+              uri: ${RISK_URI:http://localhost:8084}
+              predicates: [ "Path=/api/v1/risk/**" ]
+            - id: notifications
+              uri: ${NOTIFICATION_URI:http://localhost:8085}
+              predicates: [ "Path=/api/v1/notifications/**" ]
+            - id: audit
+              uri: ${AUDIT_URI:http://localhost:8086}
+              predicates: [ "Path=/api/v1/audit/**" ]
+            - id: ml
+              uri: ${ML_URI:http://localhost:8000}
+              predicates: [ "Path=/api/v1/ml/**" ]
+          # /internal/** and /predict are intentionally NOT routed (§3.4).
+
+server:
+  port: 8080
+  shutdown: graceful            # finish in-flight requests on SIGTERM (§6.8)
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true           # /actuator/health/liveness and /readiness
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      slo:
+        http.server.requests: 50ms,100ms,250ms,500ms,1s,2s,5s

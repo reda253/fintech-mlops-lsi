@@ -1,0 +1,46 @@
+# Java / Maven
+target/
+*.class
+*.log
+.mvn/wrapper/maven-wrapper.jar
+!.mvn/wrapper/maven-wrapper.properties
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+mlruns/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# IDE / OS
+.idea/
+*.iml
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Secrets — never commit (SealedSecrets only, D22)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+secrets.local.*
+
+# Data (Sparkov CSVs are large and downloaded locally)
+ml/data/
+*.csv
+!**/src/main/resources/db/**/*.csv
+
+# Load test results raw dumps
+load-tests/results/**/raw/

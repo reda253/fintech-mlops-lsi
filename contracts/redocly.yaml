@@ -1,0 +1,8 @@
+extends:
+  - recommended
+rules:
+  info-license: off
+  no-server-example.com: off       # localhost servers are intentional (dev)
+  tag-description: off
+  operation-operationId: off       # springdoc / FastAPI generate their own ids
+  operation-4xx-response: off      # health endpoints have no 4xx

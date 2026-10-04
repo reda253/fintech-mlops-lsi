@@ -1,0 +1,193 @@
+openapi: 3.1.0
+info:
+  title: transaction-service
+  version: 1.0.0
+  description: |
+    Transaction intake and status lifecycle (§3.3). Port 8083, schema `transaction`.
+
+    Flow of `POST`: save `EN_ATTENTE` -> resolve card via customer-service (D33) ->
+    `POST /internal/risk/assess` (2 s timeout, circuit breaker) -> update status ->
+    `transaction.decided.*` via outbox -> respond.
+
+    Lifecycle: `EN_ATTENTE` -> `APPROUVEE` | `BLOQUEE` | `EN_REVUE` (AUTO);
+    `EN_REVUE` -> `APPROUVEE` | `BLOQUEE` (MANUELLE, on `review.completed`).
+servers:
+  - url: http://localhost:8083
+security:
+  - bearerJwt: []
+tags:
+  - name: transactions
+paths:
+  /api/v1/transactions:
+    post:
+      tags: [transactions]
+      summary: Submit a transaction for a real-time decision (SIMULATEUR)
+      description: |
+        **Idempotent on `transNum`** (Sparkov `trans_num`): a resend returns the original
+        response with `200` and creates nothing. Required for the Traefik retry (§9.6).
+        A failure never auto-approves: if risk-service is unavailable the transaction stays
+        `EN_ATTENTE` (`202`) and a job re-evaluates it every 30 s.
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateTransactionRequest' }
+      responses:
+        '201':
+          description: Created and decided (APPROUVEE, EN_REVUE or BLOQUEE)
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+        '200':
+          description: Duplicate `transNum`, original response replayed
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+        '202':
+          description: Accepted but not decided yet (risk-service unavailable), status EN_ATTENTE
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+        '400': { $ref: './common.yaml#/components/responses/BadRequest' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '422':
+          description: Unknown card (no customer for this card number)
+          content:
+            application/problem+json:
+              schema: { $ref: './common.yaml#/components/schemas/ProblemDetail' }
+        '503': { $ref: './common.yaml#/components/responses/ServiceUnavailable' }
+    get:
+      tags: [transactions]
+      summary: Search transactions (ADMIN, ANALYSTE)
+      parameters:
+        - $ref: './common.yaml#/components/parameters/Page'
+        - $ref: './common.yaml#/components/parameters/Size'
+        - $ref: './common.yaml#/components/parameters/Sort'
+        - name: status
+          in: query
+          schema: { $ref: './common.yaml#/components/schemas/TransactionStatus' }
+        - name: customerId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: from
+          in: query
+          description: On `transDateTime`, inclusive
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          description: On `transDateTime`, exclusive
+          schema: { type: string, format: date-time }
+        - name: minAmount
+          in: query
+          schema: { type: number, minimum: 0 }
+        - name: maxAmount
+          in: query
+          schema: { type: number, minimum: 0 }
+      responses:
+        '200':
+          description: Page of transactions
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TransactionPage' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+  /api/v1/transactions/{id}:
+    get:
+      tags: [transactions]
+      summary: Get transaction (ADMIN, ANALYSTE)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Transaction
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Transaction' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+components:
+  securitySchemes:
+    bearerJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    CreateTransactionRequest:
+      type: object
+      description: Raw Sparkov fields. Features are computed by the model pipeline (D13), not here.
+      required: [transNum, cardNumber, transDateTime, amount, category, merchant, merchLat, merchLong]
+      properties:
+        transNum:
+          type: string
+          maxLength: 64
+          description: Idempotency key (Sparkov `trans_num`)
+          examples: [2da90c7d74bd46a0caf3777415b3ebd3]
+        cardNumber:
+          type: string
+          pattern: '^[0-9]{12,19}$'
+          writeOnly: true
+          description: Sparkov `cc_num`. Never stored, only resolved to customerId and last 4 digits.
+        transDateTime:
+          type: string
+          description: Sparkov `trans_date_trans_time`, local time, no zone
+          examples: ['2020-07-14T02:13:45']
+        amount: { type: number, exclusiveMinimum: 0, examples: [842.17] }
+        category: { $ref: './common.yaml#/components/schemas/Category' }
+        merchant: { type: string, maxLength: 128 }
+        merchLat: { type: number, minimum: -90, maximum: 90 }
+        merchLong: { type: number, minimum: -180, maximum: 180 }
+    RiskSummary:
+      type: object
+      description: Copy of the risk assessment attached to the transaction (null while EN_ATTENTE).
+      properties:
+        decision: { $ref: './common.yaml#/components/schemas/RiskDecision' }
+        reason: { $ref: './common.yaml#/components/schemas/DecisionReason' }
+        fraudProbability: { type: [number, 'null'], minimum: 0, maximum: 1 }
+        predictionSet:
+          type: [array, 'null']
+          items: { type: integer, enum: [0, 1] }
+        uncertainty: { type: [number, 'null'], minimum: 0, maximum: 1 }
+        modelVersion: { type: [string, 'null'], examples: ['fraud-detector:8'] }
+        reviewId: { type: [string, 'null'], format: uuid }
+    Transaction:
+      type: object
+      required: [id, transNum, customerId, cardLast4, transDateTime, amount, category, merchant,
+                 merchLat, merchLong, status, createdAt, updatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        transNum: { type: string }
+        customerId: { type: string, format: uuid }
+        cardLast4: { type: string, pattern: '^[0-9]{4}$' }
+        transDateTime: { type: string }
+        amount: { type: number }
+        category: { $ref: './common.yaml#/components/schemas/Category' }
+        merchant: { type: string }
+        merchLat: { type: number }
+        merchLong: { type: number }
+        status: { $ref: './common.yaml#/components/schemas/TransactionStatus' }
+        decisionSource:
+          oneOf:
+            - $ref: './common.yaml#/components/schemas/DecisionSource'
+            - type: 'null'
+        risk:
+          oneOf:
+            - $ref: '#/components/schemas/RiskSummary'
+            - type: 'null'
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+    TransactionPage:
+      type: object
+      required: [content, page]
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/Transaction' }
+        page: { $ref: './common.yaml#/components/schemas/PageMeta' }

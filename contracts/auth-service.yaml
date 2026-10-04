@@ -1,0 +1,238 @@
+openapi: 3.1.0
+info:
+  title: auth-service
+  version: 1.0.0
+  description: Users, roles, RS256 JWT issuance (access 15 min, refresh 7 days), JWKS. Port 8081, schema `auth`.
+servers:
+  - url: http://localhost:8081
+security:
+  - bearerJwt: []
+tags:
+  - name: auth
+  - name: users
+  - name: jwks
+paths:
+  /api/v1/auth/login:
+    post:
+      tags: [auth]
+      summary: Log in (rate-limited at the gateway)
+      description: Publishes `auth.login.succeeded` or `auth.login.failed` through the outbox.
+      security: []
+      parameters:
+        - $ref: './common.yaml#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LoginRequest' }
+      responses:
+        '200':
+          description: Tokens issued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '400': { $ref: './common.yaml#/components/responses/BadRequest' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '429':
+          description: Too many login attempts
+          content:
+            application/problem+json:
+              schema: { $ref: './common.yaml#/components/schemas/ProblemDetail' }
+  /api/v1/auth/refresh:
+    post:
+      tags: [auth]
+      summary: Exchange a refresh token (rotation, old token revoked)
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [refreshToken]
+              properties:
+                refreshToken: { type: string }
+      responses:
+        '200':
+          description: New token pair
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TokenResponse' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+  /api/v1/auth/me:
+    get:
+      tags: [auth]
+      summary: Current user
+      responses:
+        '200':
+          description: Current user
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+  /api/v1/auth/users:
+    get:
+      tags: [users]
+      summary: List users (ADMIN)
+      parameters:
+        - $ref: './common.yaml#/components/parameters/Page'
+        - $ref: './common.yaml#/components/parameters/Size'
+        - $ref: './common.yaml#/components/parameters/Sort'
+        - name: role
+          in: query
+          schema: { $ref: './common.yaml#/components/schemas/Role' }
+      responses:
+        '200':
+          description: Page of users
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/UserPage' }
+        '401': { $ref: './common.yaml#/components/responses/Unauthorized' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+    post:
+      tags: [users]
+      summary: Create user (ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateUserRequest' }
+      responses:
+        '201':
+          description: Created
+          headers:
+            Location: { schema: { type: string } }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: './common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '409': { $ref: './common.yaml#/components/responses/Conflict' }
+  /api/v1/auth/users/{id}:
+    parameters:
+      - name: id
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      tags: [users]
+      summary: Get user (ADMIN)
+      responses:
+        '200':
+          description: User
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+    put:
+      tags: [users]
+      summary: Update roles, enabled flag or password (ADMIN)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateUserRequest' }
+      responses:
+        '200':
+          description: Updated
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/User' }
+        '400': { $ref: './common.yaml#/components/responses/BadRequest' }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+    delete:
+      tags: [users]
+      summary: Disable user (ADMIN). Soft delete so the audit trail keeps the actor.
+      responses:
+        '204': { description: Disabled }
+        '403': { $ref: './common.yaml#/components/responses/Forbidden' }
+        '404': { $ref: './common.yaml#/components/responses/NotFound' }
+  /.well-known/jwks.json:
+    get:
+      tags: [jwks]
+      summary: Public signing keys (internal, fetched by gateway and services, not routed)
+      security: []
+      responses:
+        '200':
+          description: JWK Set (RFC 7517)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  keys:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        kty: { type: string, const: RSA }
+                        kid: { type: string }
+                        use: { type: string, const: sig }
+                        alg: { type: string, const: RS256 }
+                        n: { type: string }
+                        e: { type: string }
+components:
+  securitySchemes:
+    bearerJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: See common.yaml (claims sub, preferred_username, roles).
+  schemas:
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username: { type: string, minLength: 3, maxLength: 64, examples: [analyste1] }
+        password: { type: string, format: password, minLength: 8, maxLength: 128 }
+    TokenResponse:
+      type: object
+      required: [accessToken, refreshToken, tokenType, expiresIn, refreshExpiresIn]
+      properties:
+        accessToken: { type: string }
+        refreshToken:
+          type: string
+          description: Opaque random token, stored hashed in `refresh_tokens`.
+        tokenType: { type: string, const: Bearer }
+        expiresIn: { type: integer, description: Seconds, examples: [900] }
+        refreshExpiresIn: { type: integer, description: Seconds, examples: [604800] }
+    User:
+      type: object
+      required: [id, username, roles, enabled, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        username: { type: string }
+        roles:
+          type: array
+          items: { $ref: './common.yaml#/components/schemas/Role' }
+        enabled: { type: boolean }
+        createdAt: { type: string, format: date-time }
+    UserPage:
+      type: object
+      required: [content, page]
+      properties:
+        content:
+          type: array
+          items: { $ref: '#/components/schemas/User' }
+        page: { $ref: './common.yaml#/components/schemas/PageMeta' }
+    CreateUserRequest:
+      type: object
+      required: [username, password, roles]
+      properties:
+        username: { type: string, minLength: 3, maxLength: 64 }
+        password: { type: string, format: password, minLength: 8, maxLength: 128 }
+        roles:
+          type: array
+          minItems: 1
+          items: { $ref: './common.yaml#/components/schemas/Role' }
+    UpdateUserRequest:
+      type: object
+      properties:
+        password: { type: string, format: password, minLength: 8, maxLength: 128 }
+        roles:
+          type: array
+          minItems: 1
+          items: { $ref: './common.yaml#/components/schemas/Role' }
+        enabled: { type: boolean }

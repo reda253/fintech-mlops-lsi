@@ -1,0 +1,176 @@
+openapi: 3.1.0
+info:
+  title: ml-service
+  version: 1.0.0-draft
+  description: |
+    DRAFT written by P1 from §5.7, to be validated and owned by P3. Once ml-service exists,
+    this file is replaced by FastAPI's generated `/openapi.json` and CI compares the two.
+    FastAPI, port 8000. JSON fields are snake_case (Python side).
+    The ml-service does not decide: risk-service applies the policy (§5.7).
+    Mock mode (`MODEL_MODE=mock`): amount > 500 -> [1]; 200 <= amount <= 500 -> [0,1]; else [0].
+servers:
+  - url: http://localhost:8000
+security:
+  - bearerJwt: []
+tags:
+  - name: inference
+  - name: health
+  - name: model
+paths:
+  /predict:
+    post:
+      security: []
+      tags: [inference]
+      summary: Predict one transaction (internal, risk-service only, never routed)
+      parameters:
+        - name: X-Correlation-Id
+          in: header
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/PredictRequest' }
+      responses:
+        '200':
+          description: Prediction
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/PredictResponse' }
+        '422':
+          description: Invalid input (Pydantic), counted in `ml_input_validation_errors_total`
+        '503':
+          description: Model not loaded
+  /health/live:
+    get:
+      security: []
+      tags: [health]
+      summary: Liveness, the process answers
+      responses:
+        '200': { description: Alive }
+  /health/ready:
+    get:
+      security: []
+      tags: [health]
+      summary: Readiness, model loaded and warm-up prediction succeeded
+      responses:
+        '200': { description: Ready }
+        '503': { description: Not ready }
+  /api/v1/ml/model:
+    get:
+      tags: [model]
+      summary: Model in production (ADMIN, ANALYSTE via gateway)
+      responses:
+        '200':
+          description: Model info
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ModelInfo' }
+  /api/v1/ml/performance:
+    get:
+      tags: [model]
+      summary: Offline metrics (benchmark, statistical tests, final test with CI, fairness)
+      responses:
+        '200':
+          description: Performance report (structure owned by P2/P3)
+          content:
+            application/json:
+              schema: { type: object }
+  /api/v1/ml/viz/{method}:
+    get:
+      tags: [model]
+      summary: Projection points for the React dashboard
+      parameters:
+        - name: method
+          in: path
+          required: true
+          schema: { type: string, enum: [pca, tsne, umap] }
+        - name: view
+          in: query
+          required: true
+          schema: { type: string, enum: [class, cluster, outlier, error, uncertainty] }
+      responses:
+        '200':
+          description: Points
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Projection' }
+        '404': { description: Unknown method or view }
+components:
+  securitySchemes:
+    bearerJwt:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    PredictRequest:
+      type: object
+      required: [transaction_id, trans_datetime, amount, category, merch_lat, merch_long, customer]
+      properties:
+        transaction_id: { type: string, format: uuid }
+        trans_datetime: { type: string, examples: ['2020-07-14T02:13:45'] }
+        amount: { type: number, exclusiveMinimum: 0 }
+        category:
+          type: string
+          enum: [entertainment, food_dining, gas_transport, grocery_net, grocery_pos, health_fitness, home,
+                 kids_pets, misc_net, misc_pos, personal_care, shopping_net, shopping_pos, travel]
+        merch_lat: { type: number, minimum: -90, maximum: 90 }
+        merch_long: { type: number, minimum: -180, maximum: 180 }
+        customer:
+          type: object
+          required: [dob, gender, city_pop, lat, long, state]
+          properties:
+            dob: { type: string, format: date }
+            gender: { type: string, enum: [M, F] }
+            city_pop: { type: integer, minimum: 0 }
+            lat: { type: number, minimum: -90, maximum: 90 }
+            long: { type: number, minimum: -180, maximum: 180 }
+            state: { type: string }
+    PredictResponse:
+      type: object
+      required: [transaction_id, prediction, fraud_probability, prediction_set, uncertainty,
+                 uncertainty_level, alpha, model, inference_ms]
+      properties:
+        transaction_id: { type: string, format: uuid }
+        prediction: { type: integer, enum: [0, 1] }
+        fraud_probability: { type: number, minimum: 0, maximum: 1 }
+        prediction_set:
+          type: array
+          maxItems: 2
+          items: { type: integer, enum: [0, 1] }
+        uncertainty: { type: number, minimum: 0, maximum: 1 }
+        uncertainty_level: { type: string, enum: [FAIBLE, ELEVEE] }
+        alpha: { type: number, examples: [0.05] }
+        model:
+          type: object
+          required: [name, version]
+          properties:
+            name: { type: string, examples: [fraud-detector] }
+            version: { type: string, examples: ['8'] }
+        inference_ms: { type: number }
+    ModelInfo:
+      type: object
+      properties:
+        name: { type: string }
+        version: { type: string }
+        algorithm: { type: string }
+        alpha: { type: number }
+        trained_at: { type: string, format: date-time }
+        git_commit: { type: string }
+        mode: { type: string, enum: [real, mock] }
+    Projection:
+      type: object
+      properties:
+        method: { type: string }
+        view: { type: string }
+        model_version: { type: string }
+        warning: { type: string, description: t-SNE/UMAP distances between groups are not meaningful }
+        points:
+          type: array
+          items:
+            type: object
+            properties:
+              x: { type: number }
+              y: { type: number }
+              label: { type: string }
+              is_fraud: { type: integer }

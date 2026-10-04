@@ -1,0 +1,17 @@
+# Replace @p1..@p5 with real GitHub handles once the repo exists.
+# The reviewer of a PR is the member who receives the deliverable (§10.7).
+
+*                   @p1
+/services/          @p1
+/e2e-tests/         @p1
+/contracts/         @p1
+/contracts/ml-service.yaml  @p3
+/ml/                @p2 @p3
+/ml-service/        @p3
+/simulator/         @p3
+/deploy/            @p4
+/load-tests/        @p4
+/.github/           @p4
+/frontend/          @p5
+/monitoring/        @p5
+/docs/              @p1
