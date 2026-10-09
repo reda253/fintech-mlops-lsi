@@ -5,12 +5,12 @@
 /e2e-tests/         @reda253
 /contracts/         @reda253
 /contracts/ml-service.yaml  @omar-aouichi
-/ml/                @abis basma @omar-aouichi
+/ml/                @Basmaabis @omar-aouichi
 /ml-service/        @omar-aouichi
 /simulator/         @omar-aouichi
 /deploy/            @ASSIL-Dev1
 /load-tests/        @ASSIL-Dev1
 /.github/           @ASSIL-Dev1
-/frontend/          @fiach hakima
-/monitoring/        @fiach hakima
-/docs/              @fiach hakima @omar-aouichi @abis basma @ASSIL-Dev1 @reda253
+/frontend/          @hakimafiach77-commits
+/monitoring/        @hakimafiach77-commits
+/docs/              @hakimafiach77-commits @omar-aouichi @Basmaabis @ASSIL-Dev1 @reda253
