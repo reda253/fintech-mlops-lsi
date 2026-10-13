@@ -1,0 +1,162 @@
+/* Écran d'accueil — le PNG original est affiché intact (object-fit: contain, sans recadrage). */
+.page {
+  min-height: 100dvh;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--color-bg);
+  animation: screen-in 700ms ease-out both;
+}
+
+/* Largeur limitée par la hauteur de l'écran pour garder le ratio 16:9 sans coupe sur desktop. */
+.stage {
+  position: relative;
+  width: min(100%, calc(100dvh * 16 / 9));
+}
+
+.composition {
+  display: block;
+  width: 100%;
+  height: auto;
+  object-fit: contain;
+  user-select: none;
+}
+
+/* Halo orange très discret : anneau autour du logo, cœur transparent pour ne pas voiler l'image. */
+.halo {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  mix-blend-mode: screen;
+  opacity: 0.55;
+  background: radial-gradient(
+    ellipse 34% 30% at 50% 42%,
+    transparent 0%,
+    transparent 58%,
+    rgba(240, 75, 35, 0.045) 78%,
+    transparent 100%
+  );
+  animation: halo-breathe 8s ease-in-out infinite;
+}
+
+/* Particules : quelques points dans les zones sombres, loin du logo et des cartes. */
+.particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.particle {
+  position: absolute;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 122, 69, 0.55);
+  box-shadow: 0 0 8px rgba(240, 75, 35, 0.5);
+  opacity: 0;
+  animation: float-up 11s ease-in-out infinite;
+}
+.particle:nth-child(1) { left: 12%; top: 78%; animation-delay: 0s; }
+.particle:nth-child(2) { left: 22%; top: 30%; animation-delay: 2s; }
+.particle:nth-child(3) { left: 8%;  top: 55%; animation-delay: 4s; }
+.particle:nth-child(4) { left: 88%; top: 70%; animation-delay: 1s; }
+.particle:nth-child(5) { left: 80%; top: 25%; animation-delay: 3s; }
+.particle:nth-child(6) { left: 93%; top: 48%; animation-delay: 5s; }
+.particle:nth-child(7) { left: 35%; top: 92%; animation-delay: 6s; }
+.particle:nth-child(8) { left: 65%; top: 90%; animation-delay: 7s; }
+
+/* Bouton centré dans la marge basse de l'image, sous les quatre cartes. */
+.actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 7%;
+  display: flex;
+  justify-content: center;
+}
+
+.cta {
+  font-family: var(--font-sans);
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #fff;
+  padding: 0.95rem 2.25rem;
+  min-height: 48px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  cursor: pointer;
+  background: linear-gradient(135deg, #ff7a45 0%, #f04b23 55%, #d93a2b 100%);
+  box-shadow: 0 0 0 1px rgba(255, 122, 69, 0.35), 0 8px 28px rgba(240, 75, 35, 0.28);
+  transition: transform 180ms ease, box-shadow 180ms ease, filter 180ms ease;
+}
+
+.cta:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.06);
+  box-shadow: 0 0 0 1px rgba(255, 122, 69, 0.5), 0 12px 36px rgba(240, 75, 35, 0.38);
+}
+
+.cta:active {
+  transform: translateY(0);
+}
+
+.cta:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 4px;
+}
+
+/* Petits écrans : l'image se réduit proportionnellement, le bouton passe sous elle. */
+@media (max-width: 640px) {
+  .stage {
+    width: 100%;
+  }
+  .actions {
+    position: static;
+    padding: 1.25rem 1rem 2.5rem;
+  }
+  .cta {
+    width: 100%;
+    max-width: 360px;
+  }
+}
+
+@keyframes screen-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes halo-breathe {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
+@keyframes float-up {
+  0% { opacity: 0; transform: translateY(0); }
+  25% { opacity: 0.8; }
+  75% { opacity: 0.5; }
+  100% { opacity: 0; transform: translateY(-40px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .page,
+  .halo,
+  .particle {
+    animation: none;
+  }
+  .particles {
+    display: none;
+  }
+  .halo {
+    opacity: 0.5;
+  }
+  .cta {
+    transition: none;
+  }
+  .cta:hover {
+    transform: none;
+  }
+}
