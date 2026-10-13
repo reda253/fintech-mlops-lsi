@@ -1,0 +1,9 @@
+node_modules
+dist
+playwright-report
+test-results
+*.tsbuildinfo
+.env
+.env.local
+# Généré par `npx msw init public` (postinstall) :
+public/mockServiceWorker.js
