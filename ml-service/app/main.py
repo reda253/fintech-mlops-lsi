@@ -20,7 +20,7 @@ from app.metrics import (
     HTTP_REQUESTS_TOTAL,
     ML_INPUT_VALIDATION_ERRORS_TOTAL,
 )
-from app.predictor import MockPredictor
+from app.predictor import MockPredictor, RealPredictor
 from app.routes.health import router as health_router
 from app.routes.model import router as model_router
 from app.routes.predict import router as predict_router
@@ -42,9 +42,13 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     if settings.model_mode == "mock":
         predictor = MockPredictor(name="fraud-detector", version="mock")
     else:
-        # Placeholder for MLflow model loader (Deliverable C / S9-S10)
-        logger.warning("Real model mode requested; falling back to mock predictor until registry is connected.")
-        predictor = MockPredictor(name="fraud-detector", version="mock")
+        logger.info("Initializing RealPredictor with URI=%s", settings.model_uri)
+        predictor = RealPredictor(
+            model_uri=settings.model_uri,
+            cache_dir=settings.model_cache_dir,
+            name="fraud-detector",
+            version="1",
+        )
 
     predictor.warmup()
     app.state.predictor = predictor

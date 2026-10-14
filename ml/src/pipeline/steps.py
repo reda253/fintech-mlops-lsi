@@ -228,3 +228,60 @@ def step_quality_gates(
 
         gates["all_passed"] = all_passed
         return gates
+
+
+def step_visualize(
+    test_df: pd.DataFrame,
+    features: list[str] | None = None,
+    output_dir: Path | None = None,
+    model_version: str = "1",
+    parent_run: bool = True,
+) -> dict[str, Any]:
+    """Phase 5: Generate 2D projections (PCA, t-SNE, UMAP) across all 5 views (§4.11)."""
+    from ml.src.visualization.projections import (
+        export_projections_to_cache,
+        generate_all_projections,
+    )
+
+    with mlflow.start_run(run_name="5_visualize", nested=parent_run):
+        if features is None:
+            features = ["amount", "lat", "long", "city_pop"]
+
+        projections = generate_all_projections(
+            df=test_df,
+            features=features,
+            model_version=model_version,
+            max_samples=500,
+        )
+
+        if output_dir is not None:
+            export_projections_to_cache(projections, output_dir)
+
+        mlflow.log_metric("total_projection_files", len(projections))
+        return projections
+
+
+def step_package_model(
+    classifier: Any,
+    scaler: Any,
+    feature_names: list[str],
+    model_name: str = "fraud-detector",
+    model_version: str = "1",
+    alpha: float = 0.05,
+    parent_run: bool = True,
+) -> Any:
+    """Phase 6: Package model into unified MLflow pyfunc wrapper (§5.3)."""
+    from ml.src.model.fraud_detector import FraudDetectorModel
+
+    with mlflow.start_run(run_name="6_package", nested=parent_run):
+        pyfunc_model = FraudDetectorModel(
+            classifier=classifier,
+            scaler=scaler,
+            feature_names=feature_names,
+            alpha=alpha,
+            model_name=model_name,
+            model_version=model_version,
+        )
+        mlflow.log_param("pyfunc_model_name", model_name)
+        mlflow.log_param("pyfunc_version", model_version)
+        return pyfunc_model
