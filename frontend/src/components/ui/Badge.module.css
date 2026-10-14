@@ -1,0 +1,16 @@
+.badge {
+  display: inline-flex; align-items: center; height: 24px; padding: 0 10px;
+  border-radius: var(--radius-pill); font-size: 12px; font-weight: 600; letter-spacing: .02em;
+  border: 1px solid var(--color-border); background: var(--color-card-2); color: var(--color-text-2);
+}
+.danger { background: var(--color-danger-bg); color: var(--color-danger-text); border-color: rgba(239,68,68,.3); }
+.warning { background: var(--color-warning-bg); color: #f6b04a; border-color: rgba(245,158,11,.3); }
+.success { background: rgba(74,222,128,.1); color: var(--color-success); border-color: rgba(74,222,128,.28); }
+.accent { background: transparent; color: #f2724f; border-color: rgba(240,75,35,.55); }
+.dashed { border-style: dashed; background: transparent; font-weight: 500; letter-spacing: 0; }
+
+.count {
+  min-width: 26px; height: 24px; padding: 0 9px; display: inline-grid; place-items: center;
+  border-radius: var(--radius-pill); background: var(--color-raised); color: var(--color-text);
+  font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+}

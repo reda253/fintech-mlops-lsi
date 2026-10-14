@@ -1,0 +1,12 @@
+.card {
+  position: relative; border-radius: var(--radius-lg); border: 1px solid var(--color-border);
+  background: linear-gradient(180deg, var(--color-card-from), var(--color-card-to));
+  box-shadow: var(--shadow-card); overflow: hidden;
+}
+.padded { padding: 20px; }
+.dotted::before {
+  content: ''; position: absolute; top: 0; right: 0; width: 55%; height: 60%; pointer-events: none;
+  background-image: var(--dots); background-size: 9px 9px; opacity: .55;
+  -webkit-mask-image: radial-gradient(circle at 100% 0, #000, transparent 70%);
+  mask-image: radial-gradient(circle at 100% 0, #000, transparent 70%);
+}
