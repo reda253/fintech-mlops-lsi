@@ -49,6 +49,10 @@ metadata:
   namespace: fintech
 spec:
   ingressClassName: traefik
+  tls:
+    - hosts:
+        - test.fintech.local
+      secretName: fintech-local-tls
   rules:
     - host: test.fintech.local
       http:
