@@ -8,6 +8,9 @@ info:
     FastAPI, port 8000. JSON fields are snake_case (Python side).
     The ml-service does not decide: risk-service applies the policy (§5.7).
     Mock mode (`MODEL_MODE=mock`): amount > 500 -> [1]; 200 <= amount <= 500 -> [0,1]; else [0].
+    `GET /metrics` (§5.7/§5.8, Prometheus) is intentionally outside this contract: it serves
+    text/plain and is scraped directly (like the other services' Actuator endpoints), not routed
+    by the gateway. It is therefore not represented in the generated FastAPI spec either.
 servers:
   - url: http://localhost:8000
 security:
@@ -108,7 +111,13 @@ components:
       required: [transaction_id, trans_datetime, amount, category, merch_lat, merch_long, customer]
       properties:
         transaction_id: { type: string, format: uuid }
-        trans_datetime: { type: string, examples: ['2020-07-14T02:13:45'] }
+        trans_datetime:
+          type: string
+          format: date-time
+          description: >
+            ISO-8601 datetime. Sparkov (and the Java services) send local time without an offset,
+            e.g. `2020-07-14T02:13:45`; the `date-time` format is kept so the schema matches the
+            one FastAPI generates from the Pydantic model.
         amount: { type: number, exclusiveMinimum: 0 }
         category:
           type: string
@@ -132,12 +141,22 @@ components:
                  uncertainty_level, alpha, model, inference_ms]
       properties:
         transaction_id: { type: string, format: uuid }
-        prediction: { type: integer, enum: [0, 1] }
+        prediction:
+          type: integer
+          enum: [0, 1]
+          description: >
+            Point prediction (argmax of `fraud_probability`). Always present and always 0 or 1,
+            independently of `prediction_set`; it is informational. The application decision is
+            derived from `prediction_set` by risk-service (§5.7).
         fraud_probability: { type: number, minimum: 0, maximum: 1 }
         prediction_set:
           type: array
           maxItems: 2
           items: { type: integer, enum: [0, 1] }
+          description: >
+            Conformal prediction set. `[0]` -> APPROUVER, `[1]` -> BLOQUER, `[0,1]` -> REVUE.
+            An empty set `[]` means "no automatic decision" -> REVUE; in that case `prediction`
+            is still the point estimate and must not be used on its own for the decision.
         uncertainty: { type: number, minimum: 0, maximum: 1 }
         uncertainty_level: { type: string, enum: [FAIBLE, ELEVEE] }
         alpha: { type: number, examples: [0.05] }
