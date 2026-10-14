@@ -53,6 +53,15 @@ roles et des routes publiques du projet, qui reste a integrer avec P1.
 Le test ProbeSecurityTest couvre les sondes publiques et quatre chemins
 proteges. Il est execute par Maven lors de la construction Docker.
 
+## Construction et scan en CI
+
+Le job `Gateway image build and scan` dans `.github/workflows/ci.yml` construit
+l'image depuis le commit de la PR (ou du push sur main), avec son SHA comme tag.
+La construction execute aussi les tests Maven. Trivy analyse ensuite les
+paquets de l'image et bloque le job si une vulnerabilite CRITICAL est detectee,
+meme si aucun correctif n'est encore disponible. L'image n'est pas publiee.
+Le resultat de ce nouveau job reste a verifier sur GitHub apres le push.
+
 ## Reconstruction et nettoyage
 
 Apres une modification, reconstruire l'image avant de recreer le conteneur.
