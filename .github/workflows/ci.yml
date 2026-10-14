@@ -53,3 +53,30 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "1"
           ignore-unfixed: true
+
+  gateway-image:
+    name: Gateway image build and scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    env:
+      IMAGE_TAG: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Build gateway image and run Maven tests
+        run: docker build -f services/api-gateway/Dockerfile -t "fintech-api-gateway:$IMAGE_TAG" services
+
+      - name: Scan gateway image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: fintech-api-gateway:${{ env.IMAGE_TAG }}
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
