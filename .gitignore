@@ -44,3 +44,6 @@ ml/data/
 
 # Load test results raw dumps
 load-tests/results/**/raw/
+
+# Local task tracking
+task/
