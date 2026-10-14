@@ -78,6 +78,9 @@ docker rm fintech-gateway-test
 Le 14 octobre 2026, les sorties partagees par l'utilisateur confirment :
 construction Docker reussie, demarrage sous Java 21, utilisateur non-root,
 et liveness/readiness HTTP 200 apres correction des reponses initiales 401.
-La verification manuelle des endpoints proteges et le scan Trivy de cette
-image restent a effectuer. Le scan filesystem de la CI ne remplace pas un
+La verification manuelle sans JWT confirme HTTP 401 avec un challenge Bearer
+sur `/actuator/prometheus` et `/api/v1/customers`. Les deux sondes restent
+accessibles sans JWT et les deux endpoints controles restent proteges.
+Le resultat detaille du job de scan Trivy de cette image reste a confirmer.
+Le scan filesystem de la CI ne remplace pas un
 scan des paquets presents dans l'image Docker.
