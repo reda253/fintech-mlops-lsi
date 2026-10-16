@@ -1,0 +1,66 @@
+/* Design tokens — extraits des 22 maquettes (échelle @2x : valeurs en px CSS).
+   En cas d'écart, les maquettes priment. */
+:root {
+  /* Surfaces */
+  --color-bg: #080808;
+  --color-sidebar: #0d0d0d;
+  --color-card: #151515;
+  --color-card-from: #1a1a1a;
+  --color-card-to: #131313;
+  --color-card-2: #1e1e1e;
+  --color-raised: #292929;
+  --color-input: #111111;
+
+  /* Accent */
+  --color-accent: #f04b23;
+  --color-accent-hover: #ff5c33;
+  --color-accent-soft: rgba(240, 75, 35, 0.14);
+  --color-on-accent: #0d0d0d;
+
+  /* Texte */
+  --color-text: #f5f5f5;
+  --color-text-2: #a3a3a3;
+  --color-text-3: #7d7d7d;
+
+  /* Bordures */
+  --color-border: rgba(255, 255, 255, 0.09);
+  --color-border-strong: rgba(255, 255, 255, 0.16);
+
+  /* Sémantique */
+  --color-success: #4ade80;
+  --color-danger: #ef4444;
+  --color-danger-text: #f87171;
+  --color-danger-bg: rgba(239, 68, 68, 0.1);
+  --color-danger-border: rgba(239, 68, 68, 0.38);
+  --color-warning: #f59e0b;
+  --color-warning-bg: rgba(245, 158, 11, 0.12);
+
+  /* Typographie */
+  --font-sans: 'Inter Variable', 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+
+  /* Rayons */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+  --radius-pill: 999px;
+
+  /* Ombres */
+  --shadow-card: 0 1px 0 rgba(255, 255, 255, 0.03) inset, 0 12px 32px rgba(0, 0, 0, 0.35);
+  --shadow-nav-active: 0 6px 18px rgba(0, 0, 0, 0.45);
+  --shadow-glow: 0 0 0 1px rgba(240, 75, 35, 0.35), 0 0 24px rgba(240, 75, 35, 0.18);
+
+  /* Layout */
+  --sidebar-w: 236px;
+  --sidebar-w-collapsed: 76px;
+  --topbar-h: 72px;
+  --assistant-w: 340px;
+  --page-pad: 28px;
+
+  /* Texture de points (cartes KPI) */
+  --dots: radial-gradient(rgba(255, 255, 255, 0.16) 1px, transparent 1.2px);
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  color-scheme: dark;
+}

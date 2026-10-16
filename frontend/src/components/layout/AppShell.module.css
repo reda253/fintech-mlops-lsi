@@ -1,0 +1,24 @@
+.shell {
+  --sb: var(--sidebar-w);
+  min-height: 100%;
+  display: grid;
+  grid-template-columns: var(--sb) minmax(0, 1fr);
+  background:
+    radial-gradient(900px 420px at 55% -80px, rgba(255, 255, 255, 0.075), transparent 70%),
+    var(--color-bg);
+}
+.collapsed { --sb: var(--sidebar-w-collapsed); }
+.withAssistant { grid-template-columns: var(--sb) minmax(0, 1fr) var(--assistant-w); }
+.main { min-width: 0; display: flex; flex-direction: column; }
+.content { flex: 1; padding: 0 var(--page-pad) 40px; outline: none; }
+.scrim { display: none; }
+
+@media (max-width: 1100px) {
+  .withAssistant { grid-template-columns: var(--sb) minmax(0, 1fr); }
+}
+
+@media (max-width: 900px) {
+  .shell, .collapsed, .withAssistant { grid-template-columns: minmax(0, 1fr); }
+  .content { padding: 0 16px 32px; }
+  .scrim { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.6); }
+}

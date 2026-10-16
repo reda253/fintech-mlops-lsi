@@ -1,0 +1,7 @@
+.logo { display: inline-flex; align-items: center; gap: 14px; }
+.text { display: flex; flex-direction: column; line-height: 1.25; }
+.name { font-size: 15px; font-weight: 650; color: var(--color-text); letter-spacing: -0.01em; }
+.sub { font-size: 15px; font-weight: 600; color: var(--color-text-2); }
+.large { gap: 18px; }
+.large .name { font-size: 18px; }
+.large .sub { font-size: 18px; font-weight: 500; }
