@@ -146,8 +146,10 @@ Attendre healthy. Les trois commandes curl de validation ci-dessous restent
 identiques. L'image utilise toujours UID 10001, 512 Mio, un systeme de fichiers
 en lecture seule et un tmpfs /tmp. Le healthcheck controle la readiness.
 La commande ciblee ne demarre ni MLflow ni ml-service.
-La CI valide la structure du Compose avec --no-env-resolution --quiet sans
-charger le fichier de mots de passe ; elle ne valide pas ce demarrage avec DB.
+La CI cree un fichier env temporaire vide et le selectionne avec
+CUSTOMER_ENV_FILE. Compose verifie l'existence du fichier meme avec
+--no-env-resolution. La validation utilise --no-env-resolution --quiet sans
+charger de mots de passe ; elle ne valide pas ce demarrage avec DB.
 Integration Compose validee localement le 17 octobre 2026 a partir des sorties
 partagees par l'utilisateur : PostgreSQL healthy, customer-service healthy,
 liveness et readiness HTTP 200 avec status UP, Prometheus sans JWT HTTP 401.
