@@ -13,7 +13,13 @@ Le contexte `services` inclut le POM parent et common. Maven verify s'execute
 avec Java 21 pendant la construction, puis les couches Spring Boot sont
 copiees dans une image JRE 21. L'application tourne sous UID/GID 10001.
 Le tag local-test est temporaire ; les futurs deploiements doivent utiliser
-des tags SHA. Le scan d'image customer-service n'est pas encore ajoute a la CI.
+des tags SHA.
+
+Le job CI `Customer image build and scan` construit cette image et execute
+les tests Maven, puis lance Trivy sur les paquets de l'image. Toute
+vulnerabilite CRITICAL bloque le job, meme sans correctif disponible.
+Le tag CI correspond au SHA du commit ; l'image n'est pas publiee.
+Ce nouveau job reste a valider sur GitHub apres le push et l'ouverture de la PR.
 
 ## Compte PostgreSQL local
 
