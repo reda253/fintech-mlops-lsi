@@ -1,0 +1,66 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: ingress-test
+  namespace: fintech
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: ingress-test
+  template:
+    metadata:
+      labels:
+        app: ingress-test
+    spec:
+      containers:
+        - name: nginx
+          image: nginx:alpine
+          ports:
+            - containerPort: 80
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 64Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: ingress-test
+  namespace: fintech
+spec:
+  selector:
+    app: ingress-test
+  ports:
+    - port: 80
+      targetPort: 80
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: ingress-test
+  namespace: fintech
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - test.fintech.local
+      secretName: fintech-local-tls
+  rules:
+    - host: test.fintech.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: ingress-test
+                port:
+                  number: 80

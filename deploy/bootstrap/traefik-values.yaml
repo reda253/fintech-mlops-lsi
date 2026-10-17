@@ -1,0 +1,41 @@
+deployment:
+  replicas: 1
+
+updateStrategy:
+  type: Recreate
+
+nodeSelector:
+  kubernetes.io/hostname: fintech-control-plane
+
+tolerations:
+  - key: node-role.kubernetes.io/control-plane
+    operator: Exists
+    effect: NoSchedule
+
+ports:
+  web:
+    port: 8000
+    hostPort: 80
+  websecure:
+    port: 8443
+    hostPort: 443
+
+service:
+  type: ClusterIP
+
+providers:
+  kubernetesIngress:
+    enabled: true
+  kubernetesGateway:
+    enabled: false
+
+gateway:
+  enabled: false
+
+resources:
+  requests:
+    cpu: 50m
+    memory: 64Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
