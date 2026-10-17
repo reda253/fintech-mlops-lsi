@@ -110,6 +110,54 @@ Attendre Started CustomerServiceApplication. Flyway doit appliquer ou valider
 la migration V1 du schema customer. Pour une configuration modifiee, recreer
 le conteneur ; un simple redemarrage ne recharge pas le fichier env.
 
+## Execution avec Docker Compose
+
+Le fichier complementaire docker-compose.customer.yml ajoute uniquement
+customer-service au Compose de l'equipe. Depuis la racine du depot, en CMD,
+reutiliser le fichier local cree precedemment :
+
+```cmd
+set "CUSTOMER_ENV_FILE=%LOCALAPPDATA%\fintech-env\customer.env"
+docker compose -f docker-compose.yml -f docker-compose.customer.yml config --quiet
+```
+
+Ne pas partager une sortie config sans --quiet : elle peut afficher le mot
+de passe. Le fichier local doit contenir DB_PASSWORD ; DB_USER et DB_URL sont
+fixes par le Compose complementaire pour utiliser postgres sur le reseau Docker.
+Sans CUSTOMER_ENV_FILE, le fichier attendu est .env.customer.local a la racine
+du depot (ignore par Git). Le bootstrap du compte et du schema reste necessaire
+sur une base neuve ; Compose ne le realise pas automatiquement.
+
+Si fintech-customer-test tourne encore, l'arreter pour liberer le port 8089 :
+
+```cmd
+docker stop fintech-customer-test
+```
+
+Puis demarrer uniquement customer-service et sa dependance PostgreSQL :
+
+```cmd
+docker compose -f docker-compose.yml -f docker-compose.customer.yml up -d --build customer-service
+docker compose -f docker-compose.yml -f docker-compose.customer.yml ps customer-service
+docker compose -f docker-compose.yml -f docker-compose.customer.yml logs --tail 60 customer-service
+```
+
+Attendre healthy. Les trois commandes curl de validation ci-dessous restent
+identiques. L'image utilise toujours UID 10001, 512 Mio, un systeme de fichiers
+en lecture seule et un tmpfs /tmp. Le healthcheck controle la readiness.
+La commande ciblee ne demarre ni MLflow ni ml-service.
+La CI valide la structure du Compose avec --no-env-resolution --quiet sans
+charger le fichier de mots de passe ; elle ne valide pas ce demarrage avec DB.
+Integration Compose validee localement le 17 octobre 2026 a partir des sorties
+partagees par l'utilisateur : PostgreSQL healthy, customer-service healthy,
+liveness et readiness HTTP 200 avec status UP, Prometheus sans JWT HTTP 401.
+
+Pour arreter uniquement le service Compose :
+
+```cmd
+docker compose -f docker-compose.yml -f docker-compose.customer.yml stop customer-service
+```
+
 ## Validation observee le 17 octobre 2026
 
 Les sorties partagees par l'utilisateur confirment : construction reussie

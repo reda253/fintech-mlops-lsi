@@ -23,6 +23,9 @@ jobs:
       - name: Validate Docker Compose config
         run: docker compose config
 
+      - name: Validate customer Compose config without local secrets
+        run: docker compose -f docker-compose.yml -f docker-compose.customer.yml config --no-env-resolution --quiet
+
   security:
     name: Security scans
     runs-on: ubuntu-latest
