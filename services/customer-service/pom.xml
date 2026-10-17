@@ -11,6 +11,11 @@
     <artifactId>customer-service</artifactId>
     <description>Cardholders (profile, address, location); card number stored as HMAC fingerprint</description>
 
+    <properties>
+        <!-- Security patch beyond Spring Boot 4.1.1's managed Tomcat version. -->
+        <tomcat.version>11.0.26</tomcat.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>ma.fintech</groupId>

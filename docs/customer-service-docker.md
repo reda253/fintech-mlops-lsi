@@ -15,6 +15,14 @@ copiees dans une image JRE 21. L'application tourne sous UID/GID 10001.
 Le tag local-test est temporaire ; les futurs deploiements doivent utiliser
 des tags SHA.
 
+Le POM de customer-service fixe Tomcat a 11.0.26 pour remplacer la version
+11.0.24 geree par Spring Boot 4.1.1. Le rapport Trivy du commit 985ff96
+signalait trois alertes CRITICAL sur tomcat-embed-core : CVE-2026-65182,
+CVE-2026-65905 et CVE-2026-68525, corrigees a partir de 11.0.25.
+11.0.26 inclut ces correctifs ainsi que ceux de la version corrective suivante.
+Source : https://tomcat.apache.org/security-11.html
+Le resultat du nouveau scan reste a confirmer ; aucune alerte n'est ignoree.
+
 Le job CI `Customer image build and scan` construit cette image et execute
 les tests Maven, puis lance Trivy sur les paquets de l'image. Toute
 vulnerabilite CRITICAL bloque le job, meme sans correctif disponible.
