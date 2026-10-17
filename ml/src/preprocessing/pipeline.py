@@ -7,10 +7,10 @@ explicites pour eviter les erreurs silencieuses entre entrainement et service.
 
 from __future__ import annotations
 
+import math
+from collections.abc import Iterable
 from dataclasses import dataclass
 from datetime import datetime
-import math
-from typing import Iterable
 
 import numpy as np
 import pandas as pd

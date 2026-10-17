@@ -1,24 +1,27 @@
 """Absence de fuite par pli et correction des probabilites."""
 
 from pathlib import Path
+from typing import ClassVar
 from unittest.mock import patch
 
 import numpy as np
 import pandas as pd
 import pytest
+from data.load_data import TRAIN_COLUMNS
 from sklearn.base import BaseEstimator, TransformerMixin
 from sklearn.metrics import average_precision_score
-
-from data.load_data import TRAIN_COLUMNS
 from validation.fold_data import (
-    correct_proba, guard_training_source, load_development_data, make_fold_data,
+    correct_proba,
+    guard_training_source,
+    load_development_data,
+    make_fold_data,
 )
 
 
 class RecordingPreprocessor(TransformerMixin, BaseEstimator):
     """Transformeur instrumente pour observer les seules lignes d'ajustement."""
 
-    observations: list[dict] = []
+    observations: ClassVar[list[dict]] = []
 
     def fit(self, X: pd.DataFrame, y: pd.Series | None = None):
         self.mean_ = float(X["value"].mean())

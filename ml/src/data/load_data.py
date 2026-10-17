@@ -8,7 +8,6 @@ from pathlib import Path
 
 import pandas as pd
 
-
 TARGET_COLUMN = "is_fraud"
 DATE_COLUMN = "trans_date_trans_time"
 ID_COLUMN = "trans_num"

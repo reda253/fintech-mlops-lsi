@@ -9,10 +9,9 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
-from sklearn.base import BaseEstimator, clone
-
 from data.load_data import DATE_COLUMN, TRAIN_COLUMNS
 from preprocessing.pipeline import split_features_target
+from sklearn.base import BaseEstimator, clone
 
 
 def guard_training_source(source: str | Path) -> Path:
@@ -79,7 +78,8 @@ def _check_development(X: pd.DataFrame, y: pd.Series) -> None:
     """Controle le contrat de provenance et l'alignement des entrees."""
 
     if not isinstance(X, pd.DataFrame) or not isinstance(y, pd.Series):
-        raise ValueError("X doit etre un DataFrame et y une Series.")
+        # Le contrat P2 expose ValueError pour toutes les entrees invalides.
+        raise ValueError("X doit etre un DataFrame et y une Series.")  # noqa: TRY004
     for data in [X, y]:
         if data.attrs.get("zone") != "development":
             raise ValueError("Seule la zone development est autorisee.")

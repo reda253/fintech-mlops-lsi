@@ -29,7 +29,9 @@ sys.path.insert(0, str(PROJECT_ROOT / "ml" / "src"))
 
 from preprocessing.pipeline import build_preprocessing_pipeline
 from validation.fold_data import (
-    correct_proba, load_development_data, make_fold_data,
+    correct_proba,
+    load_development_data,
+    make_fold_data,
 )
 
 

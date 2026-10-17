@@ -8,9 +8,9 @@ import json
 import platform
 import sys
 import tempfile
-from time import perf_counter
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
+from time import perf_counter
 
 import numpy as np
 import pandas as pd
