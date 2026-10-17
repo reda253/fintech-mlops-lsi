@@ -27,7 +27,7 @@
     "max_iter": 2000,
     "random_state": 42
   },
-  "git_commit": "61b1f5292d3f62a826a35906d376c53ab74b63b8",
+  "git_commit": "4ec55ef98b261b346592392bfe6460e72a6ade77",
   "git_dirty": true,
   "source_sha256": "fa3993fba70c8726d9c401405df045c2cb35a3a61484aa5235ca0d3e9e13ca5a",
   "versions": {
@@ -43,10 +43,10 @@
     "validation_prevalence": 0.005640785523452777,
     "mean_proba_raw": 0.051499076187610626,
     "mean_proba_corrected": 0.004673673733720192,
-    "elapsed_seconds": 13.894957200000135
+    "elapsed_seconds": 10.516479999999774
   },
   "interpretation": "Smoke only, not the 10x5 benchmark. Prior correction preserves ranking but does not guarantee calibrated probabilities.",
   "tracking_backend": "local_sqlite",
-  "run_id": "267a3644ba7546c4b1397779f01e5c01",
+  "run_id": "699e06bffcc54c129bc986bd0030eae7",
   "mlflow_verified": true
 }
