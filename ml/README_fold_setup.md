@@ -24,8 +24,10 @@ permettent ensuite de refuser les autres zones et les plis qui se chevauchent.
 Ces gardes controlent les appels normaux ; des metadonnees pandas forgees
 volontairement ne constituent pas une preuve d'origine.
 
-MLflow : si MLFLOW_TRACKING_URI est configuree, le smoke utilise cette URI.
-Sinon, il annonce un backend SQLite local dans `.mlflow/fold_smoke/mlflow.db`.
+MLflow : `ml.tracking_smoke.get_tracking_uri()` resout l'argument CLI,
+l'environnement puis les `.env` locaux. Sans URI, le smoke refuse de demarrer.
+Le repli SQLite dans `.mlflow/fold_smoke/mlflow.db` exige le flag explicite
+`--allow-local-sqlite` ; il n'est jamais choisi silencieusement.
 Ce backend local ne demontre pas une connexion au serveur PostgreSQL de P3.
 Pour ce dernier, une fois demarre :
 
@@ -33,6 +35,14 @@ Pour ce dernier, une fois demarre :
 $env:MLFLOW_TRACKING_URI = "http://localhost:5000"
 python ml/scripts/smoke_fold_logreg.py
 ```
+
+Verifier d'abord la connexion sans entrainement et le telechargement d'artefact :
+
+```powershell
+python ml/scripts/check_mlflow_connection.py
+```
+
+Details : [connexion, backend et migration](../docs/mlflow_connection_p2.md).
 
 Le run enregistre beta, effectifs, configuration, seed, PR-AUC brute et corrigee,
 moyenne des probabilites, prevalence validation, versions, commit et etat dirty.
