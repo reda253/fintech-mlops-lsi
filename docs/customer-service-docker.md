@@ -110,6 +110,7 @@ Attendre Started CustomerServiceApplication. Flyway doit appliquer ou valider
 la migration V1 du schema customer. Pour une configuration modifiee, recreer
 le conteneur ; un simple redemarrage ne recharge pas le fichier env.
 
+
 ## Validation observee le 17 octobre 2026
 
 Les sorties partagees par l'utilisateur confirment : construction reussie
