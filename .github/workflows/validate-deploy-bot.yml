@@ -1,0 +1,49 @@
+name: Validate deploy bot authentication
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  authenticate:
+    name: Check deploy App access without writing
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Check App configuration exists
+        env:
+          DEPLOY_APP_ID: ${{ vars.DEPLOY_APP_ID }}
+          DEPLOY_APP_PRIVATE_KEY: ${{ secrets.DEPLOY_APP_PRIVATE_KEY }}
+        run: |
+          if [ -z "$DEPLOY_APP_ID" ]; then
+            echo "::error::Missing repository Actions variable DEPLOY_APP_ID."
+            exit 1
+          fi
+          if [ -z "$DEPLOY_APP_PRIVATE_KEY" ]; then
+            echo "::error::Missing repository Actions secret DEPLOY_APP_PRIVATE_KEY."
+            exit 1
+          fi
+
+      - name: Create repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.DEPLOY_APP_ID }}
+          private-key: ${{ secrets.DEPLOY_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Verify expected App and repository read access
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+          EXPECTED_APP_SLUG: fintech-deploy-bot-reda253
+        run: |
+          if [ "$APP_SLUG" != "$EXPECTED_APP_SLUG" ]; then
+            echo "::error::Unexpected GitHub App identity."
+            exit 1
+          fi
+          gh api "repos/$GITHUB_REPOSITORY/contents/deploy?ref=main" --jq '.[].path'
+          echo 'App authentication and repository read access validated.'
+          echo 'No Git push was attempted; main bypass remains untested.'
