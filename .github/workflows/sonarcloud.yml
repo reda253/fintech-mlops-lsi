@@ -1,0 +1,74 @@
+name: SonarCloud Java
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonar-java-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  sonar-java:
+    name: Java analysis and Quality Gate
+    if: >-
+      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
+      (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    defaults:
+      run:
+        working-directory: services
+
+    steps:
+      - name: Checkout full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+          cache-dependency-path: services/**/pom.xml
+
+      - name: Check Sonar token is configured
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -z "$SONAR_TOKEN" ]; then
+            echo '::error::Missing repository Actions secret SONAR_TOKEN.'
+            exit 1
+          fi
+
+      - name: Build, test, measure coverage and analyze Java
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+        run: >-
+          sh ./mvnw -B -ntp -Pcoverage clean verify
+          org.sonarsource.scanner.maven:sonar-maven-plugin:5.7.0.6970:sonar
+          -Dsonar.organization=reda253
+          -Dsonar.projectKey=reda253_fintech-mlops-lsi
+          -Dsonar.projectName=fintech-mlops-lsi
+          -Dsonar.qualitygate.wait=true
+          -Dsonar.qualitygate.timeout=300
+
+      - name: Upload coverage and test reports
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: java-coverage-and-tests
+          path: |
+            services/**/target/site/jacoco/
+            services/**/target/surefire-reports/
+          if-no-files-found: warn
+          retention-days: 7
