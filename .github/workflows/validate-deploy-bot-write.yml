@@ -1,0 +1,70 @@
+name: Validate deploy bot write on main
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_write:
+        description: "Push a comment-only test commit to protected main"
+        type: boolean
+        required: true
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: deploy-bot-main-write-test
+  cancel-in-progress: false
+
+jobs:
+  write-probe:
+    name: Prepare or perform restricted App push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Create repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ vars.DEPLOY_APP_ID }}
+          private-key: ${{ secrets.DEPLOY_APP_PRIVATE_KEY }}
+          permission-contents: write
+
+      - name: Check expected App identity
+        env:
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: test "$APP_SLUG" = fintech-deploy-bot-reda253
+
+      - name: Checkout reviewed main commit with App authentication
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Prepare and verify comment-only change
+        run: |
+          python3 deploy/bootstrap/ci_bot_write_test.py prepare
+          git add -- deploy/overlays/demo/kustomization.yaml
+          python3 deploy/bootstrap/ci_bot_write_test.py verify
+          git diff --cached --check
+          git diff --cached --stat
+
+      - name: Report preview without pushing
+        if: ${{ !inputs.confirm_write }}
+        run: echo 'Preview succeeded. No commit or push performed. Main bypass remains untested.'
+
+      - name: Commit and push only the allowed file
+        if: ${{ inputs.confirm_write }}
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          APP_SLUG: ${{ steps.app-token.outputs.app-slug }}
+        run: |
+          python3 deploy/bootstrap/ci_bot_write_test.py verify
+          bot_id=$(gh api "users/${APP_SLUG}[bot]" --jq .id)
+          git config user.name "${APP_SLUG}[bot]"
+          git config user.email "${bot_id}+${APP_SLUG}[bot]@users.noreply.github.com"
+          git commit -m "ci: validate restricted deploy bot write [skip ci]"
+          test "$(git diff-tree --no-commit-id --name-only -r HEAD)" = deploy/overlays/demo/kustomization.yaml
+          git push origin HEAD:refs/heads/main
+          echo 'Restricted App push succeeded; record this run URL and the resulting commit.'
+          git rev-parse HEAD
