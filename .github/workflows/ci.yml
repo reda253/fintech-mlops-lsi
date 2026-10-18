@@ -14,6 +14,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Test restricted deploy bot write guard
+        run: python3 -B -m unittest discover -s deploy/bootstrap -p test_ci_bot_write_test.py
+
       - name: Check repository structure
         run: |
           test -f docker-compose.yml
