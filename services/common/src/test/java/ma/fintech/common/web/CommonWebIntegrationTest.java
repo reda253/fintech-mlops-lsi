@@ -83,6 +83,13 @@ class CommonWebIntegrationTest {
         }
 
         @Test
+        void writeWithoutTokenIs401NotCsrf403() throws Exception {
+            mvc.perform(post("/api/v1/test/items").contentType(MediaType.APPLICATION_JSON)
+                            .content("{\"name\":\"x\",\"amount\":1}"))
+                    .andExpect(status().isUnauthorized());
+        }
+
+        @Test
         void invalidTokenIs401() throws Exception {
             mvc.perform(get("/api/v1/test/me").header(HttpHeaders.AUTHORIZATION, "Bearer forged"))
                     .andExpect(status().isUnauthorized())

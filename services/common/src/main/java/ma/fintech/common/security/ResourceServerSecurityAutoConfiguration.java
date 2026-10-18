@@ -58,13 +58,15 @@ public class ResourceServerSecurityAutoConfiguration {
     SecurityFilterChain resourceServerFilterChain(HttpSecurity http,
                                                   JwtAuthenticationConverter jwtAuthenticationConverter,
                                                   ObjectProvider<AuthorizationRules> serviceRules,
-                                                  @Qualifier("handlerExceptionResolver") HandlerExceptionResolver resolver)
-            throws Exception {
+                                                  @Qualifier("handlerExceptionResolver") HandlerExceptionResolver resolver) {
         ProblemDetailsSecurityHandler problemDetails =
                 new ProblemDetailsSecurityHandler(new BearerTokenAuthenticationEntryPoint(), resolver);
         return http
-                // Bearer tokens only, no cookies: CSRF does not apply and there is no session.
-                .csrf(csrf -> csrf.disable())
+                // CSRF abuses credentials the browser attaches on its own (cookies, Basic). Here the
+                // only credential is a Bearer header the client sets explicitly, and there is no
+                // session, so CSRF does not apply. Left on, it turns a POST without a token into a
+                // misleading 403 instead of 401 (CommonWebIntegrationTest#writeWithoutTokenIs401NotCsrf403).
+                .csrf(csrf -> csrf.disable()) // NOSONAR java:S4502 stateless Bearer-only API, see above
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(rules -> {
                     rules.requestMatchers(HttpMethod.GET, PROBE_PATHS).permitAll();
