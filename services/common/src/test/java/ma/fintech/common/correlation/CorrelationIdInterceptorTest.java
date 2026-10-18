@@ -1,5 +1,7 @@
 package ma.fintech.common.correlation;
 
+import java.util.UUID;
+
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.slf4j.MDC;
@@ -24,8 +26,9 @@ class CorrelationIdInterceptorTest {
 
     @Test
     void copiesCurrentIdOntoOutgoingCall() {
-        MDC.put(CorrelationId.MDC_KEY, "3f1c2b4a-9d8e-4f00-a1b2-c3d4e5f60718");
-        server.expect(header(CorrelationId.HEADER, "3f1c2b4a-9d8e-4f00-a1b2-c3d4e5f60718"))
+        String id = UUID.randomUUID().toString();
+        MDC.put(CorrelationId.MDC_KEY, id);
+        server.expect(header(CorrelationId.HEADER, id))
                 .andRespond(withSuccess());
 
         client.get().uri("http://risk/internal/x").retrieve().toBodilessEntity();

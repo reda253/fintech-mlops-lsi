@@ -7,6 +7,7 @@ import org.slf4j.MDC;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.WebApplicationType;
 import org.springframework.boot.builder.SpringApplicationBuilder;
+import org.springframework.boot.logging.LoggingSystem;
 import org.springframework.boot.test.system.CapturedOutput;
 import org.springframework.boot.test.system.OutputCaptureExtension;
 import org.springframework.context.ConfigurableApplicationContext;
@@ -48,6 +49,9 @@ class JsonLoggingEnvironmentPostProcessorTest {
 
     @Test
     void everyLineIsJsonWithServiceNameAndCorrelationId(CapturedOutput output) {
+        // Logback skips re-initialisation when an earlier test context already set it up,
+        // which would keep that context's service name. Start from a clean logging system.
+        LoggingSystem.get(getClass().getClassLoader()).cleanUp();
         try (ConfigurableApplicationContext ignored = new SpringApplicationBuilder(Empty.class)
                 .web(WebApplicationType.NONE)
                 .properties("spring.application.name=risk-service")
