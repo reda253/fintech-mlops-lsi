@@ -4,3 +4,4 @@ kind: Kustomization
 # Placeholder until the application manifests and image tags are integrated.
 resources: []
 images: []
+# ci-bot-write-test: 39177405437/1
