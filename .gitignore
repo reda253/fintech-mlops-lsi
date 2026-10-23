@@ -48,3 +48,6 @@ load-tests/results/**/raw/
 
 # Local task tracking
 task/
+.ipynb_checkpoints/
+/anaconda_projects/
+/recovered_*
