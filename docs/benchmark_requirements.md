@@ -177,8 +177,8 @@ sans accord humain sur le niveau d'incertitude acceptable.
 
 ## Estimation du cout de calcul
 
-**A completer apres chronometrage des modeles.** Aucun temps total n'est estime
-a partir du seul smoke LogReg.
+**Mesure diagnostique reelle du 23/10/2026, pas un benchmark.** Les cinq
+modeles ont ete mesures sur le meme petit pli, et non sur les volumes complets.
 
 Nombre de fits minimaux : `modeles x n_trials + 250 evaluations` =
 `5 x n_trials + (5 modeles x 10 repetitions x 5 plis)`.
@@ -191,11 +191,57 @@ Temps estime apres mesure : `somme_m(n_trials x temps_trial_m + 50 x temps_fold_
 
 | Modele | Temps d'un essai | Temps d'un pli | Ressources / memoire |
 |---|---|---|---|
-| LogisticRegression | A chronometrer | A chronometrer | A mesurer |
-| RandomForest | A chronometrer | A chronometrer | A mesurer |
-| XGBoost | A chronometrer | A chronometrer | A mesurer |
-| Nystroem + LinearSVC | A chronometrer | A chronometrer | A mesurer |
-| MLPClassifier | A chronometrer | A chronometrer | A mesurer |
+| LogisticRegression | 0,016537 s mesurees, parametres smoke | Fit estime 1,624 s ; pli total estime 43,673 s | 1 thread CPU |
+| RandomForest | 0,125068 s mesurees, 30 arbres profondeur 6 | Fit estime 12,286 s ; pli total estime 56,434 s | 1 thread CPU |
+| XGBoost | 0,047458 s mesurees, 30 arbres profondeur 3 | Fit estime 4,662 s ; pli total estime 47,182 s | hist CPU, 1 thread |
+| Nystroem + LinearSVC | 0,130032 s mesurees, 64 composantes et calibration CV 3 | Fit estime 12,774 s ; pli total estime 55,881 s | 1 thread CPU |
+| MLPClassifier | 0,114215 s mesurees, couche 32, plafond 40 iterations | Fit estime 11,220 s ; pli total estime 53,295 s | early stopping, 1 thread CPU |
+
+Protocole exact : 4000 lignes stratifiees tirees UNIQUEMENT du train interne
+Optuna ; seed 42, un seul pli diagnostique. Le helper make_fold_data existant
+ajuste le preprocessing sur 3200 lignes naturelles, puis conserve 29 fraudes
+et 290 legitimes (319 lignes, beta=0,09145380006307159). Validation naturelle :
+800 lignes, 7 fraudes. Ces 7 fraudes ne permettent aucune conclusion de
+qualite des modeles. Correction via correct_proba, sans calibration globale.
+
+Preprocessing commun mesure : 0,230843 s. Sortie : 75 features sur cet
+echantillon ; ce n'est pas une preuve d'egalite de cardinalite au grand jeu.
+Machine : Windows AMD64, Intel64 Family 6 Model 140 Stepping 1, GenuineIntel.
+Versions : Python 3.11.17, numpy 2.4.6, pandas 3.0.6, scikit-learn 1.9.1,
+XGBoost 3.2.0, MLflow 3.17.1. Aucun avertissement de modele lors de cette mesure.
+
+**ESTIMATIONS LINEAIRES, PAS DES BORNES NI DES TEMPS MESURES A GRANDE ECHELLE.**
+Le train sous-echantillonne moyen d'un pli benchmark est estime a
+3561 x 4/5 x 11 = 31336,8 lignes. Le fit estime vaut le fit mesure multiplie
+par 31336,8/319. Le total ajoute le preprocessing multiplie par 726138/4000
+et la prediction validation multipliee par (726138/5)/800. Cette extrapolation
+peut surestimer le cout fixe et sous-estimer les iterations et la memoire.
+
+Sans cache et aux seuls parametres smoke, 250 evaluations donnent une
+extrapolation de 12823,267 s (environ 3,56 h), NON une execution reelle.
+Les 30 essais x 5 modeles donneraient 593,038 s pour les fits seuls aux
+parametres smoke et au volume train Optuna estime, SANS preparation, lecture,
+seuil interne ni surcout des espaces de recherche. Ne pas sommer ces valeurs
+pour promettre un delai officiel. L'estimation depasse l'ordre de grandeur
+indicatif 30-90 min du mode full (5.1), sans demontrer un depassement reel.
+
+Risques du budget : RF et XGB vont jusqu'a 300 arbres et plus de profondeur ;
+SVM jusqu'a 256 composantes (cout non lineaire), avec plusieurs fits internes ;
+MLP jusqu'a 150 iterations et des couches plus grandes ; LogReg peut converger
+plus lentement pour d'autres C. Aucun timeout ni nouveau budget n'est valide.
+Plafonds par essai a discuter apres cette premiere mesure : 120 s ou 300 s,
+uniquement comme propositions, jamais comme garantie de suffisance.
+
+Commande : avec la racine et ml/src dans PYTHONPATH,
+`python -m benchmark.models_smoke --diagnostic-smoke --sample-rows 4000`.
+Sans ce flag, les configurations incompletes refusent le lancement avant
+lecture de donnees. Les sorties JSON optionnelles sont limitees a un chemin
+hors depot ; aucun fichier de donnees ou rapport n'est cree dans le depot.
+
+MLflow models_smoke : tentative reelle via get_tracking_uri ; FAIL,
+MlflowException, categorie connection, connexion impossible ou refusee.
+Aucun run serveur cree confirme, aucune bascule SQLite et aucun Docker lance.
+Relancer seulement le diagnostic explicite lorsque le serveur sera disponible.
 
 ## Format de resultats attendu par P3
 
