@@ -1,7 +1,8 @@
 # Exigences du benchmark P2 - issue #22
 
-Statut : cahier des charges, pas un resultat de benchmark. Aucun Optuna,
-benchmark complet ou test statistique n'est execute pour rediger ce document.
+Statut : cahier des charges et diagnostics, pas un resultat de benchmark.
+Seul un smoke Optuna borne a trois essais par modele est autorise ici ;
+aucune optimisation complete, aucun benchmark 10x5 ni test confirmatoire.
 
 ## Sources et perimetre
 
@@ -119,9 +120,9 @@ Les sections 4.4-4.7 et 10.5 restent les references normatives.
 - 30 essais par modele, budget global identique pour les cinq familles ;
   budget a reviser apres le chronometrage leger, sans lancer Optuna ici.
 - Partition temporelle proposee 20/80 de development ; holdout interne 80/20.
-  Validation conditionnelle aux effectifs : aucun seuil universel de fiabilite
-  de l'average precision n'est defini dans la spec. L'adequation reste donc
-  explicitement a confirmer, sans ajustement opportuniste apres les scores.
+  Adequation acceptee par Basma le 23/10/2026, avec la limite statistique
+  documentee ci-dessous ; aucun seuil universel de fiabilite n'est attribue
+  a la spec. `partition.adequacy_confirmed = true`.
 - StratifiedKFold, 5 plis x 10 repetitions, seeds 0 a 9, memes plis pour les
   cinq modeles. Une carte peut figurer dans train et validation. Le diagnostic
   03b n'est pas reproductible actuellement : module, script et resume JSON
@@ -157,91 +158,214 @@ Development : 907672 lignes, 5121 fraudes. Pour 20/80 : Optuna termine le
 Le holdout interne commence le 2019-03-19 10:46:46. Aucun timestamp commun.
 Verdict : pas de partie vide ni sans fraudes ; 237 fraudes permettent un
 premier diagnostic mais ne certifient pas une PR-AUC precise. Le 30/70 fournit
-290 fraudes internes au prix d'un benchmark reduit. Ne pas figer l'adequation
-sans accord humain sur le niveau d'incertitude acceptable.
+290 fraudes internes au prix d'un benchmark reduit. Basma accepte le 20/80
+avec la limite ci-dessous, sans modifier retrospectivement cette partition.
 
-### Decisions encore ouvertes et lancement bloque
+### Decisions complementaires validees le 23/10/2026
 
-- Sampler : RandomSampler seede respecte une recherche aleatoire independante
-  (4.5) ; TPE seede est adaptatif et peut exploiter les essais precedents.
-  Les deux sont possibles techniquement, mais TPE exige de clarifier le mot
-  "aleatoire" avec l'equipe. Aucun choix impose ; seed proposee 42.
-- Timeout PAR ESSAI : Study.optimize(timeout=...) est un plafond d'etude.
-  Proposition : essais dans un processus surveille, interrompu au delai et
-  journalise comme interrompu ; alternative : bornes d'iterations/estimateurs
-  et pruning cooperatif, qui ne sont PAS une garantie murale stricte.
-  Duree, comportement des essais interrompus et sampler restent a confirmer.
-- Adequation du 20/80, regle d'egalite des seuils F1 et des modeles provisoires :
-  a confirmer. Toute configuration incomplete doit refuser un lancement reel.
-- Questions P3 et formats : voir [questions_omar_p2.md](questions_omar_p2.md).
+**décidé par Basma**, date : **23/10/2026** (validation explicite dans le chat).
+
+1. `RandomSampler(seed=42)` pour les cinq modeles, execution sequentielle.
+   Ce choix respecte la recherche aleatoire du 4.5 ; aucun TPE implicite.
+2. `process_wall_clock`, **300 s par essai**, demarrage du processus,
+   preparation, fit, prediction et score inclus. Filet global : **10800 s
+   (3 h) par etude**, pas pour les cinq etudes reunies. Le superviseur borne
+   l'essai par le minimum des 300 s et du temps d'etude restant. Nettoyage
+   separe et borne du processus enfant ; pas de simple timeout de thread.
+   Un essai interrompu compte parmi les 30 tentatives, etat FAIL et motif
+   trial_timeout/study_timeout, sans score invente ni remplacement silencieux.
+   Compteurs par modele : attempted, completed, timeout_count,
+   timeout_fraction ; alerte si timeout_fraction **strictement > 0,20**.
+3. Parmi les maxima de F1 sur validation INTERNE uniquement, retenir le
+   **plus petit seuil** ; egalite numerique absolue **1e-12**, sans arrondir
+   les scores. Convention de classification : probabilite >= seuil.
+4. Provisoire : meilleure moyenne PR-AUC des dix repetitions. Egalite
+   numerique au meilleur a 1e-12 pres : Brier moyen minimal, puis latence
+   p95 minimale, puis identifiant de modele stable. La latence doit etre
+   MESUREE sur **1000 appels unitaires du pipeline complet**, CPU un thread,
+   meme machine (4.6), pas deduite des temps batch ci-dessous.
+   Tag **provisional**, jamais de promotion automatique champion.
+5. Signalement d'incertitude : IC bootstrap 95 % de la **difference appariee**
+   sur les **10 moyennes de repetition**, **10000 reechantillonnages** (4.8).
+   Si zero appartient a l'IC : **supériorité non démontrée**, pas preuve
+   d'equivalence. Le verdict confirmatoire attend Friedman/Wilcoxon/Holm.
+   Aucun de ces calculs statistiques n'est execute dans le smoke.
+
+Limite du 20/80 acceptee : AP LogReg mesuree 0,2551854001614933 ; IC95 %
+**[0,19923473029601207 ; 0,3202553295288669]** sur **237 fraudes**.
+Par decision de Basma, un ecart de PR-AUC **inferieur a environ 0,03** entre
+essais Optuna ne suffit pas a les departager : conserver ces essais comme
+candidats proches, sans pretendre qu'un ecart minuscule est une amelioration.
+C'est une marge de prudence operationnelle, PAS un seuil de significativite
+derive de l'IC, ni la tolerance numerique de 1e-12 du benchmark. Ne pas
+modifier/arrondir les scores reellement journalises. Le smoke ne selectionne
+aucun essai ; l'arbitrage entre configurations proches reste explicite.
+
+Le prevol strict ne comporte plus de valeur obligatoire "a confirmer".
+Les regles de seuil, de selection provisoire et de bootstrap sont configurees
+pour le futur benchmark ; elles ne sont pas pretendues executees par ce smoke.
+Questions P3 et formats : voir [questions_omar_p2.md](questions_omar_p2.md).
+
+### Verifications reelles 1 a 3, 23/10/2026
+
+1. **Chargeur T4 et smoke LogReg.** `validation/fold_data.py:44,47-48`
+   calcule 70 % en entiers, trie les dates (mergesort), puis selectionne
+   les premiers rangs chronologiques ; `:59` ignore les lignes non retenues.
+   Le smoke appelle ce chargeur (`ml/scripts/smoke_fold_logreg.py:132`).
+   Une inversion physique detectee : index 100531 = 2019-02-28 23:59:40,
+   index 100532 = 2019-02-28 00:02:34 (indexation a partir de zero).
+   Les deux sont dans development ; verification des ensembles : **0** ligne
+   du development chronologique hors prefixe physique, et **0** dans l'autre
+   sens. Aucun mauvais cote a la frontiere development du fait de l'inversion.
+2. **Un pli reel**, meme premier pli StratifiedKFold(5, shuffle=True, seed=42)
+   de development pour tous les modeles ; chronometrage diagnostique, PAS le
+   benchmark officiel sur les 80 % reserves. Preprocessing ajuste sur 726137
+   lignes naturelles ; apres sous-echantillonnage 45067 lignes = 4097 fraudes
+   + 40970 legitimes ; beta = 0,05674200875297768. Validation naturelle :
+   181535 lignes / 1024 fraudes. 76 features float32. Preparation totale
+   9,678531500016106 s, dont fit_transform train 5,999439299979713 s et
+   transform validation 1,2496732999861706 s. Temps des modeles ci-dessous.
+3. **LogReg interne 20/80.** Train naturel 145227 lignes / 1323 fraudes ;
+   apres reduction 14553 lignes ; validation 36307 lignes / 237 fraudes,
+   beta = 0,09193629086057371, 75 features ajustees sur ce train seulement.
+   Derniere date train 2019-03-19 10:45:00 ; premiere validation
+   2019-03-19 10:46:46 ; derniere validation 2019-04-05 01:23:52.
+   LogReg C=1, lbfgs, max_iter=2000, seed=42 : 38 iterations, sans warning.
+   Fit 0,12279019999550655 s ; prediction 0,007202299981145188 s.
+   Bootstrap percentile iid par transaction, modele fixe sans reentrainement,
+   seed=42, 2000/2000 tirages valides : AP et IC ci-dessus ; ecart-type
+   bootstrap 0,03155742684209774 ; largeur IC 0,12102059923285485.
+   Ce diagnostic n'integre ni dependance carte/temps ni incertitude du tuning.
+   Il ne remplace PAS le bootstrap apparie 10000 tirages du futur benchmark.
+
+Mesures mono-thread : Windows, Intel64 Family 6 Model 140 Stepping 1,
+4 coeurs/8 threads, RAM 15,56 Gio ; Python 3.11.17, numpy 2.4.6,
+pandas 3.0.6, scikit-learn 1.9.1, XGBoost 3.2.0, MLflow 3.17.1.
+Lecture globale limitee aux dates ; labels/features development uniquement.
+Aucun avertissement d'entrainement sur les dix chronometrages et la LogReg.
+MLflow p2_diagnostics : run 1445ed5bc1be4aaab0b75157b7c9606d, dix enfants.
 
 ## Estimation du cout de calcul
 
-**Mesure diagnostique reelle du 23/10/2026, pas un benchmark.** Les cinq
-modeles ont ete mesures sur le meme petit pli, et non sur les volumes complets.
+**Base : temps MESURES sur le pli reel 45067/181535, pas extrapolation du
+smoke 319/800.** Les colonnes leger/haut correspondent a deux configurations
+du meme pli ; une mesure par configuration, pas des bornes mathematiques.
 
-Nombre de fits minimaux : `modeles x n_trials + 250 evaluations` =
-`5 x n_trials + (5 modeles x 10 repetitions x 5 plis)`.
+| Modele | Fit leger (s) | Prediction legere (s) | Fit haut (s) | Prediction haute (s) |
+|---|---:|---:|---:|---:|
+| LogisticRegression | 0,180569 | 0,031163 | 0,125019 | 0,010574 |
+| RandomForest | 1,753114 | 0,753533 | 148,352455 | 6,139958 |
+| XGBoost | 1,351319 | 0,357839 | 9,520448 | 1,529459 |
+| Nystroem + LinearSVC | 2,107268 | 0,521600 | 11,245661 | 3,403937 |
+| MLPClassifier | 16,250785 | 0,028150 | 38,904893 | 0,197827 |
 
-Cette formule suppose un seul fit par essai Optuna et par evaluation ; ajouter
-les fits du seuil interne, de la calibration SVM, du reajustement et les echecs.
+Leger/haut : LogReg C=0,01/100 (lbfgs, plafond 1000) ; RF 50/300 arbres,
+profondeur 3/16, min_samples_leaf 10/1, max_features sqrt/1 ; XGB 50/300,
+profondeur 2/8, learning_rate 0,02/0,2, subsample et colsample 0,7/1 ;
+Nystroem 64/256 composantes, C=0,01/10, gamma=0,001/1, plafond SVC 3000 ;
+MLP (32)/(64,32), alpha=1e-5, learning_rate_init=1e-4, plafond 150,
+early stopping : 133/84 iterations. Le SVM inclut deja ses trois sous-plis
+de calibration sigmoide et le reajustement interne : ne pas les recompter.
+"Haut" signifie capacite couteuse, pas maximum numerique de chaque parametre.
 
-Temps estime apres mesure : `somme_m(n_trials x temps_trial_m + 50 x temps_fold_m)`
-+ cout des fits internes + mesures de latence + journalisation/artefacts.
+**Benchmark : 5 modeles x 10 repetitions x 5 plis = 250 evaluations.**
+Hypothese mono-thread, sequentiel, sans cache de preprocessing :
+`T = 250 x preparation + 50 x somme_modele(fit + prediction)`.
+Utiliser par modele les minima/maxima OBSERVES des deux configurations,
+car meme LogReg haut n'est pas necessairement plus lent que leger.
 
-| Modele | Temps d'un essai | Temps d'un pli | Ressources / memoire |
-|---|---|---|---|
-| LogisticRegression | 0,016537 s mesurees, parametres smoke | Fit estime 1,624 s ; pli total estime 43,673 s | 1 thread CPU |
-| RandomForest | 0,125068 s mesurees, 30 arbres profondeur 6 | Fit estime 12,286 s ; pli total estime 56,434 s | 1 thread CPU |
-| XGBoost | 0,047458 s mesurees, 30 arbres profondeur 3 | Fit estime 4,662 s ; pli total estime 47,182 s | hist CPU, 1 thread |
-| Nystroem + LinearSVC | 0,130032 s mesurees, 64 composantes et calibration CV 3 | Fit estime 12,774 s ; pli total estime 55,881 s | 1 thread CPU |
-| MLPClassifier | 0,114215 s mesurees, couche 32, plafond 40 iterations | Fit estime 11,220 s ; pli total estime 53,295 s | early stopping, 1 thread CPU |
+| Scenario de planification | Bas empirique | Haut empirique |
+|---|---:|---:|
+| Modeles seuls, une passe | 1162,960 s | 10975,318 s |
+| Une passe avec 250 preparations | 3582,593 s (59,7 min) | 13394,951 s (223,2 min) |
+| Deux passes completes par evaluation (seuil interne puis reajustement) | 7165,186 s (119,4 min) | 26789,903 s (446,5 min) |
 
-Protocole exact : 4000 lignes stratifiees tirees UNIQUEMENT du train interne
-Optuna ; seed 42, un seul pli diagnostique. Le helper make_fold_data existant
-ajuste le preprocessing sur 3200 lignes naturelles, puis conserve 29 fraudes
-et 290 legitimes (319 lignes, beta=0,09145380006307159). Validation naturelle :
-800 lignes, 7 fraudes. Ces 7 fraudes ne permettent aucune conclusion de
-qualite des modeles. Correction via correct_proba, sans calibration globale.
+La derniere ligne double explicitement preparation/fit/prediction : scenario
+prudent pour les deux ajustements du protocole F1, pas une mesure executee.
+Le pli reel mesure est plus grand que le futur pli benchmark : ce dernier
+porte sur 726138 lignes, environ 31337 lignes apres reduction dans son train.
+Aucun facteur lineaire de changement de taille n'est applique. Ces fourchettes
+ne garantissent ni duree minimale ni plafond : convergence, cache, charge RAM,
+autres hyperparametres et fits internes peuvent modifier le cout.
+Ajouter les entrees/sorties, journalisations, echecs et les 1000 appels
+unitaires de latence (cout non encore mesure pour les cinq pipelines).
+Les IC et tests statistiques du livrable suivant ne sont pas inclus.
 
-Preprocessing commun mesure : 0,230843 s. Sortie : 75 features sur cet
-echantillon ; ce n'est pas une preuve d'egalite de cardinalite au grand jeu.
-Machine : Windows AMD64, Intel64 Family 6 Model 140 Stepping 1, GenuineIntel.
-Versions : Python 3.11.17, numpy 2.4.6, pandas 3.0.6, scikit-learn 1.9.1,
-XGBoost 3.2.0, MLflow 3.17.1. Aucun avertissement de modele lors de cette mesure.
+Optuna, a part : 30 x somme des couts de modele observes = 697,776 a
+6585,191 s ; avec preparation repetee sur CE pli, 2149,556 a 8036,971 s.
+Le vrai train interne Optuna est plus petit (14553 lignes reduites), sans
+promesse de temps extrapole. Les 3 h par etude sont un filet, pas une prevision.
 
-**ESTIMATIONS LINEAIRES, PAS DES BORNES NI DES TEMPS MESURES A GRANDE ECHELLE.**
-Le train sous-echantillonne moyen d'un pli benchmark est estime a
-3561 x 4/5 x 11 = 31336,8 lignes. Le fit estime vaut le fit mesure multiplie
-par 31336,8/319. Le total ajoute le preprocessing multiplie par 726138/4000
-et la prediction validation multipliee par (726138/5)/800. Cette extrapolation
-peut surestimer le cout fixe et sous-estimer les iterations et la memoire.
+Commande smoke uniquement, racine et ml/src dans PYTHONPATH :
+`python -B -m benchmark.optuna_smoke --smoke`.
+Prevol STRICT, puis connexion MLflow obligatoire avant lecture de donnees ;
+trois tentatives par modele (15 au total), meme seed et espaces YAML.
+Echantillon de 4000 lignes du train interne Optuna seulement, preprocessing
+neuf dans le train de chaque essai, ratio 1:10 et correction beta existants.
+Validation diagnostique de 800 lignes / 7 fraudes : aucune selection de modele
+ou conclusion de performance sur ces scores. Les labels development servent
+au comptage global ; aucune feature ni aucun score du vrai holdout Optuna ou
+du benchmark n'est utilise. Aucun mode complet dans ce point d'entree.
+Les compteurs reels par modele sont journalises dans MLflow `optuna_smoke`.
+Ni code source ni .env transmis ; aucun repli SQLite ni demarrage de Docker.
 
-Sans cache et aux seuls parametres smoke, 250 evaluations donnent une
-extrapolation de 12823,267 s (environ 3,56 h), NON une execution reelle.
-Les 30 essais x 5 modeles donneraient 593,038 s pour les fits seuls aux
-parametres smoke et au volume train Optuna estime, SANS preparation, lecture,
-seuil interne ni surcout des espaces de recherche. Ne pas sommer ces valeurs
-pour promettre un delai officiel. L'estimation depasse l'ordre de grandeur
-indicatif 30-90 min du mode full (5.1), sans demontrer un depassement reel.
+### Smoke execute le 23/10/2026
 
-Risques du budget : RF et XGB vont jusqu'a 300 arbres et plus de profondeur ;
-SVM jusqu'a 256 composantes (cout non lineaire), avec plusieurs fits internes ;
-MLP jusqu'a 150 iterations et des couches plus grandes ; LogReg peut converger
-plus lentement pour d'autres C. Aucun timeout ni nouveau budget n'est valide.
-Plafonds par essai a discuter apres cette premiere mesure : 120 s ou 300 s,
-uniquement comme propositions, jamais comme garantie de suffisance.
+`PREFLIGHT PASS : aucun champ a confirmer.` Connexion MLflow PASS avant
+lecture : relecture du run, upload/download d'artefact verifies et run de
+controle supprime (5e48bd22ebe04a04965d88658f0fb8ce).
+Optuna 5.0.0 epingle dans ml/requirements.txt, execution Python 3.11.17.
+Ce smoke utilise 4000 lignes / 36 fraudes du train interne Optuna ; son pli
+entraine sur 3200 lignes naturelles puis 319 lignes reduites / 29 fraudes.
+Validation diagnostique : 800 lignes / 7 fraudes. Beta reel
+0,09145380006307159 ; labels/features de calibration charges : **0**.
 
-Commande : avec la racine et ml/src dans PYTHONPATH,
-`python -m benchmark.models_smoke --diagnostic-smoke --sample-rows 4000`.
-Sans ce flag, les configurations incompletes refusent le lancement avant
-lecture de donnees. Les sorties JSON optionnelles sont limitees a un chemin
-hors depot ; aucun fichier de donnees ou rapport n'est cree dans le depot.
+| Modele | Tentatives | Termines | Timeouts | Fraction | Alerte >20 % |
+|---|---:|---:|---:|---:|---|
+| logreg | 3 | 3 | 0 | 0 | false |
+| rf | 3 | 3 | 0 | 0 | false |
+| xgb | 3 | 3 | 0 | 0 | false |
+| nystroem_svc | 3 | 3 | 0 | 0 | false |
+| mlp | 3 | 3 | 0 | 0 | false |
 
-MLflow models_smoke : tentative reelle via get_tracking_uri ; FAIL,
-MlflowException, categorie connection, connexion impossible ou refusee.
-Aucun run serveur cree confirme, aucune bascule SQLite et aucun Docker lance.
-Relancer seulement le diagnostic explicite lorsque le serveur sera disponible.
+15 essais COMPLETE, aucune configuration selectionnee, aucun avertissement
+d'entrainement. MLflow PASS, run parent **2f37257b60b144be89d1613517311222**,
+experience **optuna_smoke**, cinq enfants contenant les compteurs verifies
+par relecture et les resumes d'essais. La surveillance du delai est active ;
+la terminaison effective et l'alerte >20 % sont aussi testees sur des cas
+synthetiques (pas de faux timeout declare pour ce smoke qui en compte zero).
+Pas de benchmark 250 evaluations ni de recherche complete de 30 essais.
+Le smoke a precede le commit : tag git_commit=6fcc432 et git_dirty=true.
+Les sources et configs executees sont ensuite versionnees dans **55ff96d**
+(feat(p2): apply validated tuning controls and bounded smoke). Aucun code
+source n'a ete envoye au serveur comme artefact pour compenser cet etat local.
+
+### Controles avant commits
+
+Lint : tous les fichiers Python versionnes du perimetre CI ml/ et ml-service/,
+plus les nouveaux fichiers de ce travail, sans desactivation de regle.
+Formatage limite aux huit fichiers Python P2 modifies ; pas de reformatage P3.
+Le lint global incluant les fichiers locaux non suivis signale RUF100 dans
+ml/scripts/measure_preprocessing_latency.py:18 (noqa E402 inutilise). Ce script
+preexistant, non suivi et hors commit, est laisse intact ; il n'est pas present
+dans un checkout CI. Ne pas presenter ce lint local global comme reussi.
+
+Windows : `MLFLOW_SQLALCHEMYSTORE_POOLCLASS=NullPool` dans la seule session
+de tests permet la fermeture des connexions SQLite avant suppression des
+bases temporaires ; option existante de MLflow, aucun fichier P3 modifie.
+`OMP_NUM_THREADS=1`, `MKL_NUM_THREADS=1`, `MLFLOW_DISABLE_AGENT_HINT=1`,
+`PYTHONDONTWRITEBYTECODE=1`. Tests sans cache pytest (`-p no:cacheprovider`).
+Premiere verification verte : pytest ml/tests -v = 164 passed, 2 warnings ;
+pytest -v dans ml-service = 21 passed, 1 warning. Warnings conserves : signature
+pyfunc MLflow non supportee, strategie SQLAlchemy noload depreciee et
+Starlette/httpx deprecie. Aucun filtre d'avertissement ajoute.
+L'essai supplementaire `pytest tests/preprocessing` ne collecte aucun test
+dans ce dossier local : NON VERIFIE, pas PASS. Les assertions des tests de
+configs incompletes sont maintenues avec des fixtures explicitement incompletes
+maintenant que les vraies configs sont validees.
+Controles relances avant le commit documentaire : Ruff PASS, huit fichiers
+Python deja formates, 164 tests ML PASS (2 warnings, 76,31 s), 21 tests
+ml-service PASS (1 warning, 0,88 s). Aucun test saute ni assertion supprimee.
 
 ## Format de resultats attendu par P3
 
