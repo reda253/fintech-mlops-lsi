@@ -1,0 +1,16 @@
+schema_version: 1
+models: [logreg, rf, xgb, nystroem_svc, mlp]
+n_trials: 30
+sampler:
+  name: "à confirmer"
+  seed: 42
+trial_timeout:
+  mechanism: "à confirmer"
+  seconds: "à confirmer"
+partition:
+  optuna_fraction: 0.2
+  internal_train_fraction: 0.8
+  timestamp_ties: keep_left
+  adequacy_confirmed: "à confirmer"
+objective: average_precision
+direction: maximize
