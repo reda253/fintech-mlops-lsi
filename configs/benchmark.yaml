@@ -14,9 +14,20 @@ threshold:
   criterion: max_f1
   scope: inner_training_validation
   internal_train_fraction: 0.8
-  ties: "à confirmer"
+  ties: lower_threshold
+  equality_atol: 1.0e-12
 provisional:
   criterion: mean_repeat_average_precision
   tag: provisional
   automatic_champion: false
-  ties: "à confirmer"
+  ties: brier_then_latency
+  equality_atol: 1.0e-12
+  last_tie_breaker: model_id
+  latency_calls: 1000
+  latency_scope: full_pipeline
+  latency_threads: 1
+  paired_difference_ci:
+    confidence: 0.95
+    n_resamples: 10000
+    unit: repeat_mean
+    zero_included_message: "supériorité non démontrée"

@@ -9,9 +9,18 @@ from benchmark.config import MODEL_NAMES, load_configuration, validate_configura
 ROOT = Path(__file__).resolve().parents[2]
 
 
+def test_approved_configuration_has_no_pending_fields():
+    config = load_configuration(ROOT)
+    assert validate_configuration(config) == []
+    assert config["optuna"]["sampler"] == {"name": "RandomSampler", "seed": 42}
+    assert config["optuna"]["partition"]["adequacy_confirmed"] is True
+
+
 def test_incomplete_configuration_refuses_real_launch():
+    config = load_configuration(ROOT)
+    config["optuna"]["sampler"]["name"] = "à confirmer"
     with pytest.raises(ValueError, match="Lancement reel refuse"):
-        load_configuration(ROOT)
+        validate_configuration(config)
 
 
 def test_explicit_test_mode_loads_all_five_spaces_and_shared_budget():
@@ -65,3 +74,26 @@ def test_invalid_spaces_are_rejected(change):
         del models["mlp"]
     with pytest.raises(ValueError):
         validate_configuration(config, allow_incomplete=True)
+
+
+@pytest.mark.parametrize(
+    "section,path,value",
+    [
+        ("optuna", "study_timeout_seconds", 0),
+        ("optuna", "trial_timeout.seconds", 301),
+        ("optuna", "trial_timeout.alert_fraction", 0.3),
+        ("optuna", "selection.min_pr_auc_gap", 0.001),
+        ("benchmark", "threshold.equality_atol", 0.01),
+        ("benchmark", "provisional.latency_calls", 100),
+        ("benchmark", "provisional.paired_difference_ci.n_resamples", 100),
+    ],
+)
+def test_new_decisions_cannot_be_silently_changed(section, path, value):
+    config = load_configuration(ROOT)
+    target = config[section]
+    parts = path.split(".")
+    for part in parts[:-1]:
+        target = target[part]
+    target[parts[-1]] = value
+    with pytest.raises(ValueError, match="decision|protocole"):
+        validate_configuration(config)

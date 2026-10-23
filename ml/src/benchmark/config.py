@@ -20,6 +20,9 @@ REQUIRED = {
         "sampler.seed",
         "trial_timeout.mechanism",
         "trial_timeout.seconds",
+        "trial_timeout.alert_fraction",
+        "study_timeout_seconds",
+        "selection.min_pr_auc_gap",
         "partition.optuna_fraction",
         "partition.internal_train_fraction",
         "partition.timestamp_ties",
@@ -44,10 +47,20 @@ REQUIRED = {
         "threshold.scope",
         "threshold.internal_train_fraction",
         "threshold.ties",
+        "threshold.equality_atol",
         "provisional.criterion",
         "provisional.tag",
         "provisional.automatic_champion",
         "provisional.ties",
+        "provisional.equality_atol",
+        "provisional.last_tie_breaker",
+        "provisional.latency_calls",
+        "provisional.latency_scope",
+        "provisional.latency_threads",
+        "provisional.paired_difference_ci.confidence",
+        "provisional.paired_difference_ci.n_resamples",
+        "provisional.paired_difference_ci.unit",
+        "provisional.paired_difference_ci.zero_included_message",
     ),
 }
 
@@ -201,6 +214,18 @@ def validate_configuration(configs, *, allow_incomplete=False):
         "provisional.automatic_champion": False,
         "threshold.internal_train_fraction": 0.8,
         "provisional.criterion": "mean_repeat_average_precision",
+        "threshold.equality_atol": 1e-12,
+        "provisional.equality_atol": 1e-12,
+        "provisional.last_tie_breaker": "model_id",
+        "provisional.latency_calls": 1000,
+        "provisional.latency_scope": "full_pipeline",
+        "provisional.latency_threads": 1,
+        "provisional.paired_difference_ci.confidence": 0.95,
+        "provisional.paired_difference_ci.n_resamples": 10000,
+        "provisional.paired_difference_ci.unit": "repeat_mean",
+        "provisional.paired_difference_ci.zero_included_message": (
+            "supériorité non démontrée"
+        ),
         "secondary_metrics": [
             "roc_auc",
             "f1",
@@ -234,6 +259,17 @@ def validate_configuration(configs, *, allow_incomplete=False):
         or seconds <= 0
     ):
         raise ValueError("Delai par essai : nombre fini strictement positif requis.")
+    for path, expected in {
+        "sampler.name": "RandomSampler",
+        "sampler.seed": 42,
+        "trial_timeout.seconds": 300,
+        "trial_timeout.alert_fraction": 0.2,
+        "study_timeout_seconds": 10800,
+        "selection.min_pr_auc_gap": 0.03,
+    }.items():
+        value = _get(optuna, path)
+        if not _pending(value) and (isinstance(value, bool) or value != expected):
+            raise ValueError(f"optuna.{path} contredit la decision de Basma.")
     seed = _get(optuna, "sampler.seed")
     if not _pending(seed) and (
         isinstance(seed, bool) or not isinstance(seed, int) or seed < 0

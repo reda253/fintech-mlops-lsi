@@ -68,6 +68,13 @@ def test_size_cap_rejected_before_any_data_access(monkeypatch, size):
 def test_real_entry_point_blocks_incomplete_config_before_data_access(monkeypatch):
     reader = Mock(side_effect=AssertionError("Lecture interdite"))
     monkeypatch.setattr(models_smoke, "sample_development", reader)
+    monkeypatch.setattr(
+        models_smoke,
+        "load_configuration",
+        Mock(
+            side_effect=ValueError("Configuration incomplete : Lancement reel refuse.")
+        ),
+    )
     monkeypatch.setattr(sys, "argv", ["models_smoke"])
     with pytest.raises(SystemExit) as raised:
         models_smoke.main()

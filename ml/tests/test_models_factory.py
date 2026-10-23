@@ -1,10 +1,11 @@
 """Fabriques et probabilites : petits jeux synthetiques uniquement."""
 
 from pathlib import Path
+from unittest.mock import Mock
 
 import numpy as np
 import pytest
-from benchmark.config import MODEL_NAMES
+from benchmark.config import MODEL_NAMES, load_configuration
 from models.factory import build_model
 from models.search_spaces import load_search_spaces, model_parameters
 from sklearn.datasets import make_classification
@@ -72,12 +73,21 @@ def test_invalid_seed(seed):
         build_model("rf", {}, seed)
 
 
-def test_yaml_spaces_are_loaded_not_duplicated_and_not_mutated():
+def test_yaml_spaces_are_loaded_not_duplicated_and_not_mutated(monkeypatch):
     spaces = load_search_spaces(ROOT, allow_incomplete=True)
     for name in MODEL_NAMES:
         params = model_parameters(name, spaces, smoke=True)
         assert hasattr(build_model(name, params, 42), "predict_proba")
         params["mutated"] = True
         assert "mutated" not in spaces[name]["fixed_params"]
+    assert load_search_spaces(ROOT) == spaces
+    config = load_configuration(ROOT)
+    config["optuna"]["sampler"]["name"] = "à confirmer"
+    monkeypatch.setattr(
+        "benchmark.config.yaml.safe_load",
+        Mock(
+            side_effect=[config["search_spaces"], config["optuna"], config["benchmark"]]
+        ),
+    )
     with pytest.raises(ValueError, match="Lancement reel refuse"):
         load_search_spaces(ROOT)

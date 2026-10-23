@@ -2,15 +2,19 @@ schema_version: 1
 models: [logreg, rf, xgb, nystroem_svc, mlp]
 n_trials: 30
 sampler:
-  name: "à confirmer"
+  name: RandomSampler
   seed: 42
 trial_timeout:
-  mechanism: "à confirmer"
-  seconds: "à confirmer"
+  mechanism: process_wall_clock
+  seconds: 300
+  alert_fraction: 0.2
+study_timeout_seconds: 10800
+selection:
+  min_pr_auc_gap: 0.03
 partition:
   optuna_fraction: 0.2
   internal_train_fraction: 0.8
   timestamp_ties: keep_left
-  adequacy_confirmed: "à confirmer"
+  adequacy_confirmed: true
 objective: average_precision
 direction: maximize
