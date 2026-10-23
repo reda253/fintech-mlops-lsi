@@ -78,6 +78,9 @@ prepare les resultats necessaires, sans inventer de significativite.
 
 ## Ambiguites et decisions a prendre
 
+Cette section conserve l'historique des propositions. Les decisions du
+23/10/2026 ci-dessous la remplacent uniquement pour les points valides.
+
 Aucune proposition ci-dessous n'est validee et aucun defaut d'execution n'en
 decoule. Accord de Basma et alignement avec P3 avant les calculs longs.
 
@@ -107,6 +110,70 @@ a verifier en l'absence de synthese. Aucune decision nouvelle n'est imposee.
 | Spec contre issue #22 | Issue : titre 10x5, renvoi 4.5-4.7, DoD generique ; aucun budget ni schema supplementaire | Aucun conflit de protocole observe. Proposer de lier cette checklist a l'issue ; ne pas transformer son silence en nouvelle exigence. |
 | Spec contre endpoint P3 | Endpoint code en dur LightGBM et omet SVM ; plusieurs valeurs et champion sont fixes | Proposer avec P3 de remplacer le mock par les cinq familles de 4.5. Aucun chiffre du mock ne devient un resultat P2. |
 | Formats Parquet | Aucun lecteur folds.parquet / repeat_means.parquet dans les fichiers inspectes | Le schema ci-dessous est une PROPOSITION de contrat a valider avec P3, pas une compatibilite existante. |
+
+## Décisions validées
+
+Date : 23/10/2026. **décidé par Basma** (validation humaine dans le chat).
+Les sections 4.4-4.7 et 10.5 restent les references normatives.
+
+- 30 essais par modele, budget global identique pour les cinq familles ;
+  budget a reviser apres le chronometrage leger, sans lancer Optuna ici.
+- Partition temporelle proposee 20/80 de development ; holdout interne 80/20.
+  Validation conditionnelle aux effectifs : aucun seuil universel de fiabilite
+  de l'average precision n'est defini dans la spec. L'adequation reste donc
+  explicitement a confirmer, sans ajustement opportuniste apres les scores.
+- StratifiedKFold, 5 plis x 10 repetitions, seeds 0 a 9, memes plis pour les
+  cinq modeles. Une carte peut figurer dans train et validation. Le diagnostic
+  03b n'est pas reproductible actuellement : module, script et resume JSON
+  absents ; ses scores stockes ne prouvent pas l'absence de fuite.
+- Seuil : maximum F1 sur validation interne au train, jamais sur le pli mesure.
+- Provisoire : meilleure PR-AUC moyenne des 10 repetitions ; tag provisional,
+  pas de promotion automatique champion ni de superiorite statistique supposee.
+- SVM : probabilites par calibration sigmoide interne au train uniquement.
+- ECE : 10 intervalles de largeur egale.
+- Log-loss ajoutee aux metriques secondaires sur demande de Basma ; elle
+  n'est pas une obligation supplementaire attribuee a la spec 4.6.
+
+### Comptage leger reel, 23/10/2026
+
+Exception autorisee par Basma : lecture des dates seules de tout fraudTrain,
+puis lecture par blocs des etiquettes de development exclusivement. Aucun
+label ni feature de calibration n'a ete charge. Aucun modele entraine pour ce
+comptage. Tri stable et timestamps egaux conserves du meme cote de la coupure.
+
+| Option | Partie | Lignes | Fraudes |
+|---|---|---:|---:|
+| 20/80 | Optuna total | 181534 | 1560 |
+| 20/80 | Train interne Optuna | 145227 | 1323 |
+| 20/80 | Validation interne Optuna | 36307 | 237 |
+| 20/80 | Benchmark | 726138 | 3561 |
+| 30/70 | Optuna total | 272301 | 2037 |
+| 30/70 | Train interne Optuna | 217840 | 1747 |
+| 30/70 | Validation interne Optuna | 54461 | 290 |
+| 30/70 | Benchmark | 635371 | 3084 |
+
+Development : 907672 lignes, 5121 fraudes. Pour 20/80 : Optuna termine le
+2019-04-05 01:23:52 ; benchmark commence le 2019-04-05 01:24:56.
+Le holdout interne commence le 2019-03-19 10:46:46. Aucun timestamp commun.
+Verdict : pas de partie vide ni sans fraudes ; 237 fraudes permettent un
+premier diagnostic mais ne certifient pas une PR-AUC precise. Le 30/70 fournit
+290 fraudes internes au prix d'un benchmark reduit. Ne pas figer l'adequation
+sans accord humain sur le niveau d'incertitude acceptable.
+
+### Decisions encore ouvertes et lancement bloque
+
+- Sampler : RandomSampler seede respecte une recherche aleatoire independante
+  (4.5) ; TPE seede est adaptatif et peut exploiter les essais precedents.
+  Les deux sont possibles techniquement, mais TPE exige de clarifier le mot
+  "aleatoire" avec l'equipe. Aucun choix impose ; seed proposee 42.
+- Timeout PAR ESSAI : Study.optimize(timeout=...) est un plafond d'etude.
+  Proposition : essais dans un processus surveille, interrompu au delai et
+  journalise comme interrompu ; alternative : bornes d'iterations/estimateurs
+  et pruning cooperatif, qui ne sont PAS une garantie murale stricte.
+  Duree, comportement des essais interrompus et sampler restent a confirmer.
+- Adequation du 20/80, regle d'egalite des seuils F1 et des modeles provisoires :
+  a confirmer. Toute configuration incomplete doit refuser un lancement reel.
+- Questions P3 et formats : voir [questions_omar_p2.md](questions_omar_p2.md).
 
 ## Estimation du cout de calcul
 
