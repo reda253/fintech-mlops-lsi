@@ -51,3 +51,4 @@ task/
 .ipynb_checkpoints/
 /anaconda_projects/
 /recovered_*
+/reports/
