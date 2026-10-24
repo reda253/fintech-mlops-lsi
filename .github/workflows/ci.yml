@@ -91,6 +91,46 @@ jobs:
           exit-code: "1"
           ignore-unfixed: false
 
+  python-images:
+    name: ${{ matrix.label }} image build and scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: ML service
+            context: ml-service
+            image: fintech-ml-service
+          - label: Simulator
+            context: simulator
+            image: fintech-simulator
+    env:
+      IMAGE_TAG: ${{ github.event.pull_request.head.sha || github.sha }}
+      IMAGE_NAME: ${{ matrix.image }}
+      BUILD_CONTEXT: ${{ matrix.context }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Build Python image
+        run: docker build -t "$IMAGE_NAME:$IMAGE_TAG" "$BUILD_CONTEXT"
+
+      - name: Scan Python image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.image }}:${{ env.IMAGE_TAG }}
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
+
   customer-image:
     name: Customer image build and scan
     runs-on: ubuntu-latest
