@@ -1,0 +1,41 @@
+services:
+  rabbitmq:
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "check_running"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  transaction-service:
+    build:
+      context: ./services
+      dockerfile: transaction-service/Dockerfile
+    image: ${TRANSACTION_IMAGE:-fintech-transaction-service:local-test}
+    env_file:
+      - ${TRANSACTION_ENV_FILE:-./.env.transaction.local}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/fintech
+      DB_USER: transaction_user
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: "5672"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${TRANSACTION_PORT:-8090}:8083"
+    mem_limit: 512m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8083/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s

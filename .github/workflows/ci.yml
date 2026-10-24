@@ -17,6 +17,9 @@ jobs:
       - name: Test restricted deploy bot write guard
         run: python3 -B -m unittest discover -s deploy/bootstrap -p test_ci_bot_write_test.py
 
+      - name: Test Transaction smoke checks and CI isolation guard
+        run: python3 -B -m unittest discover -s deploy/bootstrap -p test_transaction_smoke_test.py
+
       - name: Check repository structure
         run: |
           test -f docker-compose.yml
@@ -32,6 +35,13 @@ jobs:
         run: |
           touch "$CUSTOMER_ENV_FILE"
           docker compose -f docker-compose.yml -f docker-compose.customer.yml config --no-env-resolution --quiet
+
+      - name: Validate Transaction Compose without local secrets
+        env:
+          TRANSACTION_ENV_FILE: ${{ runner.temp }}/transaction-config.env
+        run: |
+          touch "$TRANSACTION_ENV_FILE"
+          docker compose -f docker-compose.yml -f docker-compose.transaction.yml config --no-env-resolution --quiet
 
   security:
     name: Security scans
@@ -94,7 +104,7 @@ jobs:
   transaction-image:
     name: Transaction image build and scan
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       contents: read
     env:
@@ -118,6 +128,9 @@ jobs:
           severity: CRITICAL
           exit-code: "1"
           ignore-unfixed: false
+
+      - name: Transaction runtime, security, dependency outages and recovery
+        run: python3 -B deploy/bootstrap/transaction_compose_ci.py --image "fintech-transaction-service:$IMAGE_TAG"
 
   python-images:
     name: ${{ matrix.label }} image build and scan

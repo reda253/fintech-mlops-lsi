@@ -29,8 +29,10 @@ et aucun deploiement n'est effectue.
 
 Les sorties partagees par l'utilisateur confirment le build Docker local
 reussi et `uid=10001(fintech) gid=10001(fintech)`. L'etape Maven `verify`
-du Dockerfile a termine avec succes. Le scan distant et le demarrage
-applicatif restent a valider : la commande `id` ne lance pas le service.
+du Dockerfile a termine avec succes. Le job CI de build/scan a ensuite ete
+valide avant fusion. Le demarrage manuel avec PostgreSQL et RabbitMQ a aussi
+ete observe le 24 octobre 2026 ; voir le guide Compose pour les preuves et
+les limites de cette validation.
 Conserver les liens des executions reussies dans l'issue #38.
 
 ## Prerequis pour le futur test de demarrage
@@ -54,7 +56,8 @@ Ne pas supprimer les volumes PostgreSQL pour recommencer un test.
 La securite est fournie par `common` : seuls les GET exacts
 `/actuator/health/liveness` et `/actuator/health/readiness` sont publics ;
 Prometheus et les routes applicatives restent authentifies.
-La readiness actuelle ne comprend pas explicitement les indicateurs DB et
-RabbitMQ : une sonde UP seule ne prouve pas que ces dependances sont pretes.
-Le test de demarrage et l'integration Compose feront l'objet d'une validation
-distincte, sans modifier les services deja utilises par l'equipe.
+La readiness inclut maintenant explicitement `readinessState,db,rabbit` ;
+la liveness ne depend que de `livenessState`.
+Le [guide Compose Transaction](transaction-compose.md) decrit la configuration
+locale, le fichier env prive, les tests HTTP et les tests CI isoles de panne
+et reprise. Les commandes de build ci-dessus restent valables.
