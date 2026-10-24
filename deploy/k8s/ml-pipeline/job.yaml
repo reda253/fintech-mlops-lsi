@@ -1,0 +1,48 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ml-pipeline
+  namespace: ml
+  labels:
+    app: ml-pipeline
+spec:
+  backoffLimit: 2
+  activeDeadlineSeconds: 3600
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: ml-pipeline
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+      containers:
+        - name: pipeline-runner
+          image: fintech-ml-pipeline:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - -m
+            - ml.src.pipeline.run
+          args:
+            - --mode=$(PIPELINE_MODE)
+            - --tracking-uri=$(MLFLOW_TRACKING_URI)
+            - --experiment=$(PIPELINE_EXPERIMENT)
+            - --test-mode
+          envFrom:
+            - configMapRef:
+                name: ml-pipeline-config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
