@@ -14,6 +14,9 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Test restricted deploy bot write guard
+        run: python3 -B -m unittest discover -s deploy/bootstrap -p test_ci_bot_write_test.py
+
       - name: Check repository structure
         run: |
           test -f docker-compose.yml
@@ -83,6 +86,74 @@ jobs:
         with:
           scan-type: image
           image-ref: fintech-api-gateway:${{ env.IMAGE_TAG }}
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
+
+  transaction-image:
+    name: Transaction image build and scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      IMAGE_TAG: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Build transaction image and run Maven tests
+        run: docker build -f services/transaction-service/Dockerfile -t "fintech-transaction-service:$IMAGE_TAG" services
+
+      - name: Scan transaction image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: fintech-transaction-service:${{ env.IMAGE_TAG }}
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
+
+  python-images:
+    name: ${{ matrix.label }} image build and scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: ML service
+            context: ml-service
+            image: fintech-ml-service
+          - label: Simulator
+            context: simulator
+            image: fintech-simulator
+    env:
+      IMAGE_TAG: ${{ github.event.pull_request.head.sha || github.sha }}
+      IMAGE_NAME: ${{ matrix.image }}
+      BUILD_CONTEXT: ${{ matrix.context }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Build Python image
+        run: docker build -t "$IMAGE_NAME:$IMAGE_TAG" "$BUILD_CONTEXT"
+
+      - name: Scan Python image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.image }}:${{ env.IMAGE_TAG }}
           scanners: vuln
           severity: CRITICAL
           exit-code: "1"
