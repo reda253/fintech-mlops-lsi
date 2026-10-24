@@ -11,6 +11,11 @@
     <artifactId>auth-service</artifactId>
     <description>Users, roles, RS256 JWT issuance and JWKS</description>
 
+    <properties>
+        <!-- Same security patch as Customer and Transaction. -->
+        <tomcat.version>11.0.26</tomcat.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>ma.fintech</groupId>
