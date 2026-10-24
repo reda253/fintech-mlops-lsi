@@ -1,0 +1,26 @@
+services:
+  customer-service:
+    build:
+      context: ./services
+      dockerfile: customer-service/Dockerfile
+    image: fintech-customer-service:local-test
+    env_file:
+      - ${CUSTOMER_ENV_FILE:-./.env.customer.local}
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/fintech
+      DB_USER: customer_user
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:8089:8082"
+    mem_limit: 512m
+    read_only: true
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://localhost:8082/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s

@@ -1,0 +1,3 @@
+ma.fintech.common.correlation.CorrelationAutoConfiguration
+ma.fintech.common.error.ProblemDetailsAutoConfiguration
+ma.fintech.common.security.ResourceServerSecurityAutoConfiguration
