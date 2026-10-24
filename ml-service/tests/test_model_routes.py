@@ -18,6 +18,21 @@ def test_get_model_performance(client):
     assert "benchmark" in data
     assert "fairness_audit" in data
 
+    # Spec §4.5: exactly these five models are benchmarked.
+    names = {model["name"] for model in data["benchmark"]["models"]}
+    assert names == {
+        "LogisticRegression",
+        "RandomForest",
+        "XGBoost",
+        "SVM",
+        "MultiLayerPerceptron",
+    }
+    comparisons = {
+        item["comparison"]
+        for item in data["statistical_validation"]["holm_bonferroni_correction"]
+    }
+    assert comparisons == {f"XGBoost vs {name}" for name in names - {"XGBoost"}}
+
 
 def test_get_visualizations_valid(client):
     response = client.get("/api/v1/ml/viz/pca?view=class")
