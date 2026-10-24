@@ -1,0 +1,38 @@
+schema_version: 1
+models:
+  logreg:
+    fixed_params: {solver: lbfgs, max_iter: 1000}
+    smoke_params: {C: 1.0, max_iter: 200}
+    parameters:
+      C: {type: float, low: 0.01, high: 100.0, log: true}
+  rf:
+    fixed_params: {}
+    smoke_params: {n_estimators: 30, max_depth: 6}
+    parameters:
+      n_estimators: {type: int, low: 50, high: 300}
+      max_depth: {type: int, low: 3, high: 16}
+      min_samples_leaf: {type: int, low: 1, high: 10}
+      max_features: {type: categorical, choices: [sqrt, 0.5, 1.0]}
+  xgb:
+    fixed_params: {tree_method: hist, objective: "binary:logistic", eval_metric: logloss}
+    smoke_params: {n_estimators: 30, max_depth: 3, learning_rate: 0.1}
+    parameters:
+      n_estimators: {type: int, low: 50, high: 300}
+      max_depth: {type: int, low: 2, high: 8}
+      learning_rate: {type: float, low: 0.02, high: 0.2, log: true}
+      subsample: {type: float, low: 0.7, high: 1.0}
+      colsample_bytree: {type: float, low: 0.7, high: 1.0}
+  nystroem_svc:
+    fixed_params: {kernel: rbf, calibration_cv: 3, max_iter: 3000}
+    smoke_params: {n_components: 64, C: 1.0, gamma: 0.1}
+    parameters:
+      n_components: {type: int, low: 64, high: 256}
+      C: {type: float, low: 0.01, high: 10.0, log: true}
+      gamma: {type: float, low: 0.001, high: 1.0, log: true}
+  mlp:
+    fixed_params: {early_stopping: true, solver: adam, max_iter: 150}
+    smoke_params: {hidden_layer_sizes: [32], max_iter: 40}
+    parameters:
+      hidden_layer_sizes: {type: categorical, choices: [[32], [64], [64, 32]]}
+      alpha: {type: float, low: 0.00001, high: 0.01, log: true}
+      learning_rate_init: {type: float, low: 0.0001, high: 0.01, log: true}
