@@ -8,8 +8,9 @@ metadata:
 spec:
   accessModes:
     - ReadWriteOnce
-  # Requires the local-path provisioner on the kind cluster (P4).
-  storageClassName: local-path
+  # Uses the cluster's default StorageClass (kind: `standard`, backed by the
+  # rancher local-path provisioner). Do not hard-code `local-path`: on kind the
+  # class is named `standard`.
   resources:
     requests:
       storage: 5Gi

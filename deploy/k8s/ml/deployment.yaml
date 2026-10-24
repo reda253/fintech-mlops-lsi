@@ -40,6 +40,13 @@ spec:
                 secretKeyRef:
                   name: mlflow-db
                   key: backend-store-uri
+            # MLflow >= 3.17 enables a DNS-rebinding/CORS security middleware
+            # that only accepts localhost by default. Allow the Ingress host and
+            # the in-cluster Service DNS names used by the pipeline / ml-service.
+            - name: MLFLOW_SERVER_ALLOWED_HOSTS
+              value: "mlflow.fintech.local,mlflow.ml.svc.cluster.local:*,mlflow.ml.svc:*,mlflow:*,localhost:*,127.0.0.1:*"
+            - name: MLFLOW_SERVER_CORS_ALLOWED_ORIGINS
+              value: "https://mlflow.fintech.local,http://mlflow.fintech.local"
           ports:
             - name: http
               containerPort: 5000
@@ -65,7 +72,10 @@ spec:
               memory: 512Mi
             limits:
               cpu: "1"
-              memory: 1Gi
+              # The `-full` image imports the whole ML stack in both the uvicorn
+              # parent and worker processes (~1.9 Gi idle), so 2 Gi still trips
+              # the OOM killer. 3 Gi leaves headroom for requests.
+              memory: 3Gi
           securityContext:
             allowPrivilegeEscalation: false
             capabilities:
