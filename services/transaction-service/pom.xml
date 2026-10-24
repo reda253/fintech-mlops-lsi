@@ -11,6 +11,11 @@
     <artifactId>transaction-service</artifactId>
     <description>Transaction intake (idempotent on trans_num) and status lifecycle</description>
 
+    <properties>
+        <!-- Same security patch as customer-service, beyond Boot's managed version. -->
+        <tomcat.version>11.0.26</tomcat.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>ma.fintech</groupId>

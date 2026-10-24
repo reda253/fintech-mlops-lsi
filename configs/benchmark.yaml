@@ -1,0 +1,33 @@
+schema_version: 1
+models: [logreg, rf, xgb, nystroem_svc, mlp]
+zone: development
+splitter: StratifiedKFold
+n_splits: 5
+repeats: 10
+seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+shared_folds_across_models: true
+legit_per_fraud: 10
+primary_metric: average_precision
+secondary_metrics: [roc_auc, f1, precision, recall, mcc, brier_score, log_loss, ece]
+ece: {bins: 10, strategy: uniform}
+threshold:
+  criterion: max_f1
+  scope: inner_training_validation
+  internal_train_fraction: 0.8
+  ties: lower_threshold
+  equality_atol: 1.0e-12
+provisional:
+  criterion: mean_repeat_average_precision
+  tag: provisional
+  automatic_champion: false
+  ties: brier_then_latency
+  equality_atol: 1.0e-12
+  last_tie_breaker: model_id
+  latency_calls: 1000
+  latency_scope: full_pipeline
+  latency_threads: 1
+  paired_difference_ci:
+    confidence: 0.95
+    n_resamples: 10000
+    unit: repeat_mean
+    zero_included_message: "supériorité non démontrée"
