@@ -1,0 +1,25 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: mlflow
+  namespace: ml
+  labels:
+    app: mlflow
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - mlflow.fintech.local
+      # Must exist in the `ml` namespace (copy of P4's local dev certificate).
+      secretName: fintech-local-tls
+  rules:
+    - host: mlflow.fintech.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: mlflow
+                port:
+                  number: 5000

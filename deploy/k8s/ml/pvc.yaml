@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mlflow-artifacts
+  namespace: ml
+  labels:
+    app: mlflow
+spec:
+  accessModes:
+    - ReadWriteOnce
+  # Requires the local-path provisioner on the kind cluster (P4).
+  storageClassName: local-path
+  resources:
+    requests:
+      storage: 5Gi
