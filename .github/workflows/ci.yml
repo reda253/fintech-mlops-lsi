@@ -20,6 +20,9 @@ jobs:
       - name: Test Transaction smoke checks and CI isolation guard
         run: python3 -B -m unittest discover -s deploy/bootstrap -p test_transaction_smoke_test.py
 
+      - name: Test Java image verification rules
+        run: python3 -B -m unittest discover -s deploy/bootstrap -p test_verify_java_image.py
+
       - name: Check repository structure
         run: |
           test -f docker-compose.yml
@@ -131,6 +134,55 @@ jobs:
 
       - name: Transaction runtime, security, dependency outages and recovery
         run: python3 -B deploy/bootstrap/transaction_compose_ci.py --image "fintech-transaction-service:$IMAGE_TAG"
+
+  remaining-java-images:
+    name: ${{ matrix.label }} image build and scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: Auth
+            module: auth-service
+            port: "8081"
+          - label: Risk
+            module: risk-service
+            port: "8084"
+          - label: Notification
+            module: notification-service
+            port: "8085"
+          - label: Audit
+            module: audit-service
+            port: "8086"
+    env:
+      IMAGE_TAG: ${{ github.event.pull_request.head.sha || github.sha }}
+      SERVICE_MODULE: ${{ matrix.module }}
+      SERVICE_PORT: ${{ matrix.port }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Build Java image and run Maven tests
+        run: docker build -f "services/$SERVICE_MODULE/Dockerfile" -t "fintech-$SERVICE_MODULE:$IMAGE_TAG" services
+
+      - name: Verify image metadata and unprivileged runtime
+        run: python3 -B deploy/bootstrap/verify_java_image.py --image "fintech-$SERVICE_MODULE:$IMAGE_TAG" --port "$SERVICE_PORT"
+
+      - name: Scan Java image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: fintech-${{ matrix.module }}:${{ env.IMAGE_TAG }}
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
 
   python-images:
     name: ${{ matrix.label }} image build and scan

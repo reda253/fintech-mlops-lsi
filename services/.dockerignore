@@ -3,3 +3,10 @@
 **/.idea/
 **/.vscode/
 **/*.log
+**/.env
+**/.env.*
+**/*.pem
+**/*.key
+**/*.p12
+**/*.pfx
+**/*.jks

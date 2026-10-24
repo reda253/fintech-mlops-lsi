@@ -11,6 +11,11 @@
     <artifactId>notification-service</artifactId>
     <description>In-app notifications and live SSE stream</description>
 
+    <properties>
+        <!-- Same security patch as Customer and Transaction. -->
+        <tomcat.version>11.0.26</tomcat.version>
+    </properties>
+
     <dependencies>
         <dependency>
             <groupId>ma.fintech</groupId>
