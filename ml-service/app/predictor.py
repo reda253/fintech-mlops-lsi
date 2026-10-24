@@ -181,7 +181,7 @@ class RealPredictor(BasePredictor):
 
                 self.model = mlflow.pyfunc.load_model(self.model_uri)
                 logger.info("Loaded pyfunc model from %s", self.model_uri)
-            except (OSError, RuntimeError, ValueError, ImportError, AttributeError, TypeError) as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to load model from %s (%s); real predictor disabled.", self.model_uri, exc)
 
         # Fail-safe invariant: do NOT mark ready if model is not loaded
