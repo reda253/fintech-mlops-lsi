@@ -4,8 +4,10 @@
 
 - Compose complementaire pour Transaction, sans demarrer toute la plateforme.
 - PostgreSQL et RabbitMQ attendus healthy avant le service.
-- Readiness applicative incluant `readinessState,db,rabbit` ; liveness limitee
-  a `livenessState` pour ne pas redemarrer le service lors d'une panne externe.
+- Readiness applicative limitee a `readinessState,db` (jamais RabbitMQ :
+  l'outbox conserve les evenements pendant une panne du broker, D15 et
+  `docs/architecture.md`) ; liveness limitee a `livenessState` pour ne pas
+  redemarrer le service lors d'une panne externe.
 - Port local uniquement, utilisateur 10001, 512 Mio, filesystem en lecture
   seule, tmpfs, capabilities supprimees et `no-new-privileges`.
 - Tests HTTP, migration Flyway et tests de panne/reprise dans une CI isolee.
@@ -161,8 +163,10 @@ est requis. Ne pas l'appliquer manuellement au projet de l'equipe.
 
 Le test initialise uniquement le role/schema Transaction dans la base jetable,
 verifie UID 10001, migration V1 et HTTP, puis arrete successivement RabbitMQ
-et PostgreSQL. Pour chaque panne : readiness HTTP 503 DOWN, liveness 200 UP,
-puis retour readiness 200 UP apres reprise. Les delais de connexion CI sont
+et PostgreSQL. Panne RabbitMQ : readiness doit rester HTTP 200 UP pendant
+20 s (le pod reste dans le Service). Panne PostgreSQL : readiness HTTP 503
+DOWN, puis retour 200 UP apres reprise. Liveness reste 200 UP dans les deux
+cas. Les delais de connexion CI sont
 raccourcis a 2 secondes pour rendre les pannes observables rapidement.
 Seuls les conteneurs/volumes du projet prive sont supprimes a la fin, meme
 en cas d'echec. Aucun fichier env local ni volume de developpement n'est utilise.
@@ -183,7 +187,9 @@ Le lot automatise a ete verifie localement le 24 octobre 2026 :
 - Test complet execute avec cette image : UID 10001, migration V1, sondes,
   controles HTTP de securite et correlation ID valides.
 - Arret/reprise de RabbitMQ, puis PostgreSQL : readiness DOWN/UP et liveness
-  UP confirmes a chaque phase.
+  UP confirmes a chaque phase. Ce resultat portait sur l'ancienne readiness
+  incluant RabbitMQ ; depuis la correction, la panne RabbitMQ doit laisser
+  readiness UP.
 - Nettoyage reussi du projet `transaction-ci-1a6e4dc4a368`, de ses trois
   conteneurs, de son reseau et de son volume PostgreSQL temporaire.
 

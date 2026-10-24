@@ -47,7 +47,7 @@ management:
         liveness:
           include: livenessState
         readiness:
-          include: readinessState,db,rabbit
+          include: readinessState,db  # never rabbit: the outbox buffers events while the broker is down
   health:
     livenessstate:
       enabled: true
