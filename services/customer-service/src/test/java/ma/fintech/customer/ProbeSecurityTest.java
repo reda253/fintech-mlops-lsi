@@ -2,7 +2,7 @@ package ma.fintech.customer;
 
 import java.util.Map;
 
-import ma.fintech.customer.config.ProbeSecurityConfig;
+import ma.fintech.common.security.ResourceServerSecurityAutoConfiguration;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -60,7 +60,7 @@ class ProbeSecurityTest {
     @Configuration(proxyBeanMethods = false)
     @EnableWebMvc
     @EnableWebSecurity
-    @Import({ProbeSecurityConfig.class, TestEndpoints.class})
+    @Import({ResourceServerSecurityAutoConfiguration.class, TestEndpoints.class})
     static class TestConfig {
         @Bean
         JwtDecoder jwtDecoder() {
