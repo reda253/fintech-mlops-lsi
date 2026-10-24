@@ -1,0 +1,949 @@
+{
+    "annotations":  {
+                        "list":  [
+                                     {
+                                         "builtIn":  1,
+                                         "datasource":  {
+                                                            "type":  "grafana",
+                                                            "uid":  "-- Grafana --"
+                                                        },
+                                         "enable":  true,
+                                         "hide":  true,
+                                         "iconColor":  "rgba(0, 211, 255, 1)",
+                                         "name":  "Annotations \u0026 Alerts",
+                                         "type":  "dashboard"
+                                     }
+                                 ]
+                    },
+    "editable":  true,
+    "fiscalYearStartMonth":  0,
+    "graphTooltip":  0,
+    "id":  null,
+    "links":  [
+
+              ],
+    "panels":  [
+                   {
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "description":  "95th percentile of ML inference duration over a 5-minute window, measured in milliseconds. Currently using mock model metrics.",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "fixedColor":  "#FFB347",
+                                                                          "mode":  "fixed"
+                                                                      },
+                                                            "custom":  {
+                                                                           "axisBorderShow":  false,
+                                                                           "axisCenteredZero":  false,
+                                                                           "axisColorMode":  "text",
+                                                                           "axisLabel":  "",
+                                                                           "axisPlacement":  "auto",
+                                                                           "barAlignment":  0,
+                                                                           "barWidthFactor":  0.6,
+                                                                           "drawStyle":  "line",
+                                                                           "hideFrom":  {
+                                                                                            "legend":  false,
+                                                                                            "tooltip":  false,
+                                                                                            "viz":  false
+                                                                                        },
+                                                                           "insertNulls":  false,
+                                                                           "lineInterpolation":  "linear",
+                                                                           "pointSize":  5,
+                                                                           "scaleDistribution":  {
+                                                                                                     "type":  "linear"
+                                                                                                 },
+                                                                           "showPoints":  "auto",
+                                                                           "spanNulls":  false,
+                                                                           "stacking":  {
+                                                                                            "group":  "A",
+                                                                                            "mode":  "none"
+                                                                                        },
+                                                                           "thresholdsStyle":  {
+                                                                                                   "mode":  "off"
+                                                                                               },
+                                                                           "fillOpacity":  18,
+                                                                           "lineWidth":  2,
+                                                                           "gradientMode":  "opacity"
+                                                                       },
+                                                            "mappings":  [
+
+                                                                         ],
+                                                            "thresholds":  {
+                                                                               "mode":  "absolute",
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  0
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  80
+                                                                                             }
+                                                                                         ]
+                                                                           },
+                                                            "unit":  "ms"
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "properties":  [
+
+                                                                                ],
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "Value"
+                                                                             }
+                                                             }
+                                                         ]
+                                       },
+                       "gridPos":  {
+                                       "h":  6,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  15
+                                   },
+                       "id":  6,
+                       "options":  {
+                                       "legend":  {
+                                                      "calcs":  [
+
+                                                                ],
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true
+                                                  },
+                                       "tooltip":  {
+                                                       "hideZeros":  false,
+                                                       "mode":  "single",
+                                                       "sort":  "none"
+                                                   }
+                                   },
+                       "pluginVersion":  "12.1.1",
+                       "targets":  [
+                                       {
+                                           "editorMode":  "code",
+                                           "expr":  "1000 * histogram_quantile(\r\n  0.95,\r\n  sum by (le) (\r\n    rate(ml_inference_duration_seconds_bucket{job=\"ml-service\"}[5m])\r\n  )\r\n)",
+                                           "legendFormat":  "Inference p95",
+                                           "range":  true,
+                                           "refId":  "A"
+                                       }
+                                   ],
+                       "title":  "ML Inference Latency (p95)",
+                       "type":  "timeseries"
+                   },
+                   {
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "description":  "Average ML inference duration in milliseconds (mock model)",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "fixedColor":  "#FB7185",
+                                                                          "mode":  "fixed"
+                                                                      },
+                                                            "custom":  {
+                                                                           "axisBorderShow":  false,
+                                                                           "axisCenteredZero":  false,
+                                                                           "axisColorMode":  "text",
+                                                                           "axisLabel":  "",
+                                                                           "axisPlacement":  "auto",
+                                                                           "barAlignment":  0,
+                                                                           "barWidthFactor":  0.6,
+                                                                           "drawStyle":  "line",
+                                                                           "hideFrom":  {
+                                                                                            "legend":  false,
+                                                                                            "tooltip":  false,
+                                                                                            "viz":  false
+                                                                                        },
+                                                                           "insertNulls":  false,
+                                                                           "lineInterpolation":  "linear",
+                                                                           "pointSize":  5,
+                                                                           "scaleDistribution":  {
+                                                                                                     "type":  "linear"
+                                                                                                 },
+                                                                           "showPoints":  "auto",
+                                                                           "spanNulls":  false,
+                                                                           "stacking":  {
+                                                                                            "group":  "A",
+                                                                                            "mode":  "none"
+                                                                                        },
+                                                                           "thresholdsStyle":  {
+                                                                                                   "mode":  "off"
+                                                                                               },
+                                                                           "fillOpacity":  18,
+                                                                           "lineWidth":  2,
+                                                                           "gradientMode":  "opacity"
+                                                                       },
+                                                            "mappings":  [
+
+                                                                         ],
+                                                            "thresholds":  {
+                                                                               "mode":  "absolute",
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  0
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  80
+                                                                                             }
+                                                                                         ]
+                                                                           },
+                                                            "unit":  "ms"
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "properties":  [
+
+                                                                                ],
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "Value"
+                                                                             }
+                                                             }
+                                                         ]
+                                       },
+                       "gridPos":  {
+                                       "h":  6,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  15
+                                   },
+                       "id":  5,
+                       "options":  {
+                                       "legend":  {
+                                                      "calcs":  [
+
+                                                                ],
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true
+                                                  },
+                                       "tooltip":  {
+                                                       "hideZeros":  false,
+                                                       "mode":  "single",
+                                                       "sort":  "none"
+                                                   }
+                                   },
+                       "pluginVersion":  "12.1.1",
+                       "targets":  [
+                                       {
+                                           "editorMode":  "code",
+                                           "expr":  "1000 *\r\nml_inference_duration_seconds_sum{job=\"ml-service\"}\r\n/\r\nml_inference_duration_seconds_count{job=\"ml-service\"}",
+                                           "legendFormat":  "Average Inference",
+                                           "range":  true,
+                                           "refId":  "A"
+                                       }
+                                   ],
+                       "title":  "ML Inference Latency - Average",
+                       "type":  "timeseries"
+                   },
+                   {
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "description":  "Pourcentage de requÃªtes HTTP retournant une erreur serveur (5xx), calculÃ© sur une fenÃªtre de 5 minutes.",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "fixedColor":  "#FF453A",
+                                                                          "mode":  "fixed"
+                                                                      },
+                                                            "custom":  {
+                                                                           "axisBorderShow":  false,
+                                                                           "axisCenteredZero":  false,
+                                                                           "axisColorMode":  "text",
+                                                                           "axisLabel":  "",
+                                                                           "axisPlacement":  "auto",
+                                                                           "barAlignment":  0,
+                                                                           "barWidthFactor":  0.6,
+                                                                           "drawStyle":  "line",
+                                                                           "hideFrom":  {
+                                                                                            "legend":  false,
+                                                                                            "tooltip":  false,
+                                                                                            "viz":  false
+                                                                                        },
+                                                                           "insertNulls":  false,
+                                                                           "lineInterpolation":  "linear",
+                                                                           "pointSize":  5,
+                                                                           "scaleDistribution":  {
+                                                                                                     "type":  "linear"
+                                                                                                 },
+                                                                           "showPoints":  "auto",
+                                                                           "spanNulls":  false,
+                                                                           "stacking":  {
+                                                                                            "group":  "A",
+                                                                                            "mode":  "none"
+                                                                                        },
+                                                                           "thresholdsStyle":  {
+                                                                                                   "mode":  "off"
+                                                                                               },
+                                                                           "fillOpacity":  18,
+                                                                           "lineWidth":  2,
+                                                                           "gradientMode":  "opacity"
+                                                                       },
+                                                            "mappings":  [
+
+                                                                         ],
+                                                            "thresholds":  {
+                                                                               "mode":  "absolute",
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  0
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  80
+                                                                                             }
+                                                                                         ]
+                                                                           },
+                                                            "unit":  "percent"
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "properties":  [
+
+                                                                                ],
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "Value"
+                                                                             }
+                                                             }
+                                                         ]
+                                       },
+                       "gridPos":  {
+                                       "h":  6,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  9
+                                   },
+                       "id":  4,
+                       "options":  {
+                                       "legend":  {
+                                                      "calcs":  [
+
+                                                                ],
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true
+                                                  },
+                                       "tooltip":  {
+                                                       "hideZeros":  false,
+                                                       "mode":  "single",
+                                                       "sort":  "none"
+                                                   }
+                                   },
+                       "pluginVersion":  "12.1.1",
+                       "targets":  [
+                                       {
+                                           "editorMode":  "code",
+                                           "expr":  "100 *\r\n(\r\n  sum(rate(http_requests_total{job=\"ml-service\",status_code=~\"5..\"}[5m]))\r\n  or vector(0)\r\n)\r\n/\r\nclamp_min(\r\n  sum(rate(http_requests_total{job=\"ml-service\"}[5m])),\r\n  0.000001\r\n)",
+                                           "legendFormat":  "HTTP Errors",
+                                           "range":  true,
+                                           "refId":  "A"
+                                       }
+                                   ],
+                       "title":  "HTTP Error Rate",
+                       "type":  "timeseries"
+                   },
+                   {
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "description":  "95e percentile du temps de rÃ©ponse HTTP du ML Service, calculÃ© sur une fenÃªtre de 5 minutes.",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "fixedColor":  "#FF453A",
+                                                                          "mode":  "fixed"
+                                                                      },
+                                                            "custom":  {
+                                                                           "axisBorderShow":  false,
+                                                                           "axisCenteredZero":  false,
+                                                                           "axisColorMode":  "text",
+                                                                           "axisLabel":  "",
+                                                                           "axisPlacement":  "auto",
+                                                                           "barAlignment":  0,
+                                                                           "barWidthFactor":  0.6,
+                                                                           "drawStyle":  "line",
+                                                                           "hideFrom":  {
+                                                                                            "legend":  false,
+                                                                                            "tooltip":  false,
+                                                                                            "viz":  false
+                                                                                        },
+                                                                           "insertNulls":  false,
+                                                                           "lineInterpolation":  "linear",
+                                                                           "pointSize":  5,
+                                                                           "scaleDistribution":  {
+                                                                                                     "type":  "linear"
+                                                                                                 },
+                                                                           "showPoints":  "auto",
+                                                                           "spanNulls":  false,
+                                                                           "stacking":  {
+                                                                                            "group":  "A",
+                                                                                            "mode":  "none"
+                                                                                        },
+                                                                           "thresholdsStyle":  {
+                                                                                                   "mode":  "off"
+                                                                                               },
+                                                                           "fillOpacity":  18,
+                                                                           "lineWidth":  2,
+                                                                           "gradientMode":  "opacity"
+                                                                       },
+                                                            "mappings":  [
+
+                                                                         ],
+                                                            "thresholds":  {
+                                                                               "mode":  "absolute",
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  0
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  80
+                                                                                             }
+                                                                                         ]
+                                                                           },
+                                                            "unit":  "ms"
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "properties":  [
+
+                                                                                ],
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "Value"
+                                                                             }
+                                                             }
+                                                         ]
+                                       },
+                       "gridPos":  {
+                                       "h":  6,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  9
+                                   },
+                       "id":  3,
+                       "options":  {
+                                       "legend":  {
+                                                      "calcs":  [
+
+                                                                ],
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true
+                                                  },
+                                       "tooltip":  {
+                                                       "hideZeros":  false,
+                                                       "mode":  "single",
+                                                       "sort":  "none"
+                                                   }
+                                   },
+                       "pluginVersion":  "12.1.1",
+                       "targets":  [
+                                       {
+                                           "editorMode":  "code",
+                                           "expr":  "1000 * histogram_quantile(\r\n  0.95,\r\n  sum by (le) (\r\n    rate(http_request_duration_seconds_bucket{job=\"ml-service\"}[5m])\r\n  )\r\n)",
+                                           "legendFormat":  "Response Time p95",
+                                           "range":  true,
+                                           "refId":  "A"
+                                       }
+                                   ],
+                       "title":  "HTTP Response Latency (p95)",
+                       "type":  "timeseries"
+                   },
+                   {
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "description":  "Nombre moyen de requÃªtes HTTP reÃ§ues par seconde par le ML Service, calculÃ© sur une fenÃªtre de 5 minutes.",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "fixedColor":  "#FF922B",
+                                                                          "mode":  "fixed"
+                                                                      },
+                                                            "custom":  {
+                                                                           "axisBorderShow":  false,
+                                                                           "axisCenteredZero":  false,
+                                                                           "axisColorMode":  "text",
+                                                                           "axisLabel":  "",
+                                                                           "axisPlacement":  "auto",
+                                                                           "barAlignment":  0,
+                                                                           "barWidthFactor":  0.6,
+                                                                           "drawStyle":  "line",
+                                                                           "hideFrom":  {
+                                                                                            "legend":  false,
+                                                                                            "tooltip":  false,
+                                                                                            "viz":  false
+                                                                                        },
+                                                                           "insertNulls":  false,
+                                                                           "lineInterpolation":  "linear",
+                                                                           "pointSize":  5,
+                                                                           "scaleDistribution":  {
+                                                                                                     "type":  "linear"
+                                                                                                 },
+                                                                           "showPoints":  "auto",
+                                                                           "spanNulls":  false,
+                                                                           "stacking":  {
+                                                                                            "group":  "A",
+                                                                                            "mode":  "none"
+                                                                                        },
+                                                                           "thresholdsStyle":  {
+                                                                                                   "mode":  "off"
+                                                                                               },
+                                                                           "fillOpacity":  18,
+                                                                           "lineWidth":  2,
+                                                                           "gradientMode":  "opacity"
+                                                                       },
+                                                            "mappings":  [
+
+                                                                         ],
+                                                            "thresholds":  {
+                                                                               "mode":  "absolute",
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  0
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  80
+                                                                                             }
+                                                                                         ]
+                                                                           },
+                                                            "unit":  "reqps"
+                                                        },
+                                           "overrides":  [
+                                                             {
+                                                                 "properties":  [
+
+                                                                                ],
+                                                                 "matcher":  {
+                                                                                 "id":  "byName",
+                                                                                 "options":  "Value"
+                                                                             }
+                                                             }
+                                                         ]
+                                       },
+                       "gridPos":  {
+                                       "h":  6,
+                                       "w":  12,
+                                       "x":  12,
+                                       "y":  3
+                                   },
+                       "id":  2,
+                       "options":  {
+                                       "legend":  {
+                                                      "calcs":  [
+
+                                                                ],
+                                                      "displayMode":  "list",
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true
+                                                  },
+                                       "tooltip":  {
+                                                       "hideZeros":  false,
+                                                       "mode":  "single",
+                                                       "sort":  "none"
+                                                   }
+                                   },
+                       "pluginVersion":  "12.1.1",
+                       "targets":  [
+                                       {
+                                           "editorMode":  "code",
+                                           "expr":  "sum(rate(http_requests_total{job=\"ml-service\"}[5m]))",
+                                           "legendFormat":  "HTTP Traffic",
+                                           "range":  true,
+                                           "refId":  "A"
+                                       }
+                                   ],
+                       "title":  "HTTP Request Rate",
+                       "type":  "timeseries"
+                   },
+                   {
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "description":  "DisponibilitÃ© du service ML surveillÃ©e par Prometheus. 1 = UP, 0 = DOWN.",
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "fixedColor":  "#FF922B",
+                                                                          "mode":  "fixed"
+                                                                      },
+                                                            "mappings":  [
+
+                                                                         ],
+                                                            "thresholds":  {
+                                                                               "mode":  "absolute",
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "color":  "green",
+                                                                                                 "value":  0
+                                                                                             },
+                                                                                             {
+                                                                                                 "color":  "red",
+                                                                                                 "value":  80
+                                                                                             }
+                                                                                         ]
+                                                                           },
+                                                            "unit":  "bytes",
+                                                            "custom":  {
+                                                                           "spanNulls":  false,
+                                                                           "gradientMode":  "opacity",
+                                                                           "lineInterpolation":  "smooth",
+                                                                           "fillOpacity":  18,
+                                                                           "lineWidth":  2,
+                                                                           "drawStyle":  "line",
+                                                                           "showPoints":  "never",
+                                                                           "axisPlacement":  "auto"
+                                                                       }
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "gridPos":  {
+                                       "h":  6,
+                                       "w":  12,
+                                       "x":  0,
+                                       "y":  3
+                                   },
+                       "id":  1,
+                       "options":  {
+                                       "legend":  {
+                                                      "placement":  "bottom",
+                                                      "showLegend":  true,
+                                                      "displayMode":  "list"
+                                                  },
+                                       "tooltip":  {
+                                                       "sort":  "none",
+                                                       "mode":  "single"
+                                                   }
+                                   },
+                       "pluginVersion":  "12.1.1",
+                       "targets":  [
+                                       {
+                                           "datasource":  {
+                                                              "type":  "prometheus",
+                                                              "uid":  "prometheus"
+                                                          },
+                                           "legendFormat":  "Memory Usage",
+                                           "expr":  "process_resident_memory_bytes{job=\"ml-service\"}",
+                                           "refId":  "A"
+                                       }
+                                   ],
+                       "title":  "ML Service - Memory Usage",
+                       "type":  "timeseries"
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "mode":  "thresholds"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "value":  null,
+                                                                                                 "color":  "#FF453A"
+                                                                                             },
+                                                                                             {
+                                                                                                 "value":  1,
+                                                                                                 "color":  "#22C55E"
+                                                                                             }
+                                                                                         ],
+                                                                               "mode":  "absolute"
+                                                                           },
+                                                            "unit":  "none",
+                                                            "mappings":  [
+                                                                             {
+                                                                                 "options":  {
+                                                                                                 "0":  {
+                                                                                                           "text":  "DOWN",
+                                                                                                           "color":  "#FF453A"
+                                                                                                       },
+                                                                                                 "1":  {
+                                                                                                           "text":  "UP",
+                                                                                                           "color":  "#22C55E"
+                                                                                                       }
+                                                                                             },
+                                                                                 "type":  "value"
+                                                                             }
+                                                                         ]
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  101,
+                       "gridPos":  {
+                                       "y":  0,
+                                       "w":  6,
+                                       "h":  3,
+                                       "x":  0
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "title":  "ML Service",
+                       "targets":  [
+                                       {
+                                           "instant":  true,
+                                           "expr":  "up{job=\"ml-service\"}",
+                                           "refId":  "A"
+                                       }
+                                   ],
+                       "type":  "stat",
+                       "options":  {
+                                       "textMode":  "auto",
+                                       "colorMode":  "value",
+                                       "graphMode":  "none",
+                                       "reduceOptions":  {
+                                                             "values":  false,
+                                                             "calcs":  [
+                                                                           "lastNotNull"
+                                                                       ],
+                                                             "fields":  ""
+                                                         },
+                                       "justifyMode":  "auto",
+                                       "orientation":  "auto",
+                                       "text":  {
+                                                    "titleSize":  12,
+                                                    "valueSize":  34
+                                                }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "fixedColor":  "#FF922B",
+                                                                          "mode":  "fixed"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "value":  null,
+                                                                                                 "color":  "#FF922B"
+                                                                                             }
+                                                                                         ],
+                                                                               "mode":  "absolute"
+                                                                           },
+                                                            "unit":  "reqps",
+                                                            "mappings":  [
+
+                                                                         ]
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  102,
+                       "gridPos":  {
+                                       "y":  0,
+                                       "w":  6,
+                                       "h":  3,
+                                       "x":  6
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "title":  "Request Rate",
+                       "targets":  [
+                                       {
+                                           "instant":  true,
+                                           "expr":  "sum(rate(http_requests_total{job=\"ml-service\"}[5m]))",
+                                           "refId":  "A"
+                                       }
+                                   ],
+                       "type":  "stat",
+                       "options":  {
+                                       "textMode":  "auto",
+                                       "colorMode":  "value",
+                                       "graphMode":  "none",
+                                       "reduceOptions":  {
+                                                             "values":  false,
+                                                             "calcs":  [
+                                                                           "lastNotNull"
+                                                                       ],
+                                                             "fields":  ""
+                                                         },
+                                       "justifyMode":  "auto",
+                                       "orientation":  "auto",
+                                       "text":  {
+                                                    "titleSize":  12,
+                                                    "valueSize":  34
+                                                }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "fixedColor":  "#FF453A",
+                                                                          "mode":  "fixed"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "value":  null,
+                                                                                                 "color":  "#FF453A"
+                                                                                             }
+                                                                                         ],
+                                                                               "mode":  "absolute"
+                                                                           },
+                                                            "unit":  "ms",
+                                                            "mappings":  [
+
+                                                                         ]
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  103,
+                       "gridPos":  {
+                                       "y":  0,
+                                       "w":  6,
+                                       "h":  3,
+                                       "x":  12
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "title":  "HTTP Latency p95",
+                       "targets":  [
+                                       {
+                                           "instant":  true,
+                                           "expr":  "1000 * histogram_quantile(0.95, sum by (le) (rate(http_request_duration_seconds_bucket{job=\"ml-service\"}[5m])))",
+                                           "refId":  "A"
+                                       }
+                                   ],
+                       "type":  "stat",
+                       "options":  {
+                                       "textMode":  "auto",
+                                       "colorMode":  "value",
+                                       "graphMode":  "none",
+                                       "reduceOptions":  {
+                                                             "values":  false,
+                                                             "calcs":  [
+                                                                           "lastNotNull"
+                                                                       ],
+                                                             "fields":  ""
+                                                         },
+                                       "justifyMode":  "auto",
+                                       "orientation":  "auto",
+                                       "text":  {
+                                                    "titleSize":  12,
+                                                    "valueSize":  34
+                                                }
+                                   }
+                   },
+                   {
+                       "fieldConfig":  {
+                                           "defaults":  {
+                                                            "color":  {
+                                                                          "fixedColor":  "#FB7185",
+                                                                          "mode":  "fixed"
+                                                                      },
+                                                            "thresholds":  {
+                                                                               "steps":  [
+                                                                                             {
+                                                                                                 "value":  null,
+                                                                                                 "color":  "#FB7185"
+                                                                                             }
+                                                                                         ],
+                                                                               "mode":  "absolute"
+                                                                           },
+                                                            "unit":  "percent",
+                                                            "mappings":  [
+
+                                                                         ]
+                                                        },
+                                           "overrides":  [
+
+                                                         ]
+                                       },
+                       "id":  104,
+                       "gridPos":  {
+                                       "y":  0,
+                                       "w":  6,
+                                       "h":  3,
+                                       "x":  18
+                                   },
+                       "datasource":  {
+                                          "type":  "prometheus",
+                                          "uid":  "prometheus"
+                                      },
+                       "title":  "HTTP Error Rate",
+                       "targets":  [
+                                       {
+                                           "instant":  true,
+                                           "expr":  "100 * (sum(rate(http_requests_total{job=\"ml-service\",status_code=~\"5..\"}[5m])) or vector(0)) / clamp_min(sum(rate(http_requests_total{job=\"ml-service\"}[5m])), 0.000001)",
+                                           "refId":  "A"
+                                       }
+                                   ],
+                       "type":  "stat",
+                       "options":  {
+                                       "textMode":  "auto",
+                                       "colorMode":  "value",
+                                       "graphMode":  "none",
+                                       "reduceOptions":  {
+                                                             "values":  false,
+                                                             "calcs":  [
+                                                                           "lastNotNull"
+                                                                       ],
+                                                             "fields":  ""
+                                                         },
+                                       "justifyMode":  "auto",
+                                       "orientation":  "auto",
+                                       "text":  {
+                                                    "titleSize":  12,
+                                                    "valueSize":  34
+                                                }
+                                   }
+                   }
+               ],
+    "preload":  false,
+    "schemaVersion":  41,
+    "tags":  [
+
+             ],
+    "templating":  {
+                       "list":  [
+
+                                ]
+                   },
+    "time":  {
+                 "from":  "2026-10-19T15:22:28.159Z",
+                 "to":  "2026-10-27T15:22:28.159Z"
+             },
+    "timepicker":  {
+
+                   },
+    "timezone":  "browser",
+    "title":  "FinTech MLOps - Monitoring Overview",
+    "uid":  "6e3d2151-31d9-4e12-bbf9-0d91ef82af99",
+    "version":  0,
+    "layout":  "grid",
+    "maxWidth":  null,
+    "maxDataPoints":  null
+}

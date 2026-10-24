@@ -1,0 +1,10 @@
+apiVersion: 1
+providers:
+  - name: FinTech MLOps
+    orgId: 1
+    folder: FinTech MLOps
+    type: file
+    disableDeletion: false
+    editable: true
+    options:
+      path: /var/lib/grafana/dashboards
