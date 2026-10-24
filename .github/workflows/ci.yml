@@ -91,6 +91,34 @@ jobs:
           exit-code: "1"
           ignore-unfixed: false
 
+  transaction-image:
+    name: Transaction image build and scan
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    env:
+      IMAGE_TAG: ${{ github.event.pull_request.head.sha || github.sha }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Build transaction image and run Maven tests
+        run: docker build -f services/transaction-service/Dockerfile -t "fintech-transaction-service:$IMAGE_TAG" services
+
+      - name: Scan transaction image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: fintech-transaction-service:${{ env.IMAGE_TAG }}
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
+
   python-images:
     name: ${{ matrix.label }} image build and scan
     runs-on: ubuntu-latest
