@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import uuid
 
-from transaction_smoke_test import wait_for_checks
+from transaction_smoke_test import assert_stays_ready, wait_for_checks
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -94,12 +94,18 @@ def main():
                          capture=True).stdout.splitlines()
             if "1" not in result:
                 raise AssertionError("Flyway V1 was not applied")
-            for dependency in ("rabbitmq", "postgres"):
-                print(f"Testing outage and recovery: {dependency}", flush=True)
-                run("stop", dependency)
-                wait_for_checks(base_url, "DOWN", timeout=90)
-                run("start", dependency)
-                wait_for_checks(base_url, "UP", timeout=150)
+            # RabbitMQ is off the request path (outbox, D15): the pod must stay in rotation.
+            print("Testing outage and recovery: rabbitmq (readiness must stay UP)", flush=True)
+            run("stop", "rabbitmq")
+            assert_stays_ready(base_url, duration=20)
+            run("start", "rabbitmq")
+            wait_for_checks(base_url, "UP", timeout=150)
+            # Without PostgreSQL the service cannot work: the pod must leave rotation, then return.
+            print("Testing outage and recovery: postgres (readiness must go DOWN)", flush=True)
+            run("stop", "postgres")
+            wait_for_checks(base_url, "DOWN", timeout=90)
+            run("start", "postgres")
+            wait_for_checks(base_url, "UP", timeout=150)
             print("Transaction integration passed: UID, Flyway, probes, security, dependency outages and recovery", flush=True)
         except Exception:
             # No `config` or `inspect` dump: those can expose credentials.

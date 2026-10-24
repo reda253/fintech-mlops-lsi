@@ -60,6 +60,19 @@ def wait_for_checks(base_url, expected_readiness="UP", timeout=120):
             time.sleep(2)
 
 
+def assert_stays_ready(base_url, duration=20):
+    """Readiness must stay UP for the whole window (e.g. RabbitMQ down: the outbox buffers)."""
+    deadline = time.monotonic() + duration
+    while True:
+        try:
+            verify(base_url, "UP")
+        except (AssertionError, URLError, OSError, ValueError) as error:
+            raise RuntimeError(f"Readiness left UP during the outage: {error}") from error
+        if time.monotonic() >= deadline:
+            return
+        time.sleep(2)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--base-url", default="http://127.0.0.1:8090")

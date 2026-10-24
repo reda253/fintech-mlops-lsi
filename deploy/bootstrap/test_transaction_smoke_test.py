@@ -5,7 +5,7 @@ import unittest
 from unittest.mock import patch
 
 from transaction_compose_ci import assert_isolated
-from transaction_smoke_test import request, verify, wait_for_checks
+from transaction_smoke_test import assert_stays_ready, request, verify, wait_for_checks
 
 
 def response_for_path(base_url, path, method="GET"):
@@ -53,6 +53,18 @@ class SmokeTests(unittest.TestCase):
     @patch("transaction_smoke_test.verify", side_effect=[OSError("starting"), None])
     def test_startup_is_retried(self, mocked, sleep):
         wait_for_checks("http://localhost")
+        self.assertEqual(mocked.call_count, 2)
+
+    @patch("transaction_smoke_test.verify")
+    def test_stays_ready_passes_when_always_up(self, mocked):
+        assert_stays_ready("http://localhost", duration=0)
+        mocked.assert_called_once_with("http://localhost", "UP")
+
+    @patch("transaction_smoke_test.time.sleep")
+    @patch("transaction_smoke_test.verify", side_effect=[None, AssertionError("Readiness must be HTTP 200 UP")])
+    def test_stays_ready_fails_on_first_down(self, mocked, sleep):
+        with self.assertRaisesRegex(RuntimeError, "left UP"):
+            assert_stays_ready("http://localhost", duration=60)
         self.assertEqual(mocked.call_count, 2)
 
 
