@@ -30,6 +30,15 @@ deux images. Aucun resultat de scan Trivy n'a encore ete fourni pour ces images.
 
 ## Validation CI et preuves
 
+Le premier retour CI fourni signale CVE-2026-53995 (HIGH) dans
+`ml/requirements.txt` : MLflow 3.17.1, version corrigee 3.17.2 selon Trivy.
+La dependance MLflow, les trois pins MLflow du fichier verrouille et l'image
+MLflow du Compose sont alignes sur 3.17.2. Les autres pins restent inchanges ;
+le fichier verrouille n'a pas ete regenere par un resolveur.
+La release est disponible : https://github.com/mlflow/mlflow/releases/tag/v3.17.2.
+Les tests Python, le nouveau scan et le demarrage de l'image Compose mise a
+jour restent a valider. Cette correction ne redemarre aucun service local.
+
 Apres ouverture de la PR, verifier les deux jobs :
 
 - `ML service image build and scan`
