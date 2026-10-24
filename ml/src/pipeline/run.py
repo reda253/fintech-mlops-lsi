@@ -15,6 +15,7 @@ from pathlib import Path
 
 import mlflow
 
+from ml.src.pipeline.promote import promote as open_promotion_pr
 from ml.src.pipeline.steps import (
     step_evaluate,
     step_prepare,
@@ -42,6 +43,7 @@ def run_pipeline(
     data_path: Path | None = None,
     test_mode: bool = False,
     champion_pr_auc: float | None = None,
+    model_version: str | None = None,
 ) -> bool:
     """Execute the end-to-end ML pipeline with parent-child runs and quality gates."""
     mlflow.set_tracking_uri(tracking_uri)
@@ -84,6 +86,29 @@ def run_pipeline(
         if all_passed:
             logger.info("Quality gates passed! Model ready for promotion.")
             mlflow.set_tag("promotion_status", "ELIGIBLE")
+            mv = model_version or os.environ.get("MODEL_VERSION", "1")
+            github_token = os.environ.get("GITHUB_TOKEN", "")
+            auto_merge = os.environ.get("AUTO_MERGE", "true").lower() == "true"
+            if not test_mode and github_token:
+                try:
+                    result = open_promotion_pr(
+                        model_version=mv,
+                        run_id=parent_run.info.run_id,
+                        metrics=eval_metrics,
+                        auto_merge=auto_merge,
+                        tracking_uri=tracking_uri,
+                    )
+                    mlflow.set_tag("promotion_pr_url", result.get("pr_url", ""))
+                    mlflow.set_tag("promotion_branch", result.get("branch", ""))
+                except Exception as exc:  # noqa: BLE001
+                    logger.warning("Model promotion PR failed (non-fatal): %s", exc)
+                    mlflow.set_tag("promotion_status", "PR_FAILED")
+            else:
+                logger.info(
+                    "Skipping GitHub promotion (test_mode=%s, token_set=%s)",
+                    test_mode,
+                    bool(github_token),
+                )
         else:
             logger.warning("Quality gates failed! Halting pipeline without promotion.")
             mlflow.set_tag("promotion_status", "REJECTED")
@@ -103,6 +128,7 @@ def main() -> None:
     parser.add_argument("--data-path", type=Path, default=None)
     parser.add_argument("--test-mode", action="store_true")
     parser.add_argument("--champion-pr-auc", type=float, default=None)
+    parser.add_argument("--model-version", default=None, help="Registered model version to promote")
 
     args = parser.parse_args()
     success = run_pipeline(
@@ -112,6 +138,7 @@ def main() -> None:
         data_path=args.data_path,
         test_mode=args.test_mode,
         champion_pr_auc=args.champion_pr_auc,
+        model_version=args.model_version,
     )
     sys.exit(0 if success else 1)
 

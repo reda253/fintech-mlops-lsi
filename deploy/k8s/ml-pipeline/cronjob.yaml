@@ -44,6 +44,19 @@ spec:
               envFrom:
                 - configMapRef:
                     name: ml-pipeline-config
+              env:
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: ml-pipeline-github-secret
+                      key: token
+                      optional: true
+                - name: GITHUB_REPOSITORY
+                  value: "reda253/fintech-mlops-lsi"
+                - name: AUTO_MERGE
+                  value: "true"
+                - name: MODEL_VERSION
+                  value: "1"
               resources:
                 requests:
                   cpu: 500m
