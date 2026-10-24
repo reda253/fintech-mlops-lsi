@@ -1,0 +1,24 @@
+# Only for the disposable project created by transaction_compose_ci.py.
+# Compose >= 2.24.4 is required for !override.
+services:
+  postgres:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      POSTGRES_PASSWORD: ${TRANSACTION_CI_POSTGRES_PASSWORD:?CI password required}
+    volumes: !override
+      - transaction_ci_data:/var/lib/postgresql/data
+  rabbitmq:
+    container_name: !reset null
+    ports: !reset []
+    environment:
+      RABBITMQ_DEFAULT_USER: transaction_ci
+      RABBITMQ_DEFAULT_PASS: ${TRANSACTION_CI_RABBIT_PASSWORD:?CI password required}
+  transaction-service:
+    environment:
+      SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT: "2000"
+      SPRING_RABBITMQ_CONNECTION_TIMEOUT: "2s"
+    ports: !override
+      - "127.0.0.1::8083"
+volumes:
+  transaction_ci_data:
