@@ -29,6 +29,9 @@ jobs:
       - name: Test Kubernetes policy and namespace cleanup guards
         run: python3 -B -m unittest discover -s deploy/bootstrap -p test_kubernetes_manifests.py
 
+      - name: Test Kubernetes data bootstrap and isolation guards
+        run: python3 -B -m unittest discover -s deploy/bootstrap -p test_kubernetes_data.py
+
       - name: Check repository structure
         run: |
           test -f docker-compose.yml
@@ -116,7 +119,7 @@ jobs:
   transaction-image:
     name: Transaction image build and scan
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 30
     permissions:
       contents: read
     env:
@@ -143,6 +146,27 @@ jobs:
 
       - name: Transaction runtime, security, dependency outages and recovery
         run: python3 -B deploy/bootstrap/transaction_compose_ci.py --image "fintech-transaction-service:$IMAGE_TAG"
+
+      - name: Install pinned kind and matching kubectl
+        uses: ./.github/actions/setup-kind
+
+      - name: Create isolated data validation cluster
+        run: |
+          kind create cluster --name fintech-data-ci --image kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5 --wait 120s
+          kubectl --context kind-fintech-data-ci create namespace data
+
+      - name: Validate data schemas, image pins and volume retention without deploying
+        run: python3 -B deploy/bootstrap/check_kubernetes_data.py --context kind-fintech-data-ci --allow-placeholder
+
+      - name: Build non-root PostgreSQL without the unused vulnerable privilege helper
+        run: docker build -t "fintech-postgres:$IMAGE_TAG" deploy/images/postgres
+
+      - name: Test Kubernetes data persistence, schema privileges and Transaction outages
+        run: python3 -B deploy/bootstrap/kubernetes_data_smoke.py --cluster fintech-data-ci --transaction-image "fintech-transaction-service:$IMAGE_TAG" --postgres-image "fintech-postgres:$IMAGE_TAG"
+
+      - name: Remove CI-owned data cluster
+        if: always()
+        run: kind delete cluster --name fintech-data-ci
 
   frontend-image:
     name: Frontend image build and scan
@@ -183,16 +207,7 @@ jobs:
       - name: Test Docker frontend, proxy, SSE and desktop/mobile rendering
         run: python3 -B deploy/bootstrap/frontend_compose_ci.py --image "fintech-frontend:$IMAGE_TAG" --browser-tests
       - name: Install pinned kind and matching kubectl with checksums
-        run: |
-          curl -fsSLo "$RUNNER_TEMP/kind-linux-amd64" https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
-          curl -fsSLo "$RUNNER_TEMP/kind-linux-amd64.sha256sum" https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64.sha256sum
-          (cd "$RUNNER_TEMP" && sha256sum --check kind-linux-amd64.sha256sum)
-          chmod +x "$RUNNER_TEMP/kind-linux-amd64"
-          sudo install "$RUNNER_TEMP/kind-linux-amd64" /usr/local/bin/kind
-          curl -fsSLo "$RUNNER_TEMP/kubectl" https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl
-          curl -fsSLo "$RUNNER_TEMP/kubectl.sha256" https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl.sha256
-          (cd "$RUNNER_TEMP" && echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check)
-          sudo install -m 0755 "$RUNNER_TEMP/kubectl" /usr/local/bin/kubectl
+        uses: ./.github/actions/setup-kind
       - name: Create isolated Kubernetes validation cluster
         run: |
           kind create cluster --name fintech-ci --image kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5 --wait 120s
@@ -214,6 +229,37 @@ jobs:
           path: frontend/test-results/
           if-no-files-found: warn
           retention-days: 7
+
+  data-images:
+    name: ${{ matrix.label }} data image scan
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - label: PostgreSQL
+            image: fintech-postgres:${{ github.event.pull_request.head.sha || github.sha }}
+          - label: RabbitMQ
+            image: rabbitmq:4.3.6-management-alpine@sha256:3505b6096cdbc083bcc363e74366f575ecd0c1a55be4dadcbc60fa08e34647e1
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Build non-root PostgreSQL image
+        if: matrix.label == 'PostgreSQL'
+        env:
+          IMAGE_REF: ${{ matrix.image }}
+        run: docker build -t "$IMAGE_REF" deploy/images/postgres
+      - name: Scan pinned data image for critical vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          severity: CRITICAL
+          exit-code: "1"
+          ignore-unfixed: false
 
   remaining-java-images:
     name: ${{ matrix.label }} image build and scan

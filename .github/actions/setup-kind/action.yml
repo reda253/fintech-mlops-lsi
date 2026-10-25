@@ -1,0 +1,16 @@
+name: Set up pinned kind and kubectl
+description: Install kind 0.33.0 and kubectl 1.37.0 with upstream checksum verification on Linux AMD64.
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        test "$(uname -m)" = x86_64
+        curl -fsSLo "$RUNNER_TEMP/kind-linux-amd64" https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+        curl -fsSLo "$RUNNER_TEMP/kind-linux-amd64.sha256sum" https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64.sha256sum
+        (cd "$RUNNER_TEMP" && sha256sum --check kind-linux-amd64.sha256sum)
+        sudo install -m 0755 "$RUNNER_TEMP/kind-linux-amd64" /usr/local/bin/kind
+        curl -fsSLo "$RUNNER_TEMP/kubectl" https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl
+        curl -fsSLo "$RUNNER_TEMP/kubectl.sha256" https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl.sha256
+        (cd "$RUNNER_TEMP" && echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check)
+        sudo install -m 0755 "$RUNNER_TEMP/kubectl" /usr/local/bin/kubectl
