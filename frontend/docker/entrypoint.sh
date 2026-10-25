@@ -19,5 +19,17 @@ if [ "$port" -lt 1 ] || [ "$port" -gt 65535 ]; then
     exit 1
 fi
 export GATEWAY_UPSTREAM
-envsubst '${GATEWAY_UPSTREAM}' < /etc/nginx/frontend.conf.template > /tmp/frontend.conf
+# nginx's asynchronous resolver does not use libc's resolv.conf automatically.
+# Select a validated IPv4 nameserver from the container, for Docker or CoreDNS.
+NGINX_RESOLVER=$(awk '$1 == "nameserver" && $2 ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/ {
+    split($2, octets, "[.]"); valid=1
+    for (i=1; i<=4; i++) if (octets[i] > 255) valid=0
+    if (valid) { print $2; exit }
+}' /etc/resolv.conf)
+if [ -z "$NGINX_RESOLVER" ]; then
+    echo 'No IPv4 nameserver found in /etc/resolv.conf' >&2
+    exit 1
+fi
+export NGINX_RESOLVER
+envsubst '${GATEWAY_UPSTREAM} ${NGINX_RESOLVER}' < /etc/nginx/frontend.conf.template > /tmp/frontend.conf
 exec nginx -c /tmp/frontend.conf -g 'daemon off;'

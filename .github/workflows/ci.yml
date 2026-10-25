@@ -26,6 +26,9 @@ jobs:
       - name: Test frontend proxy checks
         run: python3 -B -m unittest discover -s deploy/bootstrap -p test_frontend_smoke_test.py
 
+      - name: Test Kubernetes policy and namespace cleanup guards
+        run: python3 -B -m unittest discover -s deploy/bootstrap -p test_kubernetes_manifests.py
+
       - name: Check repository structure
         run: |
           test -f docker-compose.yml
@@ -179,6 +182,30 @@ jobs:
           npx playwright install --with-deps chromium
       - name: Test Docker frontend, proxy, SSE and desktop/mobile rendering
         run: python3 -B deploy/bootstrap/frontend_compose_ci.py --image "fintech-frontend:$IMAGE_TAG" --browser-tests
+      - name: Install pinned kind and matching kubectl with checksums
+        run: |
+          curl -fsSLo "$RUNNER_TEMP/kind-linux-amd64" https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64
+          curl -fsSLo "$RUNNER_TEMP/kind-linux-amd64.sha256sum" https://github.com/kubernetes-sigs/kind/releases/download/v0.33.0/kind-linux-amd64.sha256sum
+          (cd "$RUNNER_TEMP" && sha256sum --check kind-linux-amd64.sha256sum)
+          chmod +x "$RUNNER_TEMP/kind-linux-amd64"
+          sudo install "$RUNNER_TEMP/kind-linux-amd64" /usr/local/bin/kind
+          curl -fsSLo "$RUNNER_TEMP/kubectl" https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl
+          curl -fsSLo "$RUNNER_TEMP/kubectl.sha256" https://dl.k8s.io/release/v1.37.0/bin/linux/amd64/kubectl.sha256
+          (cd "$RUNNER_TEMP" && echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check)
+          sudo install -m 0755 "$RUNNER_TEMP/kubectl" /usr/local/bin/kubectl
+      - name: Create isolated Kubernetes validation cluster
+        run: |
+          kind create cluster --name fintech-ci --image kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5 --wait 120s
+          kubectl --context kind-fintech-ci create namespace fintech
+      - name: Validate all application schemas and deployment policies without deploying them
+        run: python3 -B deploy/bootstrap/check_kubernetes_manifests.py --context kind-fintech-ci --allow-placeholder
+      - name: Build real Gateway for Kubernetes integration
+        run: docker build -f services/api-gateway/Dockerfile -t "fintech-api-gateway:$IMAGE_TAG" services
+      - name: Test actual Gateway and frontend on Kubernetes
+        run: python3 -B deploy/bootstrap/kubernetes_kind_smoke.py --cluster fintech-ci --frontend-image "fintech-frontend:$IMAGE_TAG" --gateway-image "fintech-api-gateway:$IMAGE_TAG"
+      - name: Remove CI-owned kind cluster
+        if: always()
+        run: kind delete cluster --name fintech-ci
       - name: Upload browser screenshots and failure traces
         if: always()
         uses: actions/upload-artifact@v4
