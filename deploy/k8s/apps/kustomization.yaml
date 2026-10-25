@@ -1,0 +1,32 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: fintech
+resources:
+  - deployments.yaml
+  - services.yaml
+  - ingress.yaml
+configMapGenerator:
+  - name: api-gateway-config
+    envs:
+      - config/api-gateway.env
+  - name: auth-service-config
+    envs:
+      - config/auth-service.env
+  - name: customer-service-config
+    envs:
+      - config/customer-service.env
+  - name: transaction-service-config
+    envs:
+      - config/transaction-service.env
+  - name: risk-service-config
+    envs:
+      - config/risk-service.env
+  - name: notification-service-config
+    envs:
+      - config/notification-service.env
+  - name: audit-service-config
+    envs:
+      - config/audit-service.env
+  - name: frontend-config
+    envs:
+      - config/frontend.env
