@@ -8,6 +8,8 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+from fastapi import HTTPException, status
+
 from app.metrics import (
     ML_FRAUD_PROBABILITY,
     ML_INFERENCE_DURATION_SECONDS,
@@ -179,33 +181,41 @@ class RealPredictor(BasePredictor):
 
                 self.model = mlflow.pyfunc.load_model(self.model_uri)
                 logger.info("Loaded pyfunc model from %s", self.model_uri)
-            except (OSError, RuntimeError, ValueError) as exc:
+            except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to load model from %s (%s); real predictor disabled.", self.model_uri, exc)
 
+        # Fail-safe invariant: do NOT mark ready if model is not loaded
+        if self.model is None:
+            logger.error("RealPredictor warmup failed: no model loaded. Predictor is NOT ready.")
+            self._ready = False
+            return
+
         # Run warm-up inference
-        if self.model is not None:
-            sample_record = {
-                "amount": 100.0,
-                "category": "shopping_net",
-                "merch_lat": 40.71,
-                "merch_long": -74.01,
-                "customer": {
-                    "dob": "1980-01-01",
-                    "gender": "F",
-                    "city_pop": 50000,
-                    "lat": 40.70,
-                    "long": -74.00,
-                    "state": "NY",
-                },
-            }
-            try:
-                if hasattr(self.model, "predict_one"):
-                    self.model.predict_one(sample_record)
-                elif hasattr(self.model, "predict"):
-                    self.model.predict([sample_record])
-                logger.info("Warm-up prediction completed successfully.")
-            except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
-                logger.warning("Warm-up inference encountered error: %s", exc)
+        sample_record = {
+            "trans_datetime": "2026-10-24 12:00:00",
+            "amount": 100.0,
+            "category": "shopping_net",
+            "merch_lat": 40.71,
+            "merch_long": -74.01,
+            "customer": {
+                "dob": "1980-01-01",
+                "gender": "F",
+                "city_pop": 50000,
+                "lat": 40.70,
+                "long": -74.00,
+                "state": "NY",
+            },
+        }
+        try:
+            if hasattr(self.model, "predict_one"):
+                self.model.predict_one(sample_record)
+            elif hasattr(self.model, "predict"):
+                self.model.predict([sample_record])
+            logger.info("Warm-up prediction completed successfully.")
+        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+            logger.error("Warm-up inference failed: %s; real predictor is NOT ready.", exc)
+            self._ready = False
+            return
 
         self.loaded_at = datetime.now(UTC)
         self._ready = True
@@ -213,7 +223,8 @@ class RealPredictor(BasePredictor):
         ML_MODEL_LOADED_TIMESTAMP_SECONDS.set(self.loaded_at.timestamp())
 
     def is_ready(self) -> bool:
-        return self._ready
+        """Return True only if initialized AND a valid model is loaded."""
+        return bool(self._ready and self.model is not None)
 
     def get_model_info(self) -> ModelInfo:
         return ModelInfo(
@@ -227,9 +238,26 @@ class RealPredictor(BasePredictor):
         )
 
     def predict(self, request: PredictRequest) -> PredictResponse:
+        # Fail-safe invariant: return 503 if no model is loaded
+        if self.model is None:
+            logger.error("Predict called on RealPredictor without an active model. Raising 503.")
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Model not loaded or unavailable",
+            )
+
         start_time = time.perf_counter()
 
+        trans_dt = request.trans_datetime
+        trans_dt_str = (
+            trans_dt.strftime("%Y-%m-%d %H:%M:%S")
+            if hasattr(trans_dt, "strftime")
+            else str(trans_dt)
+        )
+
         record = {
+            "transaction_id": str(request.transaction_id),
+            "trans_datetime": trans_dt_str,
             "amount": request.amount,
             "category": request.category,
             "merch_lat": request.merch_lat,
@@ -237,32 +265,33 @@ class RealPredictor(BasePredictor):
             "customer": request.customer.model_dump(),
         }
 
-        if self.model is not None:
-            try:
-                if hasattr(self.model, "predict_one"):
-                    out = self.model.predict_one(record)
-                else:
-                    out = self.model.predict([record])[0]
+        try:
+            if hasattr(self.model, "predict_one"):
+                out = self.model.predict_one(record)
+            else:
+                out = self.model.predict([record])[0]
 
-                prediction = int(out.get("prediction", 0))
-                fraud_proba = float(out.get("fraud_probability", 0.05))
-                pred_set = [int(v) for v in out.get("prediction_set", [0])]
-                uncertainty = float(out.get("uncertainty", 0.1))
-                uncertainty_level = str(out.get("uncertainty_level", "FAIBLE"))
-            except (KeyError, ValueError, TypeError, AttributeError) as exc:
-                logger.error("Model prediction failed: %s; falling back to safe evaluation.", exc)
-                prediction = 0
-                fraud_proba = 0.5
+            prediction = int(out.get("prediction", 0))
+            fraud_proba = float(out.get("fraud_probability", 0.5))
+
+            raw_set = out.get("prediction_set")
+            # Fail-safe invariant: NEVER default to [0] on missing or malformed prediction sets!
+            if raw_set is None or not raw_set:
+                logger.warning("Missing or empty prediction_set in model output; defaulting to [0, 1] (REVUE).")
                 pred_set = [0, 1]
                 uncertainty = 1.0
                 uncertainty_level = "ELEVEE"
-        else:
-            # Fallback if real model not supplied
+            else:
+                pred_set = [int(v) for v in raw_set]
+                uncertainty = float(out.get("uncertainty", 1.0))
+                uncertainty_level = str(out.get("uncertainty_level", "ELEVEE"))
+        except (KeyError, ValueError, TypeError, AttributeError, IndexError) as exc:
+            logger.error("Model prediction failed: %s; falling back to safe REVUE evaluation.", exc)
             prediction = 0
-            fraud_proba = 0.05
-            pred_set = [0]
-            uncertainty = 0.1
-            uncertainty_level = "FAIBLE"
+            fraud_proba = 0.5
+            pred_set = [0, 1]
+            uncertainty = 1.0
+            uncertainty_level = "ELEVEE"
 
         elapsed_seconds = time.perf_counter() - start_time
         inference_ms = round(elapsed_seconds * 1000.0, 2)

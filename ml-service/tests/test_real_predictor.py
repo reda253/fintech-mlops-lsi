@@ -9,6 +9,7 @@ from fastapi.testclient import TestClient
 
 class DummyModel:
     def predict_one(self, record):
+        assert "trans_datetime" in record
         return {
             "prediction": 1,
             "fraud_probability": 0.94,
@@ -65,3 +66,86 @@ def test_real_predictor_predict_flow(sample_payload):
         assert viz_data["method"] == "pca"
         assert viz_data["view"] == "class"
         assert len(viz_data["points"]) > 0
+
+
+def test_real_predictor_not_ready_when_no_model():
+    """Fail-safe invariant: pod must NOT report ready if no model is loaded."""
+    real_pred = RealPredictor(
+        model_uri="models:/fraud-detector/nonexistent",
+        name="fraud-detector",
+        version="fail-1",
+        model_instance=None,
+    )
+    real_pred.warmup()
+    assert real_pred.is_ready() is False
+
+    with TestClient(app) as client:
+        app.state.predictor = real_pred
+        resp = client.get("/health/ready")
+        assert resp.status_code == 503
+        assert resp.json()["detail"] == "Model not ready or warm-up in progress"
+
+
+def test_real_predictor_predict_503_when_no_model(sample_payload):
+    """Fail-safe invariant: return 503 when model is missing so risk-service defaults to REVUE."""
+    real_pred = RealPredictor(
+        model_uri="",
+        name="fraud-detector",
+        version="missing-1",
+        model_instance=None,
+    )
+
+    with TestClient(app) as client:
+        app.state.predictor = real_pred
+        resp = client.post("/predict", json=sample_payload)
+        assert resp.status_code == 503
+        assert "Model not loaded" in resp.json()["detail"]
+
+
+class MalformedModel:
+    def predict_one(self, record):
+        # Missing prediction_set entirely, or returning None
+        return {
+            "prediction": 0,
+            "fraud_probability": 0.05,
+            # 'prediction_set' omitted
+        }
+
+
+def test_real_predictor_never_defaults_to_approve_on_malformed_output(sample_payload):
+    """Fail-safe invariant: malformed output must NEVER default to [0] (APPROUVER); must be [0, 1] (REVUE)."""
+    real_pred = RealPredictor(
+        model_uri="dummy",
+        name="fraud-detector",
+        version="malformed-1",
+        model_instance=MalformedModel(),
+    )
+    real_pred.warmup()
+    assert real_pred.is_ready() is True
+
+    with TestClient(app) as client:
+        app.state.predictor = real_pred
+        resp = client.post("/predict", json=sample_payload)
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["prediction_set"] != [0]
+        assert data["prediction_set"] == [0, 1]
+        assert data["uncertainty_level"] == "ELEVEE"
+
+
+class FailingModel:
+    def predict_one(self, record):
+        raise RuntimeError("Inference tensor crash")
+
+
+def test_real_predictor_fallback_on_runtime_error(sample_payload):
+    """Fail-safe invariant: runtime crash during prediction must safely fall back to [0, 1] (REVUE)."""
+    real_pred = RealPredictor(
+        model_uri="dummy",
+        name="fraud-detector",
+        version="failing-1",
+        model_instance=FailingModel(),
+    )
+    # warmup with failing model should fail and leave predictor unready
+    real_pred.warmup()
+    assert real_pred.is_ready() is False

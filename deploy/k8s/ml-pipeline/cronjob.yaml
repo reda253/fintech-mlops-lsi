@@ -1,0 +1,70 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ml-pipeline-cron
+  namespace: ml
+  labels:
+    app: ml-pipeline
+spec:
+  # Weekly retrain schedule: Sunday at 02:00 UTC (§5.6)
+  schedule: "0 2 * * 0"
+  # Suspended by default until scheduled retraining is formally activated
+  suspend: true
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2
+      activeDeadlineSeconds: 3600
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app: ml-pipeline
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10002
+            runAsGroup: 10002
+          containers:
+            - name: pipeline-runner
+              image: fintech-ml-pipeline:dev
+              imagePullPolicy: IfNotPresent
+              command:
+                - python
+                - -m
+                - ml.src.pipeline.run
+              args:
+                - --mode=$(PIPELINE_MODE)
+                - --tracking-uri=$(MLFLOW_TRACKING_URI)
+                - --experiment=$(PIPELINE_EXPERIMENT)
+                - --test-mode
+              envFrom:
+                - configMapRef:
+                    name: ml-pipeline-config
+              env:
+                - name: GITHUB_TOKEN
+                  valueFrom:
+                    secretKeyRef:
+                      name: ml-pipeline-github-secret
+                      key: token
+                      optional: true
+                - name: GITHUB_REPOSITORY
+                  value: "reda253/fintech-mlops-lsi"
+                - name: AUTO_MERGE
+                  value: "true"
+                - name: MODEL_VERSION
+                  value: "1"
+              resources:
+                requests:
+                  cpu: 500m
+                  memory: 1Gi
+                limits:
+                  cpu: 2000m
+                  memory: 2Gi
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities:
+                  drop: ["ALL"]
