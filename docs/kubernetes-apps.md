@@ -18,6 +18,10 @@ Do not close #39 solely on this batch: shared data-tier integration and a full
 team demonstration remain necessary. HPA, PDB and NetworkPolicy rollout are
 separate work; these manifests alone do not prove high availability.
 
+The separate data-tier base and private persistence/outage test are documented
+in [Kubernetes data](kubernetes-data.md). They are not automatically deployed by
+the application overlay.
+
 ## Workloads
 
 | Deployment | Port | Replicas | Readiness |

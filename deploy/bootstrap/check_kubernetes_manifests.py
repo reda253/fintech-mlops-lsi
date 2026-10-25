@@ -21,12 +21,13 @@ def require(condition, message):
 
 
 def kubectl(context, *args, **kwargs):
+    timeout = kwargs.pop("timeout", 120)
     return subprocess.run(["kubectl", "--context", context, *args], cwd=ROOT,
-                          text=True, check=True, timeout=120, **kwargs)
+                          text=True, encoding="utf-8", check=True, timeout=timeout, **kwargs)
 
 
-def render(context):
-    rendered = subprocess.run(["kubectl", "kustomize", "deploy/overlays/demo"], cwd=ROOT,
+def render(context, path="deploy/overlays/demo"):
+    rendered = subprocess.run(["kubectl", "kustomize", path], cwd=ROOT,
                               text=True, check=True, capture_output=True, timeout=30).stdout
     result = kubectl(context, "create", "--dry-run=client", "--validate=true", "-f", "-", "-o", "json",
                      input=rendered, capture_output=True)
