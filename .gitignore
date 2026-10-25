@@ -52,3 +52,6 @@ task/
 /anaconda_projects/
 /recovered_*
 /reports/
+/frontend/playwright-report/
+/frontend/test-results/
+/frontend/public/mockServiceWorker.js

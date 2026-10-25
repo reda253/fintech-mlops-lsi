@@ -1,0 +1,49 @@
+services:
+  api-gateway:
+    build:
+      context: ./services
+      dockerfile: api-gateway/Dockerfile
+    image: ${GATEWAY_IMAGE:-fintech-api-gateway:local-test}
+    environment:
+      JWKS_URI: http://auth-service:8081/.well-known/jwks.json
+      AUTH_URI: http://auth-service:8081
+      CUSTOMER_URI: http://customer-service:8082
+      TRANSACTION_URI: http://transaction-service:8083
+      RISK_URI: http://risk-service:8084
+      NOTIFICATION_URI: http://notification-service:8085
+      AUDIT_URI: http://audit-service:8086
+      ML_URI: http://ml-service:8000
+    mem_limit: 512m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=128m
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1:8080/actuator/health/readiness"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        VITE_USE_MOCKS: ${FRONTEND_USE_MOCKS:-true}
+        VITE_AUTH_MODE: ${FRONTEND_AUTH_MODE:-demo}
+        VITE_GRAFANA_URL: ${FRONTEND_GRAFANA_URL:-http://localhost:3000}
+    image: ${FRONTEND_IMAGE:-fintech-frontend:local-test}
+    environment:
+      GATEWAY_UPSTREAM: http://api-gateway:8080
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${FRONTEND_PORT:-8087}:8080"
+    mem_limit: 128m
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,size=64m

@@ -1,0 +1,22 @@
+services:
+  api-gateway:
+    image: python:3.12-alpine
+    user: "10001:10001"
+    command: ["python", "-B", "/test/gateway_stub.py"]
+    volumes:
+      - ./frontend_gateway_stub.py:/test/gateway_stub.py:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 64m
+  frontend:
+    image: ${FRONTEND_IMAGE:?Frontend image required}
+    environment:
+      GATEWAY_UPSTREAM: http://api-gateway:8080
+    depends_on: [api-gateway]
+    ports: ["127.0.0.1::8080"]
+    read_only: true
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    tmpfs: ["/tmp:rw,noexec,nosuid,size=64m"]
+    mem_limit: 128m
