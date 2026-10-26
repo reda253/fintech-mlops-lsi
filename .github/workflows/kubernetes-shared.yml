@@ -1,0 +1,29 @@
+name: Kubernetes full installer validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  private-stack:
+    name: Eight apps and protected bootstrap on disposable kind
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout reviewed workflow ref
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned kind and kubectl
+        uses: ./.github/actions/setup-kind
+      - name: Create CI-owned cluster
+        run: kind create cluster --name fintech-release-ci --image kindest/node:v1.37.0@sha256:a1ed56cfb0e7b93589bdf97c8cd566405a265939e3620fc4f5de89adff580ae5 --wait 120s
+      - name: Test committed images, SQL refusal guards and all eight applications
+        run: python3 -B deploy/bootstrap/kubernetes_shared_smoke.py --cluster fintech-release-ci
+      - name: Remove CI-owned cluster
+        if: always()
+        run: kind delete cluster --name fintech-release-ci

@@ -32,6 +32,9 @@ jobs:
       - name: Test Kubernetes data bootstrap and isolation guards
         run: python3 -B -m unittest discover -s deploy/bootstrap -p test_kubernetes_data.py
 
+      - name: Test release ownership, source pins and guarded bootstrap
+        run: python3 -B -m unittest discover -s deploy/bootstrap -p test_kubernetes_release.py
+
       - name: Check repository structure
         run: |
           test -f docker-compose.yml
