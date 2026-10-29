@@ -16,17 +16,19 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.jwt.JwtEncoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtDecoder;
 import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 
 /**
- * RS256 signing key. Only the private key is configured (PKCS#8 PEM, from a K8s Secret in production);
- * the public key is derived from it, so the two can never get out of sync.
+ * RS256 signing key, password hashing and the public endpoints. Only the private key is configured
+ * (PKCS#8 PEM, from a K8s Secret in production); the public key is derived from it (D41).
  */
 @Configuration(proxyBeanMethods = false)
-public class JwtConfig {
+public class SecurityConfig {
 
     @Bean
     RSAKey signingKey(@Value("${jwt.private-key}") RSAPrivateKey privateKey) throws Exception {
@@ -53,7 +55,14 @@ public class JwtConfig {
     }
 
     @Bean
-    AuthorizationRules jwksIsPublic() {
-        return rules -> rules.requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll();
+    PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();    // cost 10 (default), ~100 ms per check
+    }
+
+    @Bean
+    AuthorizationRules publicEndpoints() {
+        return rules -> rules
+                .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll()
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll();
     }
 }
