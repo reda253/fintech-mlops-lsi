@@ -4,8 +4,9 @@ WORKDIR /workspace
 RUN apk add --no-cache curl
 COPY . .
 RUN sed -i 's/\r$//' mvnw
+# Tests need Docker (Testcontainers), which docker build lacks; the CI Java job runs them.
 RUN --mount=type=cache,target=/root/.m2 \
-    sh ./mvnw -B -pl auth-service -am verify
+    sh ./mvnw -B -pl auth-service -am package -DskipTests
 RUN cp auth-service/target/auth-service-*.jar application.jar \
     && java -Djarmode=tools -jar application.jar extract --layers --destination extracted
 
