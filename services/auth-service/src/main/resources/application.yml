@@ -24,11 +24,10 @@ spring:
     username: ${RABBITMQ_USER:guest}
     password: ${RABBITMQ_PASSWORD:guest}
 
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          jwk-set-uri: ${JWKS_URI:http://localhost:8081/.well-known/jwks.json}
+jwt:
+  # PKCS#8 PEM: either the PEM text itself (K8s Secret as env var) or a location (file:, classpath:).
+  # Dev: openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out secrets/jwt-private.pem
+  private-key: ${JWT_PRIVATE_KEY:file:secrets/jwt-private.pem}
 
 server:
   port: 8081
