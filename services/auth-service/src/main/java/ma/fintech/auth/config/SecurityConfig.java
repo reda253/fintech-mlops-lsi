@@ -63,6 +63,6 @@ public class SecurityConfig {
     AuthorizationRules publicEndpoints() {
         return rules -> rules
                 .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/v1/auth/login").permitAll();
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll();
     }
 }

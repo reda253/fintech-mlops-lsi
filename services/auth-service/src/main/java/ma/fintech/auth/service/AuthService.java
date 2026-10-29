@@ -63,6 +63,31 @@ public class AuthService {
         return issueTokens(user);
     }
 
+    /**
+     * Rotation: the presented token is revoked and a new pair issued. A token that is already revoked
+     * means it was copied (the legitimate client already rotated it), so every token of that user is
+     * revoked and both the thief and the victim must log in again. noRollbackFor keeps that revocation.
+     */
+    @Transactional(noRollbackFor = ResponseStatusException.class)
+    public TokenResponse refresh(String token) {
+        Instant now = Instant.now();
+        RefreshToken stored = refreshTokens.findByTokenHash(sha256(token)).orElseThrow(AuthService::invalidRefresh);
+        if (stored.getRevokedAt() != null) {
+            refreshTokens.revokeAllByUserId(stored.getUserId(), now);
+            throw invalidRefresh();
+        }
+        if (!now.isBefore(stored.getExpiresAt())) {
+            throw invalidRefresh();
+        }
+        User user = users.findById(stored.getUserId()).filter(User::isEnabled).orElseThrow(AuthService::invalidRefresh);
+        stored.revoke(now);
+        return issueTokens(user);
+    }
+
+    private static ResponseStatusException invalidRefresh() {
+        return new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid refresh token");
+    }
+
     private TokenResponse issueTokens(User user) {
         Instant now = Instant.now();
         JwtClaimsSet claims = JwtClaimsSet.builder()
@@ -86,7 +111,7 @@ public class AuthService {
     }
 
     /** Hex SHA-256: refresh tokens are 256-bit random, so a fast hash is enough (no BCrypt needed). */
-    static String sha256(String value) {
+    public static String sha256(String value) {
         try {
             return HexFormat.of().formatHex(
                     MessageDigest.getInstance("SHA-256").digest(value.getBytes(StandardCharsets.UTF_8)));

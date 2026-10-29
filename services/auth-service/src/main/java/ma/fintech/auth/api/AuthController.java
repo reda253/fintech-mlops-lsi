@@ -1,6 +1,7 @@
 package ma.fintech.auth.api;
 
 import jakarta.validation.Valid;
+import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 import ma.fintech.auth.service.AuthService;
@@ -17,6 +18,9 @@ class AuthController {
                         @NotNull @Size(min = 8, max = 128) String password) {
     }
 
+    record RefreshRequest(@NotBlank @Size(max = 128) String refreshToken) {
+    }
+
     private final AuthService auth;
 
     AuthController(AuthService auth) {
@@ -26,5 +30,10 @@ class AuthController {
     @PostMapping("/login")
     TokenResponse login(@Valid @RequestBody LoginRequest request) {
         return auth.login(request.username(), request.password());
+    }
+
+    @PostMapping("/refresh")
+    TokenResponse refresh(@Valid @RequestBody RefreshRequest request) {
+        return auth.refresh(request.refreshToken());
     }
 }

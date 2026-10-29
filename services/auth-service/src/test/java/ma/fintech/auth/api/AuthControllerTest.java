@@ -1,13 +1,16 @@
 package ma.fintech.auth.api;
 
+import java.time.Instant;
 import java.util.Set;
 
 import com.jayway.jsonpath.JsonPath;
 import ma.fintech.auth.TestcontainersConfig;
+import ma.fintech.auth.domain.RefreshToken;
 import ma.fintech.auth.domain.User;
 import ma.fintech.auth.domain.User.Role;
 import ma.fintech.auth.repository.RefreshTokenRepository;
 import ma.fintech.auth.repository.UserRepository;
+import ma.fintech.auth.service.AuthService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -85,12 +88,48 @@ class AuthControllerTest {
     @Test
     void invalidBodyIs400() throws Exception {
         login("ab", "short").andExpect(status().isBadRequest());
+        refresh("").andExpect(status().isBadRequest());
+    }
+
+    @Test
+    void refreshRotatesAndReuseRevokesTheWholeFamily() throws Exception {
+        String first = refreshTokenOf(login("analyste1", "correct-horse"));
+
+        String second = refreshTokenOf(refresh(first).andExpect(status().isOk()));
+        assertThat(second).isNotEqualTo(first);
+
+        // Replaying the rotated token = stolen copy: rejected, and the legitimate new token dies with it.
+        refresh(first).andExpect(status().isUnauthorized());
+        refresh(second).andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void unknownExpiredOrDisabledRefreshIs401() throws Exception {
+        refresh("never-issued").andExpect(status().isUnauthorized());
+
+        refreshTokens.save(new RefreshToken(analyst.getId(), AuthService.sha256("expired"), Instant.now().minusSeconds(1)));
+        refresh("expired").andExpect(status().isUnauthorized());
+
+        String token = refreshTokenOf(login("analyste1", "correct-horse"));
+        analyst.setEnabled(false);
+        users.save(analyst);
+        refresh(token).andExpect(status().isUnauthorized());
     }
 
     private ResultActions login(String username, String password) throws Exception {
         return mvc.perform(post("/api/v1/auth/login")
                 .contentType(MediaType.APPLICATION_JSON)
                 .content("{\"username\":\"" + username + "\",\"password\":\"" + password + "\"}"));
+    }
+
+    private ResultActions refresh(String refreshToken) throws Exception {
+        return mvc.perform(post("/api/v1/auth/refresh")
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"refreshToken\":\"" + refreshToken + "\"}"));
+    }
+
+    private static String refreshTokenOf(ResultActions result) throws Exception {
+        return JsonPath.read(result.andReturn().getResponse().getContentAsString(), "$.refreshToken");
     }
 
     /** Problem Details body of a rejected login, minus the per-request fields. */
