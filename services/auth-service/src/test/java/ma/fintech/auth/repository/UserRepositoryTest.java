@@ -39,6 +39,13 @@ class UserRepositoryTest {
     }
 
     @Test
+    void v2SeedsOneDemoAccountPerRole() {
+        assertThat(users.findByUsername("admin").orElseThrow().getRoles()).containsExactly(Role.ADMIN);
+        assertThat(users.findByUsername("analyste1").orElseThrow().getRoles()).containsExactly(Role.ANALYSTE);
+        assertThat(users.findByUsername("simulateur1").orElseThrow().getRoles()).containsExactly(Role.SIMULATEUR);
+    }
+
+    @Test
     void usernameIsUnique() {
         users.saveAndFlush(new User("dup", "$2a$10$hash", Set.of(Role.SIMULATEUR)));
 

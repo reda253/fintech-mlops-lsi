@@ -60,9 +60,10 @@ public class SecurityConfig {
     }
 
     @Bean
-    AuthorizationRules publicEndpoints() {
+    AuthorizationRules authRules() {
         return rules -> rules
                 .requestMatchers(HttpMethod.GET, "/.well-known/jwks.json").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll();
+                .requestMatchers(HttpMethod.POST, "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
+                .requestMatchers("/api/v1/auth/users/**").hasRole("ADMIN");
     }
 }

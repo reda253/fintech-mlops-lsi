@@ -13,6 +13,10 @@ spring:
     properties:
       hibernate:
         default_schema: auth
+  data:
+    web:
+      pageable:
+        max-page-size: 200      # contracts/common.yaml Size.maximum
   flyway:
     schemas: auth
     default-schema: auth
