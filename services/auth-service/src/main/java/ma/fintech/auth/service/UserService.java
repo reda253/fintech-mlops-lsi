@@ -36,7 +36,6 @@ public class UserService {
         return role == null ? users.findAll(pageable) : users.findByRole(role.name(), pageable);
     }
 
-    @Transactional(readOnly = true)
     public User get(UUID id) {
         return users.findById(id)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "User not found"));

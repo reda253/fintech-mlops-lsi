@@ -1,3 +1,5 @@
 # False positive: a random test UUID next to the word MDC_KEY (generic-api-key rule).
 # The literal was removed in the next commit; this entry only covers the old one.
 d12e0220192e8c1a632b6308e683760fb56396a8:services/common/src/test/java/ma/fintech/common/correlation/CorrelationIdInterceptorTest.java:generic-api-key:27
+# False positive: PEM header around a throwaway RSA key generated when the tests start; no key is committed.
+4ce7fc05257a6679767bea6b13e54d5803cc61fc:services/auth-service/src/test/java/ma/fintech/auth/TestcontainersConfig.java:private-key:26

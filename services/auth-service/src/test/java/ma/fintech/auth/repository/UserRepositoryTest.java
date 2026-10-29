@@ -49,7 +49,8 @@ class UserRepositoryTest {
     void usernameIsUnique() {
         users.saveAndFlush(new User("dup", "$2a$10$hash", Set.of(Role.SIMULATEUR)));
 
-        assertThatThrownBy(() -> users.saveAndFlush(new User("dup", "$2a$10$other", Set.of(Role.ADMIN))))
+        User duplicate = new User("dup", "$2a$10$other", Set.of(Role.ADMIN));
+        assertThatThrownBy(() -> users.saveAndFlush(duplicate))
                 .isInstanceOf(DataIntegrityViolationException.class);
     }
 }

@@ -1,11 +1,13 @@
 package ma.fintech.auth.config;
 
+import java.security.GeneralSecurityException;
 import java.security.KeyFactory;
 import java.security.interfaces.RSAPrivateCrtKey;
 import java.security.interfaces.RSAPrivateKey;
 import java.security.interfaces.RSAPublicKey;
 import java.security.spec.RSAPublicKeySpec;
 
+import com.nimbusds.jose.JOSEException;
 import com.nimbusds.jose.JWSAlgorithm;
 import com.nimbusds.jose.jwk.JWKSet;
 import com.nimbusds.jose.jwk.KeyUse;
@@ -31,7 +33,8 @@ import org.springframework.security.oauth2.jwt.NimbusJwtEncoder;
 public class SecurityConfig {
 
     @Bean
-    RSAKey signingKey(@Value("${jwt.private-key}") RSAPrivateKey privateKey) throws Exception {
+    RSAKey signingKey(@Value("${jwt.private-key}") RSAPrivateKey privateKey)
+            throws GeneralSecurityException, JOSEException {
         RSAPrivateCrtKey crt = (RSAPrivateCrtKey) privateKey;
         RSAPublicKey publicKey = (RSAPublicKey) KeyFactory.getInstance("RSA")
                 .generatePublic(new RSAPublicKeySpec(crt.getModulus(), crt.getPublicExponent()));
@@ -50,7 +53,7 @@ public class SecurityConfig {
 
     /** auth-service verifies its own tokens with the local key instead of fetching its own JWKS over HTTP. */
     @Bean
-    JwtDecoder jwtDecoder(RSAKey signingKey) throws Exception {
+    JwtDecoder jwtDecoder(RSAKey signingKey) throws JOSEException {
         return NimbusJwtDecoder.withPublicKey(signingKey.toRSAPublicKey()).build();
     }
 

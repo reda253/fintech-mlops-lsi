@@ -8,6 +8,7 @@ import java.time.Duration;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.HexFormat;
+import java.util.UUID;
 
 import ma.fintech.auth.api.TokenResponse;
 import ma.fintech.auth.domain.RefreshToken;
@@ -46,7 +47,7 @@ public class AuthService {
         this.refreshTokens = refreshTokens;
         this.passwordEncoder = passwordEncoder;
         this.jwtEncoder = jwtEncoder;
-        this.dummyHash = passwordEncoder.encode("timing-equalizer");
+        this.dummyHash = passwordEncoder.encode(UUID.randomUUID().toString());    // random: matches no password
     }
 
     /**
