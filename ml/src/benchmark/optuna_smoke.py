@@ -5,23 +5,18 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
-import warnings
-from time import monotonic, perf_counter
+from time import monotonic
 
 import mlflow
 import numpy as np
 import optuna
 from benchmark.config import MODEL_NAMES, ROOT, load_configuration
 from benchmark.models_smoke import sample_development
+from benchmark.optuna_common import suggest_parameters
+from benchmark.optuna_common import trial_worker as _trial_worker
 from benchmark.trial_control import run_in_subprocess, timeout_summary
-from models.factory import build_model
-from models.search_spaces import model_parameters
 from optuna.trial import TrialState
-from preprocessing.pipeline import build_preprocessing_pipeline
-from sklearn.metrics import average_precision_score
 from sklearn.model_selection import StratifiedKFold
-from threadpoolctl import threadpool_limits
-from validation.fold_data import correct_proba, make_fold_data
 
 from ml.tracking_smoke import (
     _private_client_calls,
@@ -29,55 +24,6 @@ from ml.tracking_smoke import (
     check_tracking_connection,
     get_tracking_uri,
 )
-
-
-def suggest_parameters(trial, name, spaces):
-    """Echantillonne l'espace YAML ; encode les architectures en categories JSON."""
-    params = model_parameters(name, spaces)
-    for key, spec in spaces[name]["parameters"].items():
-        kind = spec["type"]
-        if kind == "categorical":
-            choices = spec["choices"]
-            structured = any(isinstance(value, list) for value in choices)
-            options = (
-                [json.dumps(value) for value in choices] if structured else choices
-            )
-            value = trial.suggest_categorical(key, options)
-            params[key] = json.loads(value) if structured else value
-        else:
-            suggest = trial.suggest_int if kind == "int" else trial.suggest_float
-            params[key] = suggest(
-                key, spec["low"], spec["high"], log=spec.get("log", False)
-            )
-    return params
-
-
-def _trial_worker(name, params, X, y, train, valid, seed):
-    with threadpool_limits(limits=1), warnings.catch_warnings(record=True) as captured:
-        warnings.simplefilter("always")
-        start = perf_counter()
-        X_tr, y_tr, X_va, y_va, beta, counts = make_fold_data(
-            X, y, train, valid, build_preprocessing_pipeline, ratio=10, seed=seed
-        )
-        preparation = perf_counter() - start
-        model = build_model(name, params, seed)
-        start = perf_counter()
-        model.fit(X_tr, y_tr)
-        fit = perf_counter() - start
-        start = perf_counter()
-        corrected = correct_proba(model.predict_proba(X_va)[:, 1], beta)
-        predict = perf_counter() - start
-        if not np.isfinite(corrected).all():
-            raise ValueError("Probabilites non finies.")
-        return {
-            "average_precision": float(average_precision_score(y_va, corrected)),
-            "preparation_seconds": preparation,
-            "fit_seconds": fit,
-            "predict_seconds": predict,
-            "beta": beta,
-            "counts": counts,
-            "warning_categories": sorted({type(w.message).__name__ for w in captured}),
-        }
 
 
 def run_smoke_study(name, spaces, settings, evaluate):

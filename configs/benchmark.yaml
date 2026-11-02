@@ -7,6 +7,9 @@ repeats: 10
 seeds: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 shared_folds_across_models: true
 legit_per_fraud: 10
+# Decision Basma (26/10/2026) : ordre identique aux 150 essais Optuna.
+# Par pli : fit preprocessing sur train naturel, transform train/validation,
+# sous-echantillonnage du train transforme uniquement, puis fit du modele.
 primary_metric: average_precision
 secondary_metrics: [roc_auc, f1, precision, recall, mcc, brier_score, log_loss, ece]
 ece: {bins: 10, strategy: uniform}

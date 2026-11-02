@@ -114,6 +114,18 @@ a verifier en l'absence de synthese. Aucune decision nouvelle n'est imposee.
 
 ## Décisions validées
 
+### Ordre de préparation conservé pour le benchmark (26/10/2026)
+
+**Décidé par Basma.** Les 150 essais Optuna ont ajusté le preprocessing sur
+le train naturel de chaque pli, transformé le train et la validation, puis
+sous-échantillonné uniquement le train transformé avant le fit du modèle.
+Le benchmark applique exactement cet ordre via `make_fold_data` pour que les
+hyperparamètres figés restent comparables au tuning. La validation externe
+garde sa prévalence naturelle. Le seuil de F1 provient d'une validation
+interne au train externe et n'utilise aucune étiquette du pli externe.
+Les cinq essais approuvés sont dans `configs/best_params.json` ; le smoke
+du benchmark ne constitue pas un résultat scientifique.
+
 Date : 23/10/2026. **décidé par Basma** (validation humaine dans le chat).
 Les sections 4.4-4.7 et 10.5 restent les references normatives.
 

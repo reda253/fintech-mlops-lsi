@@ -40,6 +40,11 @@ def partition_development(X, y, fraction=0.2):
     La fonction ne confirme pas la fiabilite statistique des effectifs.
     """
     _check_development(X, y)
+    return partition_timestamps(X, fraction)
+
+
+def partition_timestamps(X, fraction):
+    """Decoupe les seules dates avant toute lecture des etiquettes ou features."""
     if (
         isinstance(fraction, bool)
         or not isinstance(fraction, (int, float))

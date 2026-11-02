@@ -11,7 +11,15 @@ def _send_result(connection, worker, args):
     try:
         connection.send({"status": "COMPLETE", "result": worker(*args)})
     except (ValueError, RuntimeError, ArithmeticError, TypeError, OSError) as exc:
-        connection.send({"status": "FAIL", "exception_type": type(exc).__name__})
+        connection.send(
+            {
+                "status": "FAIL",
+                "reason": "worker_error",
+                "exception_type": type(exc).__name__,
+                "errno": getattr(exc, "errno", None),
+                "winerror": getattr(exc, "winerror", None),
+            }
+        )
     finally:
         connection.close()
 
