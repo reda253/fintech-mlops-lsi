@@ -6,7 +6,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from ml.stats.validate import MODELS, holm_adjust, load_results, main
+from ml.stats.validate import (
+    MODELS,
+    SCORE_BOUNDS,
+    holm_adjust,
+    load_results,
+    main,
+    nadeau_bengio_on_folds,
+    select_model,
+)
 
 
 def synthetic_csvs(tmp_path, *, distinct):
@@ -24,6 +32,11 @@ def synthetic_csvs(tmp_path, *, distinct):
                     "repeat": repeat,
                     "average_precision": score,
                     "brier_score": brier,
+                    **{
+                        metric: 1 - score if metric == "log_loss" else score
+                        for metric in SCORE_BOUNDS
+                        if metric not in {"average_precision", "brier_score"}
+                    },
                 }
             )
             for fold in range(5):
@@ -34,6 +47,13 @@ def synthetic_csvs(tmp_path, *, distinct):
                         "fold": fold,
                         "average_precision": score,
                         "brier_score": brier,
+                        "outer_fit_rows": 80,
+                        "outer_validation_rows": 20,
+                        **{
+                            metric: 1 - score if metric == "log_loss" else score
+                            for metric in SCORE_BOUNDS
+                            if metric not in {"average_precision", "brier_score"}
+                        },
                     }
                 )
     repeat_path = tmp_path / "repeat_means.csv"
@@ -64,7 +84,11 @@ def test_clear_difference_selects_leader(tmp_path):
     assert result["n_repeats"] == 10
     assert result["fold_rows_checked"] == 250
     assert result["friedman"]["p_value"] < 0.05
-    assert result["selection"]["model"] == "xgb"
+    assert result["selection"]["model"] is None
+    assert result["selection"]["status"] == "effect_threshold_required"
+    assert result["selection"]["candidates"] == ["xgb"]
+    assert result["nadeau_bengio_sensitivity"]["xgb_vs_mlp"]["n_folds"] == 50
+    assert result["nadeau_bengio_sensitivity"]["xgb_vs_mlp"]["test_train_ratio"] == 0.25
     pair = next(
         x for x in result["pairwise"] if {x["model_a"], x["model_b"]} == {"xgb", "mlp"}
     )
@@ -104,3 +128,115 @@ def test_rejects_inconsistent_repeat_mean(tmp_path):
     frame.to_csv(repeat_path, index=False)
     with pytest.raises(ValueError, match="ne correspondent"):
         load_results(repeat_path, fold_path)
+
+
+@pytest.mark.parametrize(
+    ("source", "metric", "value", "message"),
+    [
+        ("fold", "average_precision", -0.1, "average_precision"),
+        ("fold", "roc_auc", np.nan, "roc_auc"),
+        ("repeat", "roc_auc", 1.1, "roc_auc"),
+        ("repeat", "precision", np.inf, "precision"),
+        ("fold", "mcc", -1.1, "mcc"),
+        ("fold", "recall", -0.1, "recall"),
+        ("repeat", "f1", 1.1, "f1"),
+        ("fold", "accuracy", np.nan, "accuracy"),
+        ("repeat", "brier_score", 1.1, "brier_score"),
+        ("repeat", "log_loss", -0.1, "log_loss"),
+        ("fold", "ece", 1.1, "ece"),
+    ],
+)
+def test_rejects_invalid_score(tmp_path, source, metric, value, message):
+    repeat_path, fold_path = synthetic_csvs(tmp_path, distinct=True)
+    path = fold_path if source == "fold" else repeat_path
+    frame = pd.read_csv(path)
+    frame.loc[0, metric] = value
+    frame.to_csv(path, index=False)
+    with pytest.raises(ValueError, match=message):
+        load_results(repeat_path, fold_path)
+
+
+def test_rejects_missing_required_metric(tmp_path):
+    repeat_path, fold_path = synthetic_csvs(tmp_path, distinct=True)
+    frame = pd.read_csv(fold_path).drop(columns="recall")
+    frame.to_csv(fold_path, index=False)
+    with pytest.raises(ValueError, match="recall"):
+        load_results(repeat_path, fold_path)
+
+
+def test_rejects_mismatched_fold_sizes(tmp_path):
+    repeat_path, fold_path = synthetic_csvs(tmp_path, distinct=True)
+    frame = pd.read_csv(fold_path)
+    frame.loc[0, "outer_fit_rows"] = 81
+    frame.to_csv(fold_path, index=False)
+    with pytest.raises(ValueError, match="outer_fit_rows"):
+        load_results(repeat_path, fold_path)
+
+
+def test_rejects_inconsistent_secondary_repeat_mean(tmp_path):
+    repeat_path, fold_path = synthetic_csvs(tmp_path, distinct=True)
+    frame = pd.read_csv(repeat_path)
+    frame.loc[0, "roc_auc"] += 0.01
+    frame.to_csv(repeat_path, index=False)
+    with pytest.raises(ValueError, match="ne correspondent"):
+        load_results(repeat_path, fold_path)
+
+
+def test_nadeau_bengio_uses_50_paired_folds_and_real_ratio():
+    differences = np.linspace(0.01, 0.05, 50)
+    ratios = np.linspace(0.24, 0.26, 50)
+    result = nadeau_bengio_on_folds(differences, ratios)
+    expected = differences.mean() / np.sqrt(
+        (1 / 50 + ratios.mean()) * differences.var(ddof=1)
+    )
+    assert result["n_folds"] == 50
+    assert result["df"] == 49
+    assert result["unit"] == "paired_fold"
+    assert result["test_train_ratio"] == pytest.approx(ratios.mean())
+    assert result["t"] == pytest.approx(expected)
+    with pytest.raises(ValueError, match="50 différences"):
+        nadeau_bengio_on_folds(differences[:10], ratios[:10])
+
+
+@pytest.mark.parametrize(
+    ("rank_effect", "ci", "expected_model"),
+    [
+        (1.0, [-0.01, 0.02], "rf"),
+        (1.0, [0.0, 0.02], "rf"),
+        (-0.2, [0.01, 0.03], "rf"),
+        (1.0, [0.01, 0.03], None),
+    ],
+)
+def test_selection_checks_effect_direction_and_paired_ci(
+    rank_effect, ci, expected_model
+):
+    models = {
+        model: {
+            "mean_pr_auc": 0.9 if model == "xgb" else 0.8,
+            "mean_brier": 0.03 if model == "rf" else 0.04,
+        }
+        for model in MODELS
+    }
+    pairs = []
+    for index, a in enumerate(MODELS):
+        for b in MODELS[index + 1 :]:
+            includes_top_two = {a, b} == {"xgb", "rf"}
+            pairs.append(
+                {
+                    "model_a": a,
+                    "model_b": b,
+                    "p_holm": 0.01,
+                    "rank_biserial": (rank_effect if a == "xgb" else -rank_effect)
+                    if includes_top_two
+                    else (1.0 if a == "xgb" else -1.0),
+                    "difference_ci95": (ci if a == "xgb" else [-ci[1], -ci[0]])
+                    if includes_top_two
+                    else ([0.01, 0.03] if a == "xgb" else [-0.03, -0.01]),
+                }
+            )
+    result = select_model(models, pairs, 0.001, {})
+    assert result["model"] == expected_model
+    if expected_model is None:
+        assert result["status"] == "effect_threshold_required"
+    else:
+        assert "supériorité non démontrée" in result["reason"]

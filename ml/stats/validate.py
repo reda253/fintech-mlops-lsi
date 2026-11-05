@@ -36,6 +36,18 @@ SECONDARY_METRICS = (
     "log_loss",
     "ece",
 )
+SCORE_BOUNDS = {
+    METRIC: (0.0, 1.0),
+    "roc_auc": (0.0, 1.0),
+    "mcc": (-1.0, 1.0),
+    "precision": (0.0, 1.0),
+    "recall": (0.0, 1.0),
+    "f1": (0.0, 1.0),
+    "accuracy": (0.0, 1.0),
+    "brier_score": (0.0, 1.0),
+    "log_loss": (0.0, np.inf),
+    "ece": (0.0, 1.0),
+}
 
 
 def load_results(
@@ -44,8 +56,15 @@ def load_results(
     """Exige 5 modèles × 10 répétitions × 5 plis et des moyennes cohérentes."""
     repeats = pd.read_csv(repeat_path)
     folds = pd.read_csv(fold_path)
-    required_repeats = {"model", "repeat", METRIC, "brier_score"}
-    required_folds = {"model", "repeat", "fold", METRIC, "brier_score"}
+    score_columns = set(SCORE_BOUNDS)
+    required_repeats = {"model", "repeat"} | score_columns
+    required_folds = {
+        "model",
+        "repeat",
+        "fold",
+        "outer_fit_rows",
+        "outer_validation_rows",
+    } | score_columns
     for frame, required, name in (
         (repeats, required_repeats, "repeat_means"),
         (folds, required_folds, "fold_scores"),
@@ -53,25 +72,37 @@ def load_results(
         missing = required - set(frame)
         if missing:
             raise ValueError(f"{name}: colonnes manquantes: {sorted(missing)}")
-        if frame[list(required)].isna().any().any():
-            raise ValueError(f"{name}: valeur manquante dans les colonnes requises")
-        for metric in (METRIC, "brier_score"):
+        missing_values = frame[list(required)].isna().any()
+        if missing_values.any():
+            raise ValueError(
+                f"{name}: valeur manquante dans {sorted(missing_values[missing_values].index)}"
+            )
+        for metric, (lower, upper) in SCORE_BOUNDS.items():
             values = pd.to_numeric(frame[metric], errors="coerce")
             if not np.isfinite(values.to_numpy(dtype=float)).all():
                 raise ValueError(f"{name}: {metric} non fini ou non numérique")
-            if not values.between(0, 1).all():
-                raise ValueError(f"{name}: {metric} hors [0, 1]")
+            if not values.between(lower, upper).all():
+                raise ValueError(f"{name}: {metric} hors [{lower}, {upper}]")
             frame[metric] = values.astype(float)
         for column in ("repeat", "fold"):
             if column in frame:
                 values = pd.to_numeric(frame[column], errors="coerce")
-                if values.isna().any() or not np.array_equal(
-                    values, values.astype(int)
-                ):
+                if not np.isfinite(
+                    values.to_numpy(dtype=float)
+                ).all() or not np.array_equal(values, values.astype(int)):
                     raise ValueError(f"{name}: {column} doit être entier")
                 frame[column] = values.astype(int)
         if set(frame["model"]) != set(MODELS):
             raise ValueError(f"{name}: les cinq modèles canoniques sont requis")
+    for column in ("outer_fit_rows", "outer_validation_rows"):
+        values = pd.to_numeric(folds[column], errors="coerce")
+        if (
+            not np.isfinite(values.to_numpy(dtype=float)).all()
+            or (values <= 0).any()
+            or not np.array_equal(values, values.astype(int))
+        ):
+            raise ValueError(f"fold_scores: {column} doit être un entier positif")
+        folds[column] = values.astype(int)
     if (
         repeats.duplicated(["model", "repeat"]).any()
         or folds.duplicated(["model", "repeat", "fold"]).any()
@@ -87,8 +118,14 @@ def load_results(
         raise ValueError("repeat_means: 10 répétitions par modèle requises")
     if set(folds.set_index(["model", "repeat", "fold"]).index) != set(expected_folds):
         raise ValueError("fold_scores: 5 plis par répétition et modèle requis")
-    actual = folds.groupby(["model", "repeat"])[[METRIC, "brier_score"]].mean()
-    given = repeats.set_index(["model", "repeat"])[[METRIC, "brier_score"]]
+    for column in ("outer_fit_rows", "outer_validation_rows"):
+        sizes = folds.pivot(index=["repeat", "fold"], columns="model", values=column)
+        if not (sizes.nunique(axis=1) == 1).all():
+            raise ValueError(
+                f"{column}: effectifs différents entre modèles pour un pli"
+            )
+    actual = folds.groupby(["model", "repeat"])[list(SCORE_BOUNDS)].mean()
+    given = repeats.set_index(["model", "repeat"])[list(SCORE_BOUNDS)]
     if not np.allclose(
         given.loc[actual.index].to_numpy(), actual.to_numpy(), rtol=0, atol=1e-12
     ):
@@ -134,30 +171,53 @@ def rank_biserial(differences: np.ndarray) -> float:
     return float((2 * positive / ranks.sum()) - 1)
 
 
-def nadeau_bengio_on_repeats(differences: np.ndarray, test_train_ratio: float) -> dict:
-    """Sensibilité t corrigée sur n=10 moyennes, jamais sur les 50 plis.
+def nadeau_bengio_on_folds(
+    differences: np.ndarray, test_train_ratios: np.ndarray
+) -> dict:
+    """Test t corrigé sur 50 différences appariées de plis répétés.
 
-    Facteur sqrt((1/n + n_test/n_train) * s²). Le test classique est dérivé
-    pour les scores de plis ; appliqué aux moyennes de répétition, il reste
-    une analyse de sensibilité approximative et peut sur/sous-corriger.
+    Variance corrigée : (1/n + moyenne(n_validation/n_train)) * s².
+    Les tailles sont celles du train naturel avant sous-échantillonnage.
+    Les plis partagent des observations : cette correction les suppose
+    suffisamment comparables ; elle ne rend pas les répétitions indépendantes.
     Source : https://proceedings.neurips.cc/paper_files/paper/1999/file/7d12b66d3df6af8d429c1a357d8b9e1a-Paper.pdf
     """
+    differences = np.asarray(differences, dtype=float)
+    ratios = np.asarray(test_train_ratios, dtype=float)
     n = len(differences)
-    if n != 10 or test_train_ratio <= 0:
-        raise ValueError("Nadeau-Bengio: 10 répétitions et ratio positif requis")
+    if (
+        differences.shape != (50,)
+        or ratios.shape != (50,)
+        or not np.isfinite(differences).all()
+        or not np.isfinite(ratios).all()
+        or (ratios <= 0).any()
+    ):
+        raise ValueError(
+            "Nadeau-Bengio: 50 différences et ratios finis positifs requis"
+        )
+    test_train_ratio = float(ratios.mean())
     mean = float(np.mean(differences))
     variance = float(np.var(differences, ddof=1))
     denominator = float(np.sqrt((1 / n + test_train_ratio) * variance))
     if denominator == 0:
-        return {"t": None, "p_value": None, "df": 9, "reason": "variance nulle"}
+        return {
+            "t": None,
+            "p_value": None,
+            "df": n - 1,
+            "test_train_ratio": test_train_ratio,
+            "unit": "paired_fold",
+            "n_folds": n,
+            "reason": "variance nulle",
+        }
     t_stat = mean / denominator
     return {
         "t": float(t_stat),
         "p_value": float(2 * stats.t.sf(abs(t_stat), df=n - 1)),
         "df": n - 1,
         "test_train_ratio": test_train_ratio,
-        "unit": "repeat_mean",
-        "interpretation": "sensibilité approximative uniquement",
+        "unit": "paired_fold",
+        "n_folds": n,
+        "interpretation": "analyse de sensibilité ; plis répétés corrélés",
     }
 
 
@@ -213,24 +273,30 @@ def select_model(
     order = sorted(MODELS, key=lambda x: (-model_results[x]["mean_pr_auc"], x))
     first = order[0]
     by_pair = {frozenset((x["model_a"], x["model_b"])): x for x in comparisons}
-    significant = (
-        friedman_p < ALPHA
-        and len(order) > 1
-        and by_pair[frozenset(order[:2])]["p_holm"] < ALPHA
-        and by_pair[frozenset(order[:2])]["rank_biserial"] != 0
-    )
-    if significant:
+
+    def superiority_demonstrated(other: str) -> bool:
+        if friedman_p >= ALPHA:
+            return False
+        pair = by_pair[frozenset((first, other))]
+        direction = 1 if pair["model_a"] == first else -1
+        low, high = pair["difference_ci95"]
+        return (
+            pair["p_holm"] is not None
+            and pair["p_holm"] < ALPHA
+            and direction * pair["rank_biserial"] > 0
+            and (low > 0 if direction == 1 else high < 0)
+        )
+
+    candidates = [first] + [
+        name for name in order[1:] if not superiority_demonstrated(name)
+    ]
+    if len(candidates) == 1:
         return {
-            "model": first,
-            "status": "provisional",
-            "reason": "premier significativement meilleur que deuxième",
+            "model": None,
+            "status": "effect_threshold_required",
+            "reason": "supériorité démontrée, mais seuil d'effet non négligeable non défini",
             "candidates": [first],
         }
-    candidates = [first] + [
-        name
-        for name in order[1:]
-        if friedman_p >= ALPHA or by_pair[frozenset((first, name))]["p_holm"] >= ALPHA
-    ]
     best_brier = min(model_results[name]["mean_brier"] for name in candidates)
     candidates = [
         name
@@ -246,9 +312,9 @@ def select_model(
         }
     selected = min(candidates, key=lambda name: (latencies.get(name, np.inf), name))
     reason = (
-        "Brier minimal"
+        "supériorité non démontrée pour tous les candidats ; Brier minimal"
         if len(candidates) == 1
-        else "p95 minimal, puis identifiant stable"
+        else "supériorité non démontrée ; p95 minimal, puis identifiant stable"
     )
     return {
         "model": selected,
@@ -330,11 +396,19 @@ def validate(
         for item, p_value in zip(comparisons, adjusted, strict=True):
             item["p_holm"] = p_value
     order = sorted(MODELS, key=lambda name: -model_results[name]["mean_pr_auc"])
-    # Comparaisons du leader avec les quatre autres : n=10 moyennes appariées.
+    # Sensibilité distincte : 50 plis appariés ; Friedman/Wilcoxon restent sur n=10.
+    fold_matrix = folds.pivot(index=["repeat", "fold"], columns="model", values=METRIC)[
+        list(MODELS)
+    ]
+    fold_sizes = folds.loc[folds["model"] == MODELS[0]].set_index(["repeat", "fold"])
+    fold_sizes = fold_sizes.loc[fold_matrix.index]
+    test_train_ratios = (
+        fold_sizes["outer_validation_rows"] / fold_sizes["outer_fit_rows"]
+    ).to_numpy(dtype=float)
     sensitivity = {
-        f"{order[0]}_vs_{name}": nadeau_bengio_on_repeats(
-            (matrix[order[0]] - matrix[name]).to_numpy(),
-            test_train_ratio=1 / 4,
+        f"{order[0]}_vs_{name}": nadeau_bengio_on_folds(
+            (fold_matrix[order[0]] - fold_matrix[name]).to_numpy(),
+            test_train_ratios,
         )
         for name in order[1:]
     }
@@ -425,7 +499,7 @@ def write_report(result: dict, destination: Path) -> None:
         "",
         "## Sensibilité Nadeau–Bengio",
         "",
-        "Sur les 10 moyennes de répétition (ddl=9), correction 1/10 + 1/4 : approximation pouvant sur/sous-corriger ; le test original porte sur les plis. Ces p-values sont des analyses de sensibilité et ne changent pas la décision Wilcoxon–Holm.",
+        "Sur les 50 différences de plis appariés (ddl=49) : correction 1/50 + moyenne(n_validation/n_train naturel) calculée sur les effectifs réels. Les répétitions partagent des observations ; ces p-values restent une analyse de sensibilité et ne changent pas la décision Wilcoxon–Holm.",
     ]
     for pair, item in result["nadeau_bengio_sensitivity"].items():
         value = (
@@ -433,14 +507,16 @@ def write_report(result: dict, destination: Path) -> None:
             if item["p_value"] is None
             else f"t={item['t']:.4f}, p={item['p_value']:.6g}"
         )
-        lines.append(f"- {pair}: {value}")
+        lines.append(
+            f"- {pair}: {value} ; ratio validation/train moyen={item.get('test_train_ratio', float('nan')):.8f}"
+        )
     lines += [
         "",
         "![Diagramme de différence critique](figures/critical_difference.png)",
         "",
         "La barre CD est celle de Nemenyi, affichée à titre descriptif ; les conclusions reposent sur Wilcoxon–Holm.",
         "",
-        "Limites : 10 blocs seulement, un seul jeu Sparkov, plis stratifiés non temporels, dépendance résiduelle entre répétitions ; aucune conclusion sur la zone de test final. La sélection reste provisoire et ne mesure pas encore la latence p95 du pipeline complet.",
+        "Limites : 10 blocs seulement, un seul jeu Sparkov, plis stratifiés non temporels, dépendance résiduelle entre répétitions ; aucune conclusion sur la zone de test final. Le critère chiffré d'effet non négligeable reste à fixer avant sélection ; aucune promotion automatique. La latence p95 du pipeline complet n'est pas mesurée ici.",
         "",
     ]
     destination.write_text("\n".join(lines), encoding="utf-8")
