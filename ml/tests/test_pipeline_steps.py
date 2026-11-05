@@ -6,7 +6,7 @@ from pathlib import Path
 import mlflow
 import pytest
 
-from ml.src.pipeline.smoke import run_smoke
+from ml.src.pipeline.smoke import dispose_sqlite_tracking_engine, run_smoke
 from ml.src.pipeline.steps import (
     generate_synthetic_data,
     step_evaluate,
@@ -19,12 +19,15 @@ from ml.src.pipeline.steps import (
 @pytest.fixture
 def local_mlflow_env():
     """Isolate MLflow store to a temporary directory."""
-    with tempfile.TemporaryDirectory() as tmp:
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
         db_path = Path(tmp) / "mlflow.db"
         uri = f"sqlite:///{db_path.as_posix()}"
         mlflow.set_tracking_uri(uri)
         mlflow.set_experiment("test-steps")
-        yield uri
+        try:
+            yield uri
+        finally:
+            dispose_sqlite_tracking_engine(uri)
 
 
 def test_synthetic_data_generation():
@@ -67,7 +70,9 @@ def test_step_quality_gates(local_mlflow_env):
         "latency_p95_sec": 0.010,
     }
     with mlflow.start_run():
-        gates = step_quality_gates(metrics=metrics, champion_pr_auc=0.85, parent_run=True)
+        gates = step_quality_gates(
+            metrics=metrics, champion_pr_auc=0.85, parent_run=True
+        )
     assert gates["all_passed"] is True
 
 
@@ -79,7 +84,9 @@ def test_step_quality_gates_rejects_regression(local_mlflow_env):
         "latency_p95_sec": 0.010,
     }
     with mlflow.start_run():
-        gates = step_quality_gates(metrics=metrics, champion_pr_auc=0.85, parent_run=True)
+        gates = step_quality_gates(
+            metrics=metrics, champion_pr_auc=0.85, parent_run=True
+        )
     assert gates["all_passed"] is False
     assert gates["gate_non_regression"] is False
 
