@@ -1,0 +1,97 @@
+{
+  "schema_version": 1,
+  "selection_rule": "within_0.03_average_precision_then_simplicity",
+  "provenance": {
+    "source": "full_optuna_150_trials",
+    "git_commit": "ee78441f87349ef56d6a3b3d388042ea395ef4c4",
+    "config_hash": "4aff1421f2d8164cf2e6e4fba1510aa3f829d22e16991cb37a0843b9dd82b379",
+    "code_hash": "57a1e36d41d8b13d08eb074b2f2fde45b611d1150966692177aac18b861fb331",
+    "data_hash": "536a2f57fbc9002bb1a3daee57b664191cd49bca9093a8563d1963166b378bca"
+  },
+  "models": {
+    "logreg": {
+      "model": "logreg",
+      "trial_number": 10,
+      "average_precision": 0.31917443379733007,
+      "params": {
+        "solver": "lbfgs",
+        "max_iter": 1000,
+        "C": 0.012087541473056965
+      },
+      "seed": 42,
+      "study_name": "full-logreg",
+      "run_id": "cb0ea82a950b48689a64eae859d12f56",
+      "parent_run_id": "d83ac6345d8e4833bbe3d30baa7d4537"
+    },
+    "rf": {
+      "model": "rf",
+      "trial_number": 12,
+      "average_precision": 0.7999559868391283,
+      "params": {
+        "n_estimators": 51,
+        "max_depth": 14,
+        "min_samples_leaf": 8,
+        "max_features": 0.5
+      },
+      "seed": 42,
+      "study_name": "full-rf",
+      "run_id": "1d4e94ba29af4856b33d0e1ce82665b8",
+      "parent_run_id": "ea120ffbe1a74abe9c9f0bd4b253ae19"
+    },
+    "xgb": {
+      "model": "xgb",
+      "trial_number": 2,
+      "average_precision": 0.818775497748867,
+      "params": {
+        "tree_method": "hist",
+        "objective": "binary:logistic",
+        "eval_metric": "logloss",
+        "n_estimators": 55,
+        "max_depth": 8,
+        "learning_rate": 0.1359792484318226,
+        "subsample": 0.7637017332034828,
+        "colsample_bytree": 0.7545474901621302
+      },
+      "seed": 42,
+      "study_name": "full-xgb",
+      "run_id": "b735401043844b2bb74baaed580deda3",
+      "parent_run_id": "8ce8cdc88b12452696d86abb667fbbd4"
+    },
+    "nystroem_svc": {
+      "model": "nystroem_svc",
+      "trial_number": 12,
+      "average_precision": 0.3272823116332387,
+      "params": {
+        "kernel": "rbf",
+        "calibration_cv": 3,
+        "max_iter": 3000,
+        "n_components": 122,
+        "C": 0.019634341572933336,
+        "gamma": 0.11290133559092672
+      },
+      "seed": 42,
+      "study_name": "full-nystroem_svc",
+      "run_id": "f89483ef28be48178d0a04329891b634",
+      "parent_run_id": "eeb67c75c49d431f8ddbde282ad524c8"
+    },
+    "mlp": {
+      "model": "mlp",
+      "trial_number": 6,
+      "average_precision": 0.4588387020659579,
+      "params": {
+        "early_stopping": true,
+        "solver": "adam",
+        "max_iter": 150,
+        "hidden_layer_sizes": [
+          32
+        ],
+        "alpha": 0.007025166339242158,
+        "learning_rate_init": 0.00853618986286683
+      },
+      "seed": 42,
+      "study_name": "full-mlp",
+      "run_id": "9b06041577434da5b4c8c890eff0b4f9",
+      "parent_run_id": "980b9bfe41534333ad54146decce7964"
+    }
+  }
+}
