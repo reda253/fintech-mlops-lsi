@@ -23,7 +23,8 @@ public class TestcontainersConfig {
     DynamicPropertyRegistrar testSigningKey() throws Exception {
         KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
         generator.initialize(2048);
-        String pem = "-----BEGIN PRIVATE KEY-----\n"
+        // Throwaway key generated at test start, never committed.
+        String pem = "-----BEGIN PRIVATE KEY-----\n"    // gitleaks:allow
                 + Base64.getMimeEncoder().encodeToString(generator.generateKeyPair().getPrivate().getEncoded())
                 + "\n-----END PRIVATE KEY-----";
         return registry -> registry.add("jwt.private-key", () -> pem);
