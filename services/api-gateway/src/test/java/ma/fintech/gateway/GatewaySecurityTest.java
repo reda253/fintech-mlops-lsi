@@ -79,8 +79,21 @@ class GatewaySecurityTest {
         assertUnauthorized(send(get(path)));
     }
 
+    /** A token is present but unreadable: the resource-server entry point answers, not the default one. */
+    @Test
+    void malformedTokenGives401ProblemDetails() throws Exception {
+        HttpResponse<String> response = send(request("/api/v1/customers")
+                .header("Authorization", "Bearer not-a-jwt")
+                .GET()
+                .build());
+
+        assertUnauthorized(response);
+        assertTrue(response.headers().firstValue("WWW-Authenticate").orElse("")
+                .contains("error=\"invalid_token\""));
+    }
+
     private static void assertUnauthorized(HttpResponse<String> response) {
-        assertEquals(401, response.statusCode());
+        ProblemAssertions.assertProblem(response, 401, response.uri().getPath());
         assertTrue(response.headers().firstValue("WWW-Authenticate").orElse("").startsWith("Bearer"));
     }
 

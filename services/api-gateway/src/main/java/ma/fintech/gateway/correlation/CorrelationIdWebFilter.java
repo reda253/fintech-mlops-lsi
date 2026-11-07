@@ -22,10 +22,17 @@ import reactor.core.publisher.Mono;
 @Order(Ordered.HIGHEST_PRECEDENCE)
 public class CorrelationIdWebFilter implements WebFilter {
 
+    /**
+     * Exchange attribute holding the id. Error handlers receive the original exchange, not the
+     * mutated one, but attributes are shared, so they read it from here.
+     */
+    public static final String ATTRIBUTE = CorrelationIdWebFilter.class.getName() + ".id";
+
     @Override
     public Mono<Void> filter(ServerWebExchange exchange, WebFilterChain chain) {
         String id = CorrelationId.acceptOrGenerate(
                 exchange.getRequest().getHeaders().getFirst(CorrelationId.HEADER));
+        exchange.getAttributes().put(ATTRIBUTE, id);
 
         // The request is immutable in WebFlux: mutate() builds a copy with the header replaced,
         // so a client-sent invalid value never reaches the service.
