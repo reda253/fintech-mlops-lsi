@@ -17,7 +17,7 @@ Spring Cloud Gateway, reactive (D31). Port 8080. Traefik sends `fintech.local/ap
 **Never routed:** `/internal/**`, `/predict`, `/.well-known/jwks.json`, `/actuator/**`. They are also blocked by NetworkPolicies (§6.12). e2e scenario 7 checks that `/predict` returns `404` through the Ingress.
 
 ## Cross-cutting filters
-- **Correlation id:** generate `X-Correlation-Id` (UUID) if absent, forward it, and return it on the response.
+- **Correlation id:** generate `X-Correlation-Id` (UUID) if absent or not a UUID, forward it, and return it on every response, including 401/403.
 - **JWT:** validate signature and expiry against auth-service JWKS (cached), then forward the `Authorization` header unchanged. Each service re-validates it (D6).
 - **Timeouts:** 1 s connect, 3 s response. On timeout or downstream failure, return `503` Problem Details. No retry at the gateway (Traefik retries, §9.6).
 - **Connection pool:** max lifetime 30 s, so traffic moves to new pods after scale-up (§6.11).
