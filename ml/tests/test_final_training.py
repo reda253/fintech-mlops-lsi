@@ -203,6 +203,9 @@ def test_cli_with_real_pipeline_on_synthetic_csv(tmp_path):
         "launch_started",
         "source_read_started",
         "source_read_completed",
+        "choice_block_metrics",
+        "choice_block_metrics",
+        "choice_block_metrics",
         "launch_completed",
     ]
     assert events[1]["zones"] == list(final.ZONE_NAMES)
@@ -211,6 +214,12 @@ def test_cli_with_real_pipeline_on_synthetic_csv(tmp_path):
         "probability_calibration": 600,
         "conformal_calibration": 600,
     }
+    for event, row in zip(events[3:6], report["alpha_results"], strict=True):
+        assert event["alpha"] == row["alpha"]
+        assert event["fraud_count"] == row["choice"]["fraud_count"] == 75
+        assert event["class_counts"] == row["choice"]["class_counts"]
+        assert event["coverage_by_class"] == row["choice"]["coverage_by_class"]
+        assert event["covered_counts"] == row["choice"]["covered_counts"]
     assert report["beta"] == pytest.approx(940 / 2706)
     assert report["selected_alpha"] == 0.01
     assert [row["alpha"] for row in report["alpha_results"]] == list(final.ALPHAS)
@@ -359,3 +368,68 @@ def test_exact_minimum_class_counts_for_finite_quantile(alpha, minimum):
                 0: pytest.approx(0.1),
                 1: pytest.approx(0.1),
             }
+
+
+def test_coverage_summary_known_counts_and_missing_class():
+    y = np.array([0, 0, 1, 1, 1])
+    members = np.array(
+        [[True, False], [False, True], [True, True], [False, False], [False, True]]
+    )
+    result = final.coverage_summary(members, y)
+    assert result == {
+        "fraud_count": 3,
+        "class_counts": {"0": 2, "1": 3},
+        "covered_counts": {"0": 1, "1": 2},
+        "coverage_by_class": {"0": 0.5, "1": 2 / 3},
+    }
+    absent = final.coverage_summary(members[:2], np.array([0, 0]))
+    assert absent["fraud_count"] == 0
+    assert absent["coverage_by_class"]["1"] is None
+    unavailable = final.coverage_summary(None, y)
+    assert unavailable["fraud_count"] == 3
+    assert unavailable["covered_counts"] == {"0": None, "1": None}
+    assert unavailable["coverage_by_class"] == {"0": None, "1": None}
+
+
+def test_choice_labels_only_change_reporting_not_selected_alpha(tmp_path, monkeypatch):
+    monkeypatch.setattr(final, "build_preprocessing_pipeline", TinyPreprocessor)
+    monkeypatch.setattr(final, "build_model", lambda *args: TinyClassifier())
+    original = synthetic_splits()
+    changed = {k: v.copy() for k, v in original.items()}
+    conf = changed["conformal_calibration"]
+    idx = conf.index[200:300]
+    conf.loc[idx, "is_fraud"] = 1 - conf.loc[idx, "is_fraud"]
+    before = final.run_workflow(original, {}, tmp_path / "before")
+    after = final.run_workflow(changed, {}, tmp_path / "after")
+    assert before["selected_alpha"] == after["selected_alpha"] == 0.01
+    for a, b in zip(before["alpha_results"], after["alpha_results"], strict=True):
+        assert a["quantiles"] == b["quantiles"]
+        assert a["selection_review_rate"] == b["selection_review_rate"]
+        assert a["choice"]["coverage_by_class"] == {"0": 1.0, "1": 1.0}
+        assert b["choice"]["coverage_by_class"] == {"0": 0.0, "1": 0.0}
+    assert "couverture choix 1" in (tmp_path / "before/report.md").read_text(
+        encoding="utf-8"
+    )
+
+
+def test_inapplicable_alpha_still_records_choice_counts(tmp_path, monkeypatch):
+    monkeypatch.setattr(final, "build_preprocessing_pipeline", TinyPreprocessor)
+    monkeypatch.setattr(final, "build_model", lambda *args: TinyClassifier())
+
+    def unavailable(*args):
+        raise ValueError("Quantile fini impossible : cas synthétique")
+
+    monkeypatch.setattr(final, "mondrian_quantiles", unavailable)
+    report = final.run_workflow(synthetic_splits(), {}, tmp_path / "output")
+    events = []
+    final.record_choice_metrics(
+        report, lambda event, **details: events.append((event, details))
+    )
+    assert len(events) == 3
+    assert [e[1]["alpha"] for e in events] == list(final.ALPHAS)
+    for event, details in events:
+        assert event == "choice_block_metrics"
+        assert details["status"] == "inapplicable"
+        assert details["fraud_count"] == 50
+        assert details["coverage_by_class"] == {"0": None, "1": None}
+    json.dumps(events, allow_nan=False)

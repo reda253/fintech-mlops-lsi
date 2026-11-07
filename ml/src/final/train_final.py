@@ -290,6 +290,42 @@ def review_rate(members: np.ndarray) -> float:
     return float(np.mean(members.sum(axis=1) != 1))
 
 
+def coverage_summary(members: np.ndarray | None, y: np.ndarray) -> dict:
+    """Compteurs observés ; None signifie classe absente ou alpha inapplicable."""
+    labels = np.asarray(y)
+    if labels.ndim != 1 or not np.isin(labels, [0, 1]).all():
+        raise ValueError("Cibles binaires requises pour les couvertures")
+    if members is not None:
+        members = np.asarray(members)
+        if members.shape != (len(labels), 2) or members.dtype != np.dtype(bool):
+            raise ValueError("Ensembles booléens alignés requis")
+    counts = {str(c): int((labels == c).sum()) for c in (0, 1)}
+    covered = {
+        str(c): int(members[labels == c, c].sum()) if members is not None else None
+        for c in (0, 1)
+    }
+    return {
+        "fraud_count": counts["1"],
+        "class_counts": counts,
+        "covered_counts": covered,
+        "coverage_by_class": {
+            key: covered[key] / count if count and covered[key] is not None else None
+            for key, count in counts.items()
+        },
+    }
+
+
+def record_choice_metrics(report: dict, record) -> None:
+    """Journalise les agrégats seulement, jamais les labels individuels."""
+    for row in report["alpha_results"]:
+        record(
+            "choice_block_metrics",
+            alpha=row["alpha"],
+            status=row["status"],
+            **row["choice"],
+        )
+
+
 def evaluate_sets(members: np.ndarray, y: np.ndarray) -> dict:
     labels = np.asarray(y, dtype=int)
     if len(labels) != len(members) or set(np.unique(labels)) != {0, 1}:
@@ -297,9 +333,7 @@ def evaluate_sets(members: np.ndarray, y: np.ndarray) -> dict:
     automatic = members.sum(axis=1) == 1
     error = (members[:, 1] != (labels == 1)) & automatic
     return {
-        "coverage_by_class": {
-            str(c): float(members[labels == c, c].mean()) for c in (0, 1)
-        },
+        **coverage_summary(members, labels),
         "review_rate": review_rate(members),
         "automation_rate": float(automatic.mean()),
         "automatic_error_rate": float(error[automatic].mean())
@@ -408,7 +442,7 @@ def run_workflow(splits: dict[str, pd.DataFrame], params: dict, output: Path) ->
     method, brier = choose_calibrator(calibrators, p_choice, y_choice)
     calibrator = calibrators[method]
     p_q, y_q = _zone_proba(conf_fit, preproc, classifier, beta)
-    p_alpha, _ = _zone_proba(conf_choice, preproc, classifier, beta)
+    p_alpha, y_alpha = _zone_proba(conf_choice, preproc, classifier, beta)
     p_q, p_alpha = (calibrator.predict(p) for p in (p_q, p_alpha))
     rows = []
     for alpha in ALPHAS:
@@ -439,6 +473,13 @@ def run_workflow(splits: dict[str, pd.DataFrame], params: dict, output: Path) ->
     p_eval_before = p_eval.copy()
     p_eval = calibrator.predict(p_eval)
     for row in rows:
+        # Reporting only: labels cannot influence the already frozen alpha.
+        row["choice"] = coverage_summary(
+            prediction_membership(p_alpha, row["quantiles"])
+            if row["status"] == "eligible"
+            else None,
+            y_alpha,
+        )
         if row["status"] == "eligible":
             row["evaluation"] = evaluate_sets(
                 prediction_membership(p_eval, row["quantiles"]), y_eval
@@ -503,6 +544,20 @@ def run_workflow(splits: dict[str, pd.DataFrame], params: dict, output: Path) ->
         coverage = metrics.get("coverage_by_class", {})
         lines.append(
             f"| {row['alpha']} | {row['status']} | {row.get('selection_review_rate', '—')} | {coverage.get('0', '—')} | {coverage.get('1', '—')} | {metrics.get('review_rate', '—')} | {metrics.get('automation_rate', '—')} | {metrics.get('automatic_error_rate', '—')} |"
+        )
+    lines.extend(
+        [
+            "",
+            "Couvertures du bloc de choix : descriptives, calculées après la décision d'alpha.",
+            "None signifie classe absente ou alpha inapplicable ; aucun taux n'est imputé.",
+            "| alpha | statut | fraudes choix | légitimes choix | couverture choix 0 | couverture choix 1 |",
+            "|---:|---|---:|---:|---:|---:|",
+        ]
+    )
+    for row in rows:
+        choice = row["choice"]
+        lines.append(
+            f"| {row['alpha']} | {row['status']} | {choice['fraud_count']} | {choice['class_counts']['0']} | {choice['coverage_by_class']['0']} | {choice['coverage_by_class']['1']} |"
         )
     lines.extend(
         [
@@ -573,6 +628,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.local_report_only:
             splits, _ = load_final_zones(args.source, record)
             result = run_workflow(splits, params, args.output_dir)
+            record_choice_metrics(result, record)
         else:
             import mlflow
 
@@ -591,6 +647,7 @@ def main(argv: list[str] | None = None) -> int:
                 splits, source_digest = load_final_zones(args.source, record)
                 mlflow.set_tag("data_sha256", source_digest)
                 result = run_workflow(splits, params, args.output_dir)
+                record_choice_metrics(result, record)
                 mlflow.log_params(
                     {**params, "seed": SEED, "calibrator": result["calibrator"]}
                 )
@@ -613,7 +670,13 @@ def main(argv: list[str] | None = None) -> int:
                             {
                                 f"alpha_{row['alpha']}_{key}": value
                                 for key, value in metrics.items()
-                                if key != "coverage_by_class" and value is not None
+                                if key
+                                in {
+                                    "review_rate",
+                                    "automation_rate",
+                                    "automatic_error_rate",
+                                }
+                                and value is not None
                             }
                         )
                         mlflow.log_metrics(
