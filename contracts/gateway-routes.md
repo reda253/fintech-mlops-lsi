@@ -21,7 +21,7 @@ Spring Cloud Gateway, reactive (D31). Port 8080. Traefik sends `fintech.local/ap
 - **JWT:** validate signature and expiry against auth-service JWKS (cached), then forward the `Authorization` header unchanged. Each service re-validates it (D6).
 - **Timeouts:** 1 s connect, 3 s response. On timeout or downstream failure, return `503` Problem Details. No retry at the gateway (Traefik retries, §9.6).
 - **Connection pool:** max lifetime 30 s, so traffic moves to new pods after scale-up (§6.11).
-- **CORS:** allow origin `https://fintech.local` (and `http://localhost:5173` in dev).
+- **CORS:** allow origin `https://fintech.local` (and `http://localhost:5173` in dev), set by `CORS_ALLOWED_ORIGINS`. Preflights are answered before authentication. No credentials (Bearer header, refresh token in the body). Exposed headers: `X-Correlation-Id`, `Location`, `Retry-After`.
 
 ## Role matrix (§3.8), enforced in each service with `@PreAuthorize`
 
