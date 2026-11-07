@@ -46,12 +46,13 @@ curl.exe -i http://localhost:8088/actuator/prometheus
 curl.exe -i http://localhost:8088/api/v1/customers
 ```
 
-Resultat attendu sans JWT : HTTP 401. La configuration ProbeSecurityConfig
-autorise uniquement GET sur les deux chemins exacts des sondes et conserve
-l'authentification JWT ailleurs. Ce n'est pas encore la matrice complete des
-roles et des routes publiques du projet, qui reste a integrer avec P1.
-Le test ProbeSecurityTest couvre les sondes publiques et quatre chemins
-proteges. Il est execute par Maven lors de la construction Docker.
+Resultat attendu sans JWT : HTTP 401. La configuration GatewaySecurityConfig
+autorise sans JWT uniquement GET sur les deux chemins exacts des sondes et
+POST sur `/api/v1/auth/login` et `/api/v1/auth/refresh`, et conserve
+l'authentification JWT ailleurs. Les roles sont verifies par chaque service.
+Le test GatewaySecurityTest couvre les sondes, le passage de login/refresh
+jusqu'a un faux auth-service, et les chemins proteges. Il est execute par
+Maven lors de la construction Docker.
 
 ## Construction et scan en CI
 
