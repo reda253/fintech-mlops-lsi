@@ -127,7 +127,7 @@ curl.exe -i http://localhost:8089/actuator/prometheus
 | --- | --- |
 | GET /actuator/health/liveness | HTTP 200, status UP |
 | GET /actuator/health/readiness | HTTP 200, status UP |
-| GET /actuator/prometheus | HTTP 401, challenge Bearer |
+| GET /actuator/prometheus | HTTP 401, challenge Bearer (avant D43 ; attendu depuis : HTTP 200) |
 
 La configuration inclut readinessState et db dans la readiness, uniquement
 livenessState dans la liveness. La reaction lors d'une panne DB reste a tester.

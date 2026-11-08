@@ -15,6 +15,7 @@ import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.boot.micrometer.metrics.test.autoconfigure.AutoConfigureMetrics;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.test.web.server.LocalServerPort;
 import org.springframework.test.context.DynamicPropertyRegistry;
@@ -28,6 +29,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * A JDK HttpServer stands in for auth-service so we can see a public request actually reach it.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
+// Tests disable metrics export by default, which removes /actuator/prometheus; turn it back on.
+@AutoConfigureMetrics
 class GatewaySecurityTest {
 
     private static final String TOKENS = "{\"accessToken\":\"a\",\"refreshToken\":\"r\"}";
@@ -77,9 +80,17 @@ class GatewaySecurityTest {
         assertUnauthorized(send(postJson("/api/v1/auth/users", "{}")));
     }
 
+    /** Prometheus scrapes without a token; Traefik never routes /actuator/** from outside. */
+    @Test
+    void prometheusScrapeIsAvailableWithoutAuthentication() throws Exception {
+        HttpResponse<String> response = send(get("/actuator/prometheus"));
+        assertEquals(200, response.statusCode());
+        assertTrue(response.body().contains("application=\"api-gateway\""), "metrics tagged with the service name");
+        assertUnauthorized(send(postJson("/actuator/prometheus", "{}")));
+    }
+
     @ParameterizedTest
-    @ValueSource(strings = {"/actuator/health", "/actuator/info",
-            "/actuator/prometheus", "/api/v1/customers"})
+    @ValueSource(strings = {"/actuator/health", "/actuator/info", "/api/v1/customers"})
     void otherEndpointsStillRequireAuthentication(String path) throws Exception {
         assertUnauthorized(send(get(path)));
     }

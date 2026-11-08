@@ -24,6 +24,8 @@ public class GatewaySecurityConfig {
                         .pathMatchers(HttpMethod.GET,
                                 "/actuator/health/liveness",
                                 "/actuator/health/readiness").permitAll()
+                        // Prometheus scrapes without a token; never routed from outside (D43).
+                        .pathMatchers(HttpMethod.GET, "/actuator/prometheus").permitAll()
                         // No token exists yet at these two calls (auth-service.yaml: security: []).
                         .pathMatchers(HttpMethod.POST,
                                 "/api/v1/auth/login",
