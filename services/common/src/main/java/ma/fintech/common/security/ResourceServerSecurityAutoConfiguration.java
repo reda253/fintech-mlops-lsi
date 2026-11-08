@@ -38,9 +38,9 @@ public class ResourceServerSecurityAutoConfiguration {
     static final String[] PROBE_PATHS = {"/actuator/health/liveness", "/actuator/health/readiness"};
 
     /**
-     * Prometheus scrapes without a token. Not reachable from outside: Traefik only routes
-     * {@code /api/**}, the gateway never routes {@code /actuator/**}, and NetworkPolicies limit
-     * direct access to the monitoring namespace (D43). The metrics hold no secrets.
+     * Prometheus scrapes without a token (D43). The gateway never routes {@code /actuator/**};
+     * the Ingress (only {@code /api/**}) and a NetworkPolicy (monitoring namespace only) must keep
+     * the port internal. The metrics hold no secrets.
      */
     static final String SCRAPE_PATH = "/actuator/prometheus";
 
