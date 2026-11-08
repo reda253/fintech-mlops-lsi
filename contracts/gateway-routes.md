@@ -6,22 +6,22 @@ Spring Cloud Gateway, reactive (D31). Port 8080. Traefik sends `fintech.local/ap
 
 | Path | Target | Notes |
 |---|---|---|
-| `/api/v1/auth/**` | auth-service:8081 | `/login` and `/refresh` are public; `/login` is rate-limited in memory (brute-force protection) |
+| `/api/v1/auth/**` | auth-service:8081 | `/login` and `/refresh` are public; `/login` is rate-limited in memory per client IP (brute-force protection, D42): `429` Problem Details + `Retry-After` |
 | `/api/v1/customers/**` | customer-service:8082 | |
 | `/api/v1/transactions/**` | transaction-service:8083 | **No rate limit** (it would skew load tests) |
 | `/api/v1/risk/**` | risk-service:8084 | |
-| `/api/v1/notifications/**` | notification-service:8085 | `/stream` is SSE: long response timeout, no buffering |
+| `/api/v1/notifications/**` | notification-service:8085 | `/stream` is SSE: own route (`notifications-stream`, matched first) with the response timeout off, no buffering. Auth by `Authorization` header (D37) |
 | `/api/v1/audit/**` | audit-service:8086 | |
 | `/api/v1/ml/**` | ml-service:8000 | Read-only model info, performance and visualisations |
 
 **Never routed:** `/internal/**`, `/predict`, `/.well-known/jwks.json`, `/actuator/**`. They are also blocked by NetworkPolicies (§6.12). e2e scenario 7 checks that `/predict` returns `404` through the Ingress.
 
 ## Cross-cutting filters
-- **Correlation id:** generate `X-Correlation-Id` (UUID) if absent, forward it, and return it on the response.
+- **Correlation id:** generate `X-Correlation-Id` (UUID) if absent or not a UUID, forward it, and return it on every response, including 401/403.
 - **JWT:** validate signature and expiry against auth-service JWKS (cached), then forward the `Authorization` header unchanged. Each service re-validates it (D6).
 - **Timeouts:** 1 s connect, 3 s response. On timeout or downstream failure, return `503` Problem Details. No retry at the gateway (Traefik retries, §9.6).
 - **Connection pool:** max lifetime 30 s, so traffic moves to new pods after scale-up (§6.11).
-- **CORS:** allow origin `https://fintech.local` (and `http://localhost:5173` in dev).
+- **CORS:** allow origin `https://fintech.local` (and `http://localhost:5173` in dev), set by `CORS_ALLOWED_ORIGINS`. Preflights are answered before authentication. No credentials (Bearer header, refresh token in the body). Exposed headers: `X-Correlation-Id`, `Location`, `Retry-After`.
 
 ## Role matrix (§3.8), enforced in each service with `@PreAuthorize`
 
