@@ -10,7 +10,7 @@ Spring Cloud Gateway, reactive (D31). Port 8080. Traefik sends `fintech.local/ap
 | `/api/v1/customers/**` | customer-service:8082 | |
 | `/api/v1/transactions/**` | transaction-service:8083 | **No rate limit** (it would skew load tests) |
 | `/api/v1/risk/**` | risk-service:8084 | |
-| `/api/v1/notifications/**` | notification-service:8085 | `/stream` is SSE: long response timeout, no buffering |
+| `/api/v1/notifications/**` | notification-service:8085 | `/stream` is SSE: own route (`notifications-stream`, matched first) with the response timeout off, no buffering. Auth by `Authorization` header (D37) |
 | `/api/v1/audit/**` | audit-service:8086 | |
 | `/api/v1/ml/**` | ml-service:8000 | Read-only model info, performance and visualisations |
 

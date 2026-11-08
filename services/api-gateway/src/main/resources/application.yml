@@ -30,6 +30,15 @@ spring:
             - id: risk
               uri: ${RISK_URI:http://localhost:8084}
               predicates: [ "Path=/api/v1/risk/**" ]
+            # SSE: one long-lived response. The response timeout (time to the response headers)
+            # is off here, or a stream whose headers wait for the first event gets a 503.
+            # order -1 so it wins over the generic notifications route below.
+            - id: notifications-stream
+              uri: ${NOTIFICATION_URI:http://localhost:8085}
+              order: -1
+              predicates: [ "Method=GET", "Path=/api/v1/notifications/stream" ]
+              metadata:
+                response-timeout: -1
             - id: notifications
               uri: ${NOTIFICATION_URI:http://localhost:8085}
               predicates: [ "Path=/api/v1/notifications/**" ]
