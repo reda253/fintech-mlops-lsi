@@ -46,6 +46,11 @@ management:
     health:
       probes:
         enabled: true           # /actuator/health/liveness and /readiness
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db  # never rabbit: the outbox buffers events while the broker is down
   health:
     livenessstate:
       enabled: true
