@@ -6,7 +6,7 @@ Spring Cloud Gateway, reactive (D31). Port 8080. Traefik sends `fintech.local/ap
 
 | Path | Target | Notes |
 |---|---|---|
-| `/api/v1/auth/**` | auth-service:8081 | `/login` and `/refresh` are public; `/login` is rate-limited in memory (brute-force protection) |
+| `/api/v1/auth/**` | auth-service:8081 | `/login` and `/refresh` are public; `/login` is rate-limited in memory per client IP (brute-force protection, D42): `429` Problem Details + `Retry-After` |
 | `/api/v1/customers/**` | customer-service:8082 | |
 | `/api/v1/transactions/**` | transaction-service:8083 | **No rate limit** (it would skew load tests) |
 | `/api/v1/risk/**` | risk-service:8084 | |

@@ -1,0 +1,6 @@
+# Test-only overrides, layered on top of src/main/resources/application.yml.
+# Tests send many logins from 127.0.0.1; only LoginRateLimitTest exercises the real limit.
+gateway:
+  rate-limit:
+    login:
+      capacity: 1000

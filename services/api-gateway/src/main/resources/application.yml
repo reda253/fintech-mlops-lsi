@@ -45,6 +45,10 @@ gateway:
   cors:
     # Comma-separated. Prod: the Ingress host; dev: the Vite server.
     allowed-origins: ${CORS_ALLOWED_ORIGINS:https://fintech.local,http://localhost:5173}
+  rate-limit:
+    login:                      # per client IP and per gateway pod (D42)
+      capacity: ${LOGIN_RATE_LIMIT_CAPACITY:5}   # burst of attempts
+      period: ${LOGIN_RATE_LIMIT_PERIOD:1m}      # time to get the whole burst back
 
 server:
   port: 8080
