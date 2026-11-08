@@ -5,6 +5,8 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicReference;
 
 import com.sun.net.httpserver.Headers;
@@ -20,6 +22,7 @@ final class FakeDownstream implements AutoCloseable {
     private final HttpServer server;
     private final String body;
     private final AtomicReference<Headers> lastRequestHeaders = new AtomicReference<>();
+    private final List<String> receivedPaths = new CopyOnWriteArrayList<>();
     private volatile Duration delay = Duration.ZERO;
 
     FakeDownstream(String body) {
@@ -31,6 +34,7 @@ final class FakeDownstream implements AutoCloseable {
         }
         server.createContext("/", exchange -> {
             lastRequestHeaders.set(exchange.getRequestHeaders());
+            receivedPaths.add(exchange.getRequestURI().getRawPath());
             sleep(delay);
             byte[] bytes = this.body.getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
@@ -53,6 +57,11 @@ final class FakeDownstream implements AutoCloseable {
 
     String body() {
         return body;
+    }
+
+    /** Raw path of every request that reached this server, in order. */
+    List<String> receivedPaths() {
+        return List.copyOf(receivedPaths);
     }
 
     /** Value of a header on the last request that reached this server, or null. */

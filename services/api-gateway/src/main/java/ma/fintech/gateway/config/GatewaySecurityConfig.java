@@ -23,7 +23,7 @@ public class GatewaySecurityConfig {
         return http
                 // Stateless Bearer-token API: no session or auth cookie for a CSRF attack to ride on.
                 // Left on, Spring rejects every POST without a CSRF token with 403.
-                .csrf(ServerHttpSecurity.CsrfSpec::disable)
+                .csrf(ServerHttpSecurity.CsrfSpec::disable) // NOSONAR java:S4502 stateless Bearer-only API, see above
                 // Uses the CorsConfigurationSource bean (CorsConfig). Answers preflights itself,
                 // before the authorization rules below.
                 .cors(Customizer.withDefaults())
