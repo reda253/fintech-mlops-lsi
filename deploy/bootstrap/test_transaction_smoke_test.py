@@ -8,9 +8,14 @@ from transaction_compose_ci import assert_isolated
 from transaction_smoke_test import assert_stays_ready, request, verify, wait_for_checks
 
 
+METRICS = '# HELP jvm_threads_live_threads\njvm_threads_live_threads{application="transaction-service"} 20.0\n'
+
+
 def response_for_path(base_url, path, method="GET"):
     if method == "GET" and path.endswith(("/liveness", "/readiness")):
         return 200, {}, {"status": "UP"}
+    if method == "GET" and path == "/actuator/prometheus":
+        return 200, {}, METRICS
     return 401, {"WWW-Authenticate": "Bearer"}, {"status": 401}
 
 
@@ -18,7 +23,7 @@ class SmokeTests(unittest.TestCase):
     @patch("transaction_smoke_test.request", side_effect=response_for_path)
     def test_healthy_probes_and_protected_routes(self, mocked):
         verify("http://localhost:8090")
-        self.assertEqual(mocked.call_count, 7)
+        self.assertEqual(mocked.call_count, 9)
 
     def test_dependency_outage_keeps_liveness_up(self):
         def outage(base_url, path, method="GET"):
@@ -29,14 +34,36 @@ class SmokeTests(unittest.TestCase):
         with patch("transaction_smoke_test.request", side_effect=outage):
             verify("http://localhost:8090", "DOWN")
 
-    def test_public_prometheus_is_rejected(self):
-        def insecure(base_url, path, method="GET"):
-            if path == "/actuator/prometheus":
-                return 200, {}, {}
+    def test_protected_prometheus_is_rejected(self):
+        """A 401 on the scrape path would leave Prometheus blind (D43)."""
+        def blind(base_url, path, method="GET"):
+            if path == "/actuator/prometheus" and method == "GET":
+                return 401, {"WWW-Authenticate": "Bearer"}, {"status": 401}
             return response_for_path(base_url, path, method)
 
-        with patch("transaction_smoke_test.request", side_effect=insecure):
-            with self.assertRaisesRegex(AssertionError, "401 Bearer"):
+        with patch("transaction_smoke_test.request", side_effect=blind):
+            with self.assertRaisesRegex(AssertionError, "prometheus"):
+                verify("http://localhost")
+
+    def test_open_actuator_env_is_rejected(self):
+        """Only the probes and the scrape are open; the rest of the actuator still needs a token."""
+        def leak(base_url, path, method="GET"):
+            if path == "/actuator/env":
+                return 200, {}, {"propertySources": []}
+            return response_for_path(base_url, path, method)
+
+        with patch("transaction_smoke_test.request", side_effect=leak):
+            with self.assertRaisesRegex(AssertionError, "/actuator/env: expected HTTP 401"):
+                verify("http://localhost")
+
+    def test_open_scrape_for_post_is_rejected(self):
+        def leak(base_url, path, method="GET"):
+            if path == "/actuator/prometheus":
+                return 200, {}, METRICS
+            return response_for_path(base_url, path, method)
+
+        with patch("transaction_smoke_test.request", side_effect=leak):
+            with self.assertRaisesRegex(AssertionError, "POST /actuator/prometheus"):
                 verify("http://localhost")
 
     @patch("transaction_smoke_test.request", return_value=(503, {}, {"status": "DOWN"}))
@@ -73,6 +100,13 @@ class HttpTests(unittest.TestCase):
     def setUpClass(cls):
         class Handler(BaseHTTPRequestHandler):
             def do_GET(self):
+                if self.path == "/metrics":
+                    self.send_response(200)
+                    self.send_header("Content-Type", "text/plain;version=0.0.4")
+                    self.send_header("X-Correlation-Id", self.headers["X-Correlation-Id"])
+                    self.end_headers()
+                    self.wfile.write(b"jvm_threads_live_threads 20.0\n")
+                    return
                 self.send_response(401 if self.path == "/protected" else 200)
                 self.send_header("Content-Type", "application/json")
                 if self.path != "/missing-correlation":
@@ -96,6 +130,9 @@ class HttpTests(unittest.TestCase):
 
     def test_success_and_correlation_header(self):
         self.assertEqual(request(self.url, "/health")[2], {"status": "UP"})
+
+    def test_plain_text_body_is_returned_as_text(self):
+        self.assertEqual(request(self.url, "/metrics")[2], "jvm_threads_live_threads 20.0\n")
 
     def test_http_error_body_is_read(self):
         self.assertEqual(request(self.url, "/protected")[0], 401)

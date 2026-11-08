@@ -42,13 +42,14 @@ fonctionne dans cette configuration. Les performances restent a mesurer.
 Verifier egalement que les autres endpoints exigent toujours un JWT :
 
 ```cmd
-curl.exe -i http://localhost:8088/actuator/prometheus
+curl.exe -i http://localhost:8088/actuator/env
 curl.exe -i http://localhost:8088/api/v1/customers
 ```
 
-Resultat attendu sans JWT : HTTP 401. La configuration GatewaySecurityConfig
-autorise sans JWT uniquement GET sur les deux chemins exacts des sondes et
-POST sur `/api/v1/auth/login` et `/api/v1/auth/refresh`, et conserve
+Resultat attendu sans JWT : HTTP 401. `/actuator/prometheus` repond HTTP 200
+sans JWT, pour le scraping Prometheus (D43). La configuration GatewaySecurityConfig
+autorise sans JWT uniquement GET sur les deux chemins exacts des sondes et sur
+`/actuator/prometheus`, et POST sur `/api/v1/auth/login` et `/api/v1/auth/refresh`, et conserve
 l'authentification JWT ailleurs. Les roles sont verifies par chaque service.
 Le test GatewaySecurityTest couvre les sondes, le passage de login/refresh
 jusqu'a un faux auth-service, et les chemins proteges. Il est execute par
@@ -82,6 +83,7 @@ et liveness/readiness HTTP 200 apres correction des reponses initiales 401.
 La verification manuelle sans JWT confirme HTTP 401 avec un challenge Bearer
 sur `/actuator/prometheus` et `/api/v1/customers`. Les deux sondes restent
 accessibles sans JWT et les deux endpoints controles restent proteges.
+Depuis D43, `/actuator/prometheus` est volontairement ouvert sans JWT.
 Le resultat detaille du job de scan Trivy de cette image reste a confirmer.
 Le scan filesystem de la CI ne remplace pas un
 scan des paquets presents dans l'image Docker.

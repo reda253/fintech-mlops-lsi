@@ -20,7 +20,10 @@ def request(base_url, path, method="GET"):
     except HTTPError as error:
         response = error
     with response:
-        body = json.loads(response.read())
+        raw = response.read()
+        # JSON for probes and Problem Details; the Prometheus scrape is plain text.
+        is_json = "json" in response.headers.get("Content-Type", "")
+        body = json.loads(raw) if is_json else raw.decode("utf-8", "replace")
         if response.headers.get("X-Correlation-Id") != correlation_id:
             raise AssertionError(f"{method} {path}: correlation ID not preserved")
         return response.status, response.headers, body
@@ -34,17 +37,22 @@ def verify(base_url, expected_readiness="UP"):
     expected_status = 200 if expected_readiness == "UP" else 503
     if status != expected_status or body.get("status") != expected_readiness:
         raise AssertionError(f"Readiness must be HTTP {expected_status} {expected_readiness}")
+    # Prometheus scrapes without a token (D43); the network keeps it internal.
+    status, _, body = request(base_url, "/actuator/prometheus")
+    if status != 200 or not isinstance(body, str) or "jvm_" not in body or 'application="' not in body:
+        raise AssertionError("GET /actuator/prometheus: expected HTTP 200 with tagged metrics (D43)")
     for method, path in (
-        ("GET", "/actuator/prometheus"),
         ("GET", "/actuator/health"),
+        ("GET", "/actuator/env"),
         ("GET", "/api/v1/transactions"),
+        ("POST", "/actuator/prometheus"),
         ("POST", "/actuator/health/liveness"),
         ("POST", "/actuator/health/readiness"),
     ):
         status, headers, body = request(base_url, path, method)
         if status != 401 or not headers.get("WWW-Authenticate", "").startswith("Bearer"):
             raise AssertionError(f"{method} {path}: expected HTTP 401 Bearer")
-        if body.get("status") != 401:
+        if not isinstance(body, dict) or body.get("status") != 401:
             raise AssertionError(f"{method} {path}: expected Problem Details status 401")
 
 
@@ -80,7 +88,7 @@ def main():
     parser.add_argument("--timeout", type=float, default=120)
     args = parser.parse_args()
     wait_for_checks(args.base_url, args.expected_readiness, args.timeout)
-    print(f"HTTP checks passed: readiness {args.expected_readiness}, liveness UP, protected routes 401")
+    print(f"HTTP checks passed: readiness {args.expected_readiness}, liveness UP, scrape 200, protected routes 401")
 
 
 if __name__ == "__main__":

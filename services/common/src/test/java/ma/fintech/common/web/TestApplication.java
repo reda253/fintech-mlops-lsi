@@ -33,7 +33,7 @@ class TestApplication {
     @RestController
     static class TestEndpoints {
 
-        @GetMapping({"/actuator/health/liveness", "/actuator/health/readiness"})
+        @GetMapping({"/actuator/health/liveness", "/actuator/health/readiness", "/actuator/prometheus"})
         Map<String, String> probe() {
             return Map.of("status", "UP");
         }

@@ -45,13 +45,13 @@ class ProbeSecurityTest {
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/actuator/health/liveness", "/actuator/health/readiness"})
+    @ValueSource(strings = {"/actuator/health/liveness", "/actuator/health/readiness", "/actuator/prometheus"})
     void probePathsAreAvailableWithoutJwt(String path) throws Exception {
         mvc.perform(get(path)).andExpect(status().isOk());
     }
 
     @ParameterizedTest
-    @ValueSource(strings = {"/actuator/health", "/actuator/prometheus",
+    @ValueSource(strings = {"/actuator/health", "/actuator/env",
             "/api/v1/customers", "/actuator/health/readiness/details"})
     void otherPathsStillRequireJwt(String path) throws Exception {
         mvc.perform(get(path)).andExpect(status().isUnauthorized());
@@ -70,7 +70,7 @@ class ProbeSecurityTest {
 
     @RestController
     static class TestEndpoints {
-        @GetMapping({"/actuator/health/liveness", "/actuator/health/readiness"})
+        @GetMapping({"/actuator/health/liveness", "/actuator/health/readiness", "/actuator/prometheus"})
         Map<String, String> probe() {
             return Map.of("status", "UP");
         }

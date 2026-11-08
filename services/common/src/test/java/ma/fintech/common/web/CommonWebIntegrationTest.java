@@ -58,9 +58,22 @@ class CommonWebIntegrationTest {
     class Security {
 
         @ParameterizedTest
-        @ValueSource(strings = {"/actuator/health/liveness", "/actuator/health/readiness"})
-        void probesAreOpen(String path) throws Exception {
+        @ValueSource(strings = {"/actuator/health/liveness", "/actuator/health/readiness", "/actuator/prometheus"})
+        void probesAndScrapeAreOpen(String path) throws Exception {
             mvc.perform(get(path)).andExpect(status().isOk());
+        }
+
+        /** Only the exact probe and scrape paths are open, not the rest of the actuator. */
+        @ParameterizedTest
+        @ValueSource(strings = {"/actuator/health", "/actuator/env", "/actuator/prometheus/extra"})
+        void otherActuatorPathsNeedToken(String path) throws Exception {
+            mvc.perform(get(path)).andExpect(status().isUnauthorized());
+        }
+
+        /** Prometheus scrapes with GET only. */
+        @Test
+        void scrapePathIsOpenForGetOnly() throws Exception {
+            mvc.perform(post("/actuator/prometheus")).andExpect(status().isUnauthorized());
         }
 
         @Test

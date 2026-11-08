@@ -111,7 +111,7 @@ curl.exe -i http://localhost:8090/actuator/health/readiness
 curl.exe -i http://localhost:8090/actuator/prometheus
 ```
 
-Attendu : conteneur healthy, sondes HTTP 200 UP, Prometheus sans JWT HTTP 401.
+Attendu : conteneur healthy, sondes HTTP 200 UP, Prometheus sans JWT HTTP 200 (D43).
 Ne jamais partager `config` sans `--quiet` : la sortie peut contenir les
 secrets du fichier env. Le fichier reste obligatoire ; a defaut de variable,
 Compose attend `.env.transaction.local` (ignore par Git).

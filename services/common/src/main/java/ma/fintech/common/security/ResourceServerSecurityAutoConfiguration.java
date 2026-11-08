@@ -37,6 +37,13 @@ public class ResourceServerSecurityAutoConfiguration {
     /** Kubernetes probes call these without a token (§6.7). */
     static final String[] PROBE_PATHS = {"/actuator/health/liveness", "/actuator/health/readiness"};
 
+    /**
+     * Prometheus scrapes without a token (D43). The gateway never routes {@code /actuator/**};
+     * the Ingress (only {@code /api/**}) and a NetworkPolicy (monitoring namespace only) must keep
+     * the port internal. The metrics hold no secrets.
+     */
+    static final String SCRAPE_PATH = "/actuator/prometheus";
+
     @Bean
     @ConditionalOnMissingBean
     JwtAuthenticationConverter jwtAuthenticationConverter() {
@@ -70,6 +77,7 @@ public class ResourceServerSecurityAutoConfiguration {
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(rules -> {
                     rules.requestMatchers(HttpMethod.GET, PROBE_PATHS).permitAll();
+                    rules.requestMatchers(HttpMethod.GET, SCRAPE_PATH).permitAll();
                     serviceRules.orderedStream().forEach(r -> r.configure(rules));
                     rules.anyRequest().authenticated();
                 })
