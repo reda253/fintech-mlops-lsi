@@ -1,6 +1,9 @@
 spring:
   application:
     name: api-gateway
+  lifecycle:
+    # K8s grace period is 30 s and preStop takes 5 s: finish in-flight requests before SIGKILL (§6.8).
+    timeout-per-shutdown-phase: 20s
 
   security:
     oauth2:
