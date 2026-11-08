@@ -31,8 +31,9 @@ public final class CorrelationId {
     /**
      * Returns the incoming value when it is a UUID, otherwise a new one. The header comes from the
      * client and ends up in every log line, so anything else is dropped (log injection).
+     * Public so the reactive gateway filter applies the same rule as the servlet filter.
      */
-    static String acceptOrGenerate(String incoming) {
+    public static String acceptOrGenerate(String incoming) {
         return incoming != null && VALID.matcher(incoming).matches()
                 ? incoming
                 : UUID.randomUUID().toString();

@@ -1,16 +1,11 @@
 package ma.fintech.gateway;
 
-import java.io.IOException;
-import java.io.OutputStream;
-import java.net.InetSocketAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
-import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 
-import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
@@ -25,13 +20,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Which requests the gateway lets through without a token.
- * A JDK HttpServer stands in for auth-service so we can see a public request actually reach it.
+ * A {@link FakeDownstream} stands in for auth-service so we can see a public request actually reach it.
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 class GatewaySecurityTest {
 
-    private static final String TOKENS = "{\"accessToken\":\"a\",\"refreshToken\":\"r\"}";
-    private static final HttpServer FAKE_AUTH = startFakeAuth();
+    private static final FakeDownstream FAKE_AUTH =
+            new FakeDownstream("{\"accessToken\":\"a\",\"refreshToken\":\"r\"}");
 
     @LocalServerPort
     private int port;
@@ -42,12 +37,12 @@ class GatewaySecurityTest {
 
     @DynamicPropertySource
     static void routeAuthToFake(DynamicPropertyRegistry registry) {
-        registry.add("AUTH_URI", () -> "http://localhost:" + FAKE_AUTH.getAddress().getPort());
+        registry.add("AUTH_URI", FAKE_AUTH::uri);
     }
 
     @AfterAll
     static void stopFakeAuth() {
-        FAKE_AUTH.stop(0);
+        FAKE_AUTH.close();
     }
 
     @ParameterizedTest
@@ -63,7 +58,7 @@ class GatewaySecurityTest {
     void loginAndRefreshReachAuthServiceWithoutToken(String path) throws Exception {
         HttpResponse<String> response = send(postJson(path, "{\"username\":\"u\",\"password\":\"p\"}"));
         assertEquals(200, response.statusCode());
-        assertEquals(TOKENS, response.body());
+        assertEquals(FAKE_AUTH.body(), response.body());
     }
 
     @Test
@@ -84,8 +79,21 @@ class GatewaySecurityTest {
         assertUnauthorized(send(get(path)));
     }
 
+    /** A token is present but unreadable: the resource-server entry point answers, not the default one. */
+    @Test
+    void malformedTokenGives401ProblemDetails() throws Exception {
+        HttpResponse<String> response = send(request("/api/v1/customers")
+                .header("Authorization", "Bearer not-a-jwt")
+                .GET()
+                .build());
+
+        assertUnauthorized(response);
+        assertTrue(response.headers().firstValue("WWW-Authenticate").orElse("")
+                .contains("error=\"invalid_token\""));
+    }
+
     private static void assertUnauthorized(HttpResponse<String> response) {
-        assertEquals(401, response.statusCode());
+        ProblemAssertions.assertProblem(response, 401, response.uri().getPath());
         assertTrue(response.headers().firstValue("WWW-Authenticate").orElse("").startsWith("Bearer"));
     }
 
@@ -108,24 +116,5 @@ class GatewaySecurityTest {
 
     private HttpResponse<String> send(HttpRequest request) throws Exception {
         return client.send(request, HttpResponse.BodyHandlers.ofString());
-    }
-
-    /** Answers any request under /api/v1/auth with a fixed token pair. */
-    private static HttpServer startFakeAuth() {
-        try {
-            HttpServer server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
-            server.createContext("/api/v1/auth", exchange -> {
-                byte[] body = TOKENS.getBytes(StandardCharsets.UTF_8);
-                exchange.getResponseHeaders().add("Content-Type", "application/json");
-                exchange.sendResponseHeaders(200, body.length);
-                try (OutputStream out = exchange.getResponseBody()) {
-                    out.write(body);
-                }
-            });
-            server.start();
-            return server;
-        } catch (IOException e) {
-            throw new IllegalStateException("cannot start fake auth-service", e);
-        }
     }
 }

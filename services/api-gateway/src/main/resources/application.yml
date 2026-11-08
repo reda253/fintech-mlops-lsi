@@ -30,6 +30,15 @@ spring:
             - id: risk
               uri: ${RISK_URI:http://localhost:8084}
               predicates: [ "Path=/api/v1/risk/**" ]
+            # SSE: one long-lived response. The response timeout (time to the response headers)
+            # is off here, or a stream whose headers wait for the first event gets a 503.
+            # order -1 so it wins over the generic notifications route below.
+            - id: notifications-stream
+              uri: ${NOTIFICATION_URI:http://localhost:8085}
+              order: -1
+              predicates: [ "Method=GET", "Path=/api/v1/notifications/stream" ]
+              metadata:
+                response-timeout: -1
             - id: notifications
               uri: ${NOTIFICATION_URI:http://localhost:8085}
               predicates: [ "Path=/api/v1/notifications/**" ]
@@ -40,6 +49,15 @@ spring:
               uri: ${ML_URI:http://localhost:8000}
               predicates: [ "Path=/api/v1/ml/**" ]
           # /internal/** and /predict are intentionally NOT routed (§3.4).
+
+gateway:
+  cors:
+    # Comma-separated. Prod: the Ingress host; dev: the Vite server.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:https://fintech.local,http://localhost:5173}
+  rate-limit:
+    login:                      # per client IP and per gateway pod (D42)
+      capacity: ${LOGIN_RATE_LIMIT_CAPACITY:5}   # burst of attempts
+      period: ${LOGIN_RATE_LIMIT_PERIOD:1m}      # time to get the whole burst back
 
 server:
   port: 8080
