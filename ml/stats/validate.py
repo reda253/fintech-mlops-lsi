@@ -269,8 +269,13 @@ def select_model(
     comparisons: list[dict],
     friedman_p: float,
     latencies: dict[str, float],
+    effect_threshold: float | None = None,
 ) -> dict:
-    """Préselection P2 ; n'effectue aucune promotion automatique."""
+    """Préselection statistique ; aucune promotion automatique."""
+    if effect_threshold is not None and (
+        not np.isfinite(effect_threshold) or not 0 <= effect_threshold <= 1
+    ):
+        raise ValueError("effect_threshold doit être fini et dans [0, 1]")
     order = sorted(MODELS, key=lambda x: (-model_results[x]["mean_pr_auc"], x))
     first = order[0]
     by_pair = {frozenset((x["model_a"], x["model_b"])): x for x in comparisons}
@@ -292,11 +297,34 @@ def select_model(
         name for name in order[1:] if not superiority_demonstrated(name)
     ]
     if len(candidates) == 1:
+        if effect_threshold is None:
+            return {
+                "model": None,
+                "status": "effect_threshold_required",
+                "reason": "supériorité démontrée, mais seuil d'effet non négligeable non défini",
+                "candidates": [first],
+            }
+        runner = order[1]
+        pair = by_pair[frozenset((first, runner))]
+        lower_bound = (
+            pair["difference_ci95"][0]
+            if pair["model_a"] == first
+            else -pair["difference_ci95"][1]
+        )
+        if lower_bound >= effect_threshold:
+            return {
+                "model": first,
+                "status": "provisional",
+                "reason": "Holm, direction et borne inférieure de l'IC apparié satisfont le seuil d'effet post hoc",
+                "candidates": [first],
+                "sensitivity_max_effect_threshold": float(lower_bound),
+            }
         return {
             "model": None,
-            "status": "effect_threshold_required",
-            "reason": "supériorité démontrée, mais seuil d'effet non négligeable non défini",
-            "candidates": [first],
+            "status": "effect_threshold_not_met",
+            "reason": "borne inférieure de l'IC apparié sous le seuil d'effet post hoc ; sélection en attente",
+            "candidates": [first, runner],
+            "sensitivity_max_effect_threshold": float(lower_bound),
         }
     best_brier = min(model_results[name]["mean_brier"] for name in candidates)
     candidates = [
@@ -332,8 +360,13 @@ def validate(
     output_dir: Path,
     latency_path: Path | None = None,
     seed: int = SEED,
+    effect_threshold: float | None = None,
 ) -> dict:
     """Exécute l'analyse et écrit Markdown, JSON et PNG ; aucune donnée brute lue."""
+    if effect_threshold is not None and (
+        not np.isfinite(effect_threshold) or not 0 <= effect_threshold <= 1
+    ):
+        raise ValueError("effect_threshold doit être fini et dans [0, 1]")
     output_dir.mkdir(parents=True, exist_ok=True)
     matrix = repeats.pivot(index="repeat", columns="model", values=METRIC)[list(MODELS)]
     brier = repeats.pivot(index="repeat", columns="model", values="brier_score")[
@@ -417,7 +450,11 @@ def validate(
     figure.parent.mkdir(parents=True, exist_ok=True)
     diagram = critical_difference_plot(matrix, figure)
     selection = select_model(
-        model_results, comparisons, friedman_p, _latencies(latency_path)
+        model_results,
+        comparisons,
+        friedman_p,
+        _latencies(latency_path),
+        effect_threshold=effect_threshold,
     )
     result = {
         "primary_metric": METRIC,
@@ -427,6 +464,10 @@ def validate(
         "seed": seed,
         "bootstrap_resamples": N_RESAMPLES,
         "alpha": ALPHA,
+        "effect_threshold_pr_auc": effect_threshold,
+        "effect_threshold_provenance": "post_hoc"
+        if effect_threshold is not None
+        else None,
         "fold_rows_checked": len(folds),
         "friedman": {
             "statistic": friedman_statistic,
@@ -494,6 +535,24 @@ def write_report(result: dict, destination: Path) -> None:
             f"| {item['model_a']} − {item['model_b']} | {item['mean_difference']:.6f} | [{low:.6f}, {high:.6f}] | {item['rank_biserial']:.3f} | {raw} | {holm} |"
         )
     selected = result["selection"]
+    effect_threshold = result.get("effect_threshold_pr_auc")
+    if effect_threshold is not None:
+        lines += [
+            "",
+            f"Seuil d'effet non négligeable : {effect_threshold:.6f} point de PR-AUC. Décision **post hoc**, prise après observation du benchmark ; cette réanalyse n'est pas une confirmation indépendante.",
+        ]
+        bound = selected.get("sensitivity_max_effect_threshold")
+        if bound is not None and bound > 0:
+            leader = selected["candidates"][0]
+            leader_label = "XGBoost" if leader == "xgb" else leader
+            verb = (
+                "est retenu à titre provisoire"
+                if selected["model"] == leader
+                else "serait retenu à titre provisoire"
+            )
+            lines.append(
+                f"Sensibilité : {leader_label} {verb} pour tout seuil de 0 à {bound:.17g} inclus (≈ {bound:.4f}, borne inférieure de l'IC bootstrap apparié face au deuxième modèle). Au-delà, la sélection reste en attente."
+            )
     lines += [
         "",
         f"Sélection provisoire : {selected['model'] or 'en attente'} ({selected['reason']}). Aucune promotion automatique.",
@@ -517,7 +576,7 @@ def write_report(result: dict, destination: Path) -> None:
         "",
         "La barre CD est celle de Nemenyi, affichée à titre descriptif ; les conclusions reposent sur Wilcoxon–Holm.",
         "",
-        "Limites : 10 blocs seulement, un seul jeu Sparkov, plis stratifiés non temporels, dépendance résiduelle entre répétitions ; aucune conclusion sur la zone de test final. Le critère chiffré d'effet non négligeable reste à fixer avant sélection ; aucune promotion automatique. La latence p95 du pipeline complet n'est pas mesurée ici.",
+        "Limites : 10 blocs seulement, un seul jeu Sparkov, plis stratifiés non temporels, dépendance résiduelle entre répétitions ; aucune conclusion sur la zone de test final. Le seuil d'effet a été décidé post hoc ; aucune promotion automatique. La latence p95 du pipeline complet n'est pas mesurée ici.",
         "",
     ]
     destination.write_text("\n".join(lines), encoding="utf-8")
@@ -534,6 +593,12 @@ def main(argv: list[str] | None = None) -> int:
         help="Mesures externes model,p95_ms du pipeline complet",
     )
     parser.add_argument("--seed", type=int, default=SEED)
+    parser.add_argument(
+        "--effect-threshold",
+        type=float,
+        default=None,
+        help="Effet minimal en PR-AUC, décision post hoc explicitement fournie",
+    )
     parser.add_argument(
         "--mlflow",
         action="store_true",
@@ -553,6 +618,7 @@ def main(argv: list[str] | None = None) -> int:
         output_dir=args.output_dir,
         latency_path=args.latency_csv,
         seed=args.seed,
+        effect_threshold=args.effect_threshold,
     )
     if args.mlflow:
         import mlflow
@@ -586,6 +652,9 @@ def main(argv: list[str] | None = None) -> int:
                 mlflow.set_tag("git_commit", _git_commit())
                 mlflow.log_param("unit", "repeat_mean")
                 mlflow.log_param("seed", args.seed)
+                if args.effect_threshold is not None:
+                    mlflow.log_param("effect_threshold_pr_auc", args.effect_threshold)
+                    mlflow.set_tag("effect_threshold_provenance", "post_hoc")
                 mlflow.log_metric("friedman_p", result["friedman"]["p_value"])
                 mlflow.log_artifact(str(args.output_dir / "results.json"))
                 mlflow.log_artifact(str(args.output_dir / "stats_report.md"))

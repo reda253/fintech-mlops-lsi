@@ -240,3 +240,72 @@ def test_selection_checks_effect_direction_and_paired_ci(
         assert result["status"] == "effect_threshold_required"
     else:
         assert "supériorité non démontrée" in result["reason"]
+
+
+def test_effect_threshold_parameter_and_sensitivity(tmp_path):
+    repeat_path, fold_path = synthetic_csvs(tmp_path, distinct=True)
+    output = tmp_path / "with_threshold"
+    main(
+        [
+            "--repeat-means",
+            str(repeat_path),
+            "--fold-scores",
+            str(fold_path),
+            "--output-dir",
+            str(output),
+            "--effect-threshold",
+            "0.01",
+        ]
+    )
+    result = json.loads((output / "results.json").read_text(encoding="utf-8"))
+    selection = result["selection"]
+    assert result["effect_threshold_pr_auc"] == 0.01
+    assert result["effect_threshold_provenance"] == "post_hoc"
+    assert selection["model"] == "xgb"
+    assert selection["status"] == "provisional"
+    bound = selection["sensitivity_max_effect_threshold"]
+    assert bound > 0.01
+    assert (
+        select_model(
+            result["models"],
+            result["pairwise"],
+            result["friedman"]["p_value"],
+            {},
+            effect_threshold=bound,
+        )["model"]
+        == "xgb"
+    )
+    above_bound = select_model(
+        result["models"],
+        result["pairwise"],
+        result["friedman"]["p_value"],
+        {},
+        effect_threshold=bound + 1e-6,
+    )
+    assert above_bound["model"] is None
+    assert above_bound["status"] == "effect_threshold_not_met"
+    report = (output / "stats_report.md").read_text(encoding="utf-8")
+    assert "post hoc" in report
+    assert f"{bound:.17g}" in report
+    assert "XGBoost est retenu à titre provisoire" in report
+    assert "Aucune promotion automatique" in report
+
+
+@pytest.mark.parametrize("value", [-0.1, np.nan, np.inf, 1.1])
+def test_invalid_effect_threshold_rejected_before_output(tmp_path, value):
+    repeat_path, fold_path = synthetic_csvs(tmp_path, distinct=True)
+    output = tmp_path / "invalid_threshold"
+    with pytest.raises(ValueError, match="effect_threshold"):
+        main(
+            [
+                "--repeat-means",
+                str(repeat_path),
+                "--fold-scores",
+                str(fold_path),
+                "--output-dir",
+                str(output),
+                "--effect-threshold",
+                str(value),
+            ]
+        )
+    assert not output.exists()

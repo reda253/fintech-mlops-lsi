@@ -1,6 +1,6 @@
 # Proposition de clarification du protocole statistique P2 — issue #23
 
-**Statut : proposition à faire valider ; aucune règle nouvelle n'est adoptée.**
+**Statut : seuil d'effet décidé par Basma le 9 novembre 2026 (post hoc) ; départage Brier encore ouvert.**
 Rédigée le 5 novembre 2026, **après observation** du benchmark et de son
 rapport statistique. Cette chronologie interdit de présenter un seuil choisi
 maintenant comme préenregistré ou comme confirmation indépendante.
@@ -57,3 +57,23 @@ portée de la décision (exploratoire sur le benchmark actuel ou confirmatoire
 sur de nouvelles données). Ensuite seulement, aligner la documentation,
 `select_model`, ses tests et la description du modèle provisoire. Le rapport
 actuel et ses artefacts restent inchangés jusqu'à cette validation.
+
+
+## Décision partielle du 9 novembre 2026 — post hoc
+
+Basma fixe le seuil d'effet non négligeable à **0,01 point de PR-AUC**,
+après observation du benchmark. Cette décision correspond à l'option E1,
+mais **n'était pas préenregistrée** et ne démontre pas indépendamment
+l'intérêt métier du seuil. Le module reçoit la valeur par l'option CLI
+`--effect-threshold`, sans valeur chiffrée codée en dur.
+
+La borne inférieure de l'IC bootstrap apparié pour XGBoost − RandomForest
+est 0,023695277277932792 (≈ 0,0237). Le candidat XGBoost satisfait
+la règle statistique et le seuil de 0,01 ; il reste **provisoire**,
+sans promotion automatique. La sélection reste identique pour tout seuil
+non négatif jusqu'à cette borne incluse. Au-delà, la supériorité pratique
+selon ce critère n'est plus établie par cet IC.
+
+Le choix entre B1 et B2 pour le départage Brier reste **ouvert**. Les
+paragraphes précédents décrivent l'état antérieur à cette décision et ne
+doivent pas être lus comme un préenregistrement du seuil.
