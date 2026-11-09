@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import pairwise
 from math import ceil
+from numbers import Integral
 from pathlib import Path
 from uuid import uuid4
 
@@ -23,6 +24,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from scipy.special import logit
+from scipy.stats import binomtest
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import brier_score_loss
@@ -315,6 +317,42 @@ def coverage_summary(members: np.ndarray | None, y: np.ndarray) -> dict:
     }
 
 
+def exact_fraud_coverage_test(covered: int | None, total: int, alpha: float) -> dict:
+    """Diagnostic bilatéral ; famille fixe des trois alpha, jamais une sélection."""
+    if (
+        not isinstance(total, Integral)
+        or total < 0
+        or not 0 < alpha < 1
+        or (
+            covered is not None
+            and (not isinstance(covered, Integral) or not 0 <= covered <= total)
+        )
+    ):
+        raise ValueError("Effectifs de couverture ou alpha invalides")
+    result = {
+        "covered": covered,
+        "total": total,
+        "nominal_coverage": 1 - alpha,
+        "alternative": "two-sided",
+        "comparisons": 3,
+        "status": "unavailable",
+        "p_raw": None,
+        "p_bonferroni": None,
+        "ci95_clopper_pearson": None,
+    }
+    if covered is None or total == 0:
+        return result
+    test = binomtest(covered, total, p=1 - alpha, alternative="two-sided")
+    interval = test.proportion_ci(confidence_level=0.95, method="exact")
+    result.update(
+        status="available",
+        p_raw=float(test.pvalue),
+        p_bonferroni=min(1.0, 3 * float(test.pvalue)),
+        ci95_clopper_pearson=[float(interval.low), float(interval.high)],
+    )
+    return result
+
+
 def record_choice_metrics(report: dict, record) -> None:
     """Journalise les agrégats seulement, jamais les labels individuels."""
     for row in report["alpha_results"]:
@@ -484,6 +522,11 @@ def run_workflow(splits: dict[str, pd.DataFrame], params: dict, output: Path) ->
             row["evaluation"] = evaluate_sets(
                 prediction_membership(p_eval, row["quantiles"]), y_eval
             )
+        row["fraud_coverage_test"] = exact_fraud_coverage_test(
+            row.get("evaluation", {}).get("covered_counts", {}).get("1"),
+            int((y_eval == 1).sum()),
+            row["alpha"],
+        )
     output.mkdir(parents=True, exist_ok=False)
     _figures(output, y_choice, p_choice, calibrator.predict(p_choice), rows)
     report = {
@@ -558,6 +601,23 @@ def run_workflow(splits: dict[str, pd.DataFrame], params: dict, output: Path) ->
         choice = row["choice"]
         lines.append(
             f"| {row['alpha']} | {row['status']} | {choice['fraud_count']} | {choice['class_counts']['0']} | {choice['coverage_by_class']['0']} | {choice['coverage_by_class']['1']} |"
+        )
+    lines.extend(
+        [
+            "",
+            "Tests binomiaux exacts bilatéraux : couverture fraude du bloc d'évaluation contre 1-alpha.",
+            "Bonferroni : p ajusté = min(1, 3 × p brut), famille fixe des trois alpha, même si un alpha est inapplicable.",
+            "Les intervalles Clopper-Pearson à 95 % sont marginaux, non ajustés ; les intervalles et tests supposent des transactions indépendantes et une probabilité de couverture commune.",
+            "La dépendance entre cartes/transactions et l'incertitude de réajustement ne sont pas prises en compte.",
+            "Diagnostics descriptifs : ils ne modifient ni la sélection d'alpha ni le statut provisoire du modèle.",
+            "| alpha | statut test | fraudes couvertes | fraudes évaluées | cible | IC 95 % marginal | p exact brut | p Bonferroni (3) |",
+            "|---:|---|---:|---:|---:|---|---:|---:|",
+        ]
+    )
+    for row in rows:
+        test = row["fraud_coverage_test"]
+        lines.append(
+            f"| {row['alpha']} | {test['status']} | {test['covered']} | {test['total']} | {test['nominal_coverage']} | {test['ci95_clopper_pearson']} | {test['p_raw']} | {test['p_bonferroni']} |"
         )
     lines.extend(
         [

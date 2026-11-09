@@ -433,3 +433,70 @@ def test_inapplicable_alpha_still_records_choice_counts(tmp_path, monkeypatch):
         assert details["fraud_count"] == 50
         assert details["coverage_by_class"] == {"0": None, "1": None}
     json.dumps(events, allow_nan=False)
+
+
+@pytest.mark.parametrize("covered", [0, 5])
+def test_exact_binomial_and_bonferroni_hand_calculation(covered):
+    # Binomial(5, .5): the two extreme outcomes have mass 2 / 32.
+    result = final.exact_fraud_coverage_test(covered, 5, 0.5)
+    assert result["alternative"] == "two-sided"
+    assert result["comparisons"] == 3
+    assert result["p_raw"] == pytest.approx(1 / 16)
+    assert result["p_bonferroni"] == pytest.approx(3 / 16)
+    lo, hi = result["ci95_clopper_pearson"]
+    if covered == 0:
+        assert lo == 0.0
+        assert hi == pytest.approx(1 - 0.025 ** (1 / 5))
+    else:
+        assert lo == pytest.approx(0.025 ** (1 / 5))
+        assert hi == 1.0
+    assert final.exact_fraud_coverage_test(0, 1, 0.5)["p_bonferroni"] == 1.0
+
+
+@pytest.mark.parametrize("covered,total", [(None, 5), (0, 0)])
+def test_coverage_test_unavailable_is_not_a_zero_p_value(covered, total):
+    result = final.exact_fraud_coverage_test(covered, total, 0.05)
+    assert result["status"] == "unavailable"
+    assert result["p_raw"] is None
+    assert result["p_bonferroni"] is None
+    assert result["ci95_clopper_pearson"] is None
+    assert result["comparisons"] == 3
+    json.dumps(result, allow_nan=False)
+
+
+@pytest.mark.parametrize(
+    "covered,total,alpha", [(6, 5, 0.05), (0, -1, 0.05), (0, 1, 0)]
+)
+def test_coverage_test_rejects_invalid_counts(covered, total, alpha):
+    with pytest.raises(ValueError, match="invalides"):
+        final.exact_fraud_coverage_test(covered, total, alpha)
+
+
+def test_report_has_adjacent_exact_and_adjusted_tests_without_reducing_family(
+    tmp_path, monkeypatch
+):
+    monkeypatch.setattr(final, "build_preprocessing_pipeline", TinyPreprocessor)
+    monkeypatch.setattr(final, "build_model", lambda *args: TinyClassifier())
+    original = final.mondrian_quantiles
+
+    def quantiles(p, y, alpha):
+        if alpha == 0.01:
+            raise ValueError("Quantile fini impossible : cas synthétique")
+        return original(p, y, alpha)
+
+    monkeypatch.setattr(final, "mondrian_quantiles", quantiles)
+    output = tmp_path / "report"
+    report = final.run_workflow(synthetic_splits(), {}, output)
+    assert report["selected_alpha"] == 0.05
+    saved = json.loads((output / "results.json").read_text(encoding="utf8"))
+    text = (output / "report.md").read_text(encoding="utf8")
+    assert "| p exact brut | p Bonferroni (3) |" in text
+    assert "transactions indépendantes" in text
+    assert "marginaux, non ajustés" in text
+    assert saved["alpha_results"][0]["fraud_coverage_test"]["p_raw"] is None
+    for row in saved["alpha_results"][1:]:
+        test = row["fraud_coverage_test"]
+        assert test["total"] == test["covered"] == 50
+        assert test["comparisons"] == 3
+        assert test["p_bonferroni"] == min(1.0, 3 * test["p_raw"])
+        assert f"| {test['p_raw']} | {test['p_bonferroni']} |" in text
