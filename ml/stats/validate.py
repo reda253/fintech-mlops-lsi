@@ -1,7 +1,8 @@
 """Validation statistique P2 sur les moyennes de répétition du benchmark.
 
-Les plis servent uniquement au contrôle d'intégrité. Aucun test ne considère
-les 50 plis comme des observations indépendantes.
+Friedman, Wilcoxon et bootstrap utilisent les 10 moyennes de répétition.
+Les 50 plis servent au contrôle d'intégrité et au test de sensibilité
+Nadeau–Bengio avec correction du chevauchement entre plis.
 """
 
 from __future__ import annotations
