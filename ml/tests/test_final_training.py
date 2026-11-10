@@ -560,12 +560,13 @@ def test_report_has_adjacent_exact_and_adjusted_tests_without_reducing_family(
         assert f"| {test['p_raw']} | {test['p_bonferroni']} |" in text
 
 
-def test_inference_prior_correction_matches_training():
+@pytest.mark.parametrize("beta", [0.123, 1e-18])
+def test_inference_prior_correction_matches_training(beta):
     from ml.src.model.calibration import _correct_proba
 
     values = np.array([0.0, 0.1, 0.5, 0.9, 1.0])
     np.testing.assert_allclose(
-        _correct_proba(values, 0.123), final.correct_proba(values, 0.123)
+        _correct_proba(values, beta), final.correct_proba(values, beta)
     )
 
 

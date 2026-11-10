@@ -27,7 +27,7 @@ def _correct_proba(p: np.ndarray, beta: float) -> np.ndarray:
     if np.ndim(beta) != 0 or not np.isfinite(beta) or not 0 < beta <= 1:
         raise ValueError("beta doit etre fini dans ]0, 1].")
     weighted = beta * values
-    return weighted / (weighted + 1.0 - values)
+    return weighted / (weighted + (1.0 - values))
 
 
 @dataclass
