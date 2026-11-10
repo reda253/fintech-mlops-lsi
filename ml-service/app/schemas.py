@@ -65,7 +65,7 @@ class PredictResponse(BaseModel):
     prediction_set: list[Literal[0, 1]] = Field(..., max_length=2)
     uncertainty: Annotated[float, Field(ge=0.0, le=1.0)]
     uncertainty_level: Literal["FAIBLE", "ELEVEE"]
-    alpha: float = Field(default=0.05, examples=[0.05])
+    alpha: float = Field(default=0.02, examples=[0.02])
     model: ModelVersionInfo
     inference_ms: float
 
@@ -76,7 +76,7 @@ class ModelInfo(BaseModel):
     name: str = "fraud-detector"
     version: str = "mock"
     algorithm: str = "heuristic-mock"
-    alpha: float = 0.05
+    alpha: float = 0.02
     trained_at: datetime | None = None
     git_commit: str = "unknown"
     mode: Literal["real", "mock"] = "mock"

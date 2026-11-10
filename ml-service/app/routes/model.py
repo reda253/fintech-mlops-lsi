@@ -69,7 +69,7 @@ def get_performance(request: Request) -> dict[str, Any]:
             "roc_auc": {"value": 0.982, "ci_95": [0.976, 0.988]},
             "brier_score": {"value": 0.012, "ci_95": [0.009, 0.015]},
             "conformal_metrics": {
-                "alpha": 0.05,
+                "alpha": info.alpha,
                 "coverage_legit": 0.958,
                 "coverage_fraud": 0.952,
                 "review_rate": 0.018,
@@ -91,6 +91,40 @@ def get_performance(request: Request) -> dict[str, Any]:
             ],
         },
     }
+
+
+def _download_viz_from_registry(
+    predictor: BasePredictor,
+    method: str,
+    view: str,
+) -> dict[str, Any] | None:
+    """Download ``viz/<method>_<view>.json`` from the deployed model version run."""
+
+    info = predictor.get_model_info()
+    if info.mode != "real":
+        return None
+    try:
+        import mlflow
+        from mlflow.tracking import MlflowClient
+
+        client = MlflowClient()
+        if str(info.version).isdigit():
+            version = client.get_model_version(info.name, str(info.version))
+        else:
+            version = client.get_model_version_by_alias(info.name, str(info.version))
+
+        local_path = mlflow.artifacts.download_artifacts(
+            run_id=version.run_id,
+            artifact_path=f"viz/{method}_{view}.json",
+            dst_path=str(cache_manager.cache_dir / "downloads" / str(info.version)),
+        )
+        with Path(local_path).open("r", encoding="utf-8") as stream:
+            data = json.load(stream)
+        cache_manager.write_viz(method, view, data, version=info.version)
+        return data
+    except Exception as exc:  # noqa: BLE001 - visualization is best effort
+        logger.debug("Unable to download %s_%s viz from MLflow: %s", method, view, exc)
+        return None
 
 
 @router.get(
@@ -122,8 +156,8 @@ def get_visualizations(
     predictor = get_predictor(request)
     info = predictor.get_model_info()
 
-    # Check disk cache first
-    cached_file = cache_manager.get_viz_path(method, view)
+    # Check the version-scoped disk cache first.
+    cached_file = cache_manager.get_viz_path(method, view, info.version)
     if cached_file.is_file():
         try:
             with cached_file.open("r", encoding="utf-8") as f:
@@ -141,6 +175,11 @@ def get_visualizations(
                 return Projection(**data)
         except (json.JSONDecodeError, OSError) as exc:
             logger.debug("Failed reading alternate cached projection file %s: %s", alt_cached_file, exc)
+
+    # Cache miss: fetch the artifacts attached to the registered model version.
+    registry_data = _download_viz_from_registry(predictor, method, view)
+    if registry_data is not None:
+        return Projection(**registry_data)
 
     # Fallback to generated demo points
     demo_points = [

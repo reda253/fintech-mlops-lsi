@@ -32,4 +32,75 @@ python ml/tracking_smoke.py --tracking-uri http://localhost:5000 --experiment sm
 
 The reusable helper is `ml/tracking_smoke.py::log_smoke_run(tracking_uri, experiment)`.
 
-> Not yet done here (later plans): the model registry entry `fraud-detector` with `champion`/`challenger` aliases, the pipeline with quality gates, and the Kubernetes deployment (namespace `ml`).
+## Training pipeline (T21)
+
+`ml/src/pipeline/run.py` runs the full lifecycle as nested MLflow runs:
+
+1. `prepare` — chronological 70/15/15 split of `fraudTrain.csv`, independent `fraudTest.csv`.
+2. `train` — preprocessing fitted on natural data, XGBoost fitted on a 1:10 undersampled block (`beta` logged).
+3. `calibrate` — isotonic vs sigmoid, lowest Brier score wins.
+4. `conformal` — Mondrian class-conditional quantiles at `alpha` (default `0.02`, D44).
+5. `evaluate` — PR-AUC, ROC-AUC, Brier, coverage, review/automation rates, auto-error rate, p95 latency on the independent test block.
+6. `quality_gates` — PR-AUC non-regression, coverage `>= 1 - alpha - 0.02`, review rate `<= 2 %`, p95 `< 50 ms`.
+7. `visualize` — PCA / t-SNE / UMAP projections for the 5 dashboard facets.
+8. `package` — self-contained `FraudDetectorModel` pyfunc (calibration + conformal sets).
+9. `register` — `fraud-detector` model version, tags, `champion` alias, viz artifacts.
+
+Run the synthetic smoke pipeline (no Sparkov CSVs needed):
+
+```bash
+PYTHONPATH=. python -m ml.src.pipeline.run \
+  --tracking-uri http://localhost:5000 \
+  --test-mode --model-name fraud-detector-smoke --alpha 0.02
+```
+
+Run on the real data (place `fraudTrain.csv` and `fraudTest.csv` in `ml/data/raw/`):
+
+```bash
+PYTHONPATH=. python -m ml.src.pipeline.run \
+  --mode full --tracking-uri http://localhost:5000 \
+  --data-path ml/data/raw/fraudTrain.csv \
+  --test-path ml/data/raw/fraudTest.csv \
+  --model-name fraud-detector --alpha 0.02
+```
+
+> The pipeline refuses to register when a quality gate fails. Use `--no-register` for a dry run.
+
+## Model registry and P2 hand-off
+
+The packaged artifact ships only the runtime modules (`ml/src/model/{fraud_detector,calibration}.py`, `ml/src/preprocessing/pipeline.py`) plus compatibility aliases, so the serving image does not need this repository.
+
+The pyfunc signature is inferred from a **nested `customer`** input example. Serving requests must therefore include every schema-required field: `transaction_id`, `trans_datetime`, `amount`, `category`, `merch_lat`, `merch_long`, and `customer.{dob,gender,city_pop,lat,long,state}`. `dob` is serialized as an ISO date string.
+
+`prediction_set` semantics:
+
+| Set | Decision |
+|---|---|
+| `[0]` | `APPROUVER` |
+| `[1]` | `BLOQUER` |
+| `[0, 1]` or `[]` | `REVUE` |
+
+An empty set is a valid conformal outcome and is preserved end-to-end (never rewritten to `[0]`).
+
+When P2 delivers the candidate artifact (preprocessor, classifier, calibrator, beta, conformal thresholds/scores, metadata), register it without retraining:
+
+```bash
+PYTHONPATH=. python -m ml.scripts.register_champion \
+  --artifact /path/to/candidate_model.joblib \
+  --tracking-uri http://localhost:5000 \
+  --model-name fraud-detector --alpha 0.02
+```
+
+The script accepts either a dict payload or a single estimator with `predict_proba`, resolves thresholds or raw conformal scores, tags the version with `git_commit`/`data_sha256`/`alpha`/`beta`, and moves the `champion` alias.
+
+## Serving against the registry
+
+`ml-service` loads `models:/<name>/<version>` (or an alias) with `mlflow.pyfunc.load_model`; it never loads a raw `.joblib`. Set:
+
+```yaml
+MODEL_MODE: "real"
+MODEL_URI: "models:/fraud-detector/1"
+MLFLOW_TRACKING_URI: "http://mlflow.ml.svc.cluster.local:5000"
+```
+
+`alpha` is read from the model metadata, and `/api/v1/ml/viz/{method}` downloads the version's `viz/*.json` artifact on a cache miss.

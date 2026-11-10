@@ -8,7 +8,7 @@ def test_get_model_info(client):
     assert data["name"] == "fraud-detector"
     assert data["version"] == "mock"
     assert data["mode"] == "mock"
-    assert data["alpha"] == 0.05
+    assert data["alpha"] == 0.02
 
 
 def test_get_model_performance(client):

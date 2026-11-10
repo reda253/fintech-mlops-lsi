@@ -1,18 +1,25 @@
-"""Pipeline modular step definitions (§5.1, §5.4).
+"""Pipeline modular step definitions (§5.1, §5.4, T21).
 
-Each step corresponds to a phase in the lifecycle:
-1. prepare
-2. train
-3. evaluate
-4. register
-5. quality_gates
-6. promote
+Lifecycle:
+1. prepare      -> chronological 70/15/15 split + independent fraudTest.csv
+2. train        -> preprocessing + XGBoost on an undersampled development block
+3. calibrate    -> isotonic vs sigmoid, keep the lowest Brier score
+4. conformal    -> Mondrian class-conditional quantiles at alpha
+5. evaluate     -> real PR-AUC / coverage / review / error / latency metrics
+6. quality_gates-> promotion gates (review rate <= 2 %)
+7. visualize    -> PCA / t-SNE / UMAP projections for the dashboard
+8. package      -> self-contained FraudDetectorModel wrapper
+9. register     -> MLflow model version + champion alias + tags
 """
 
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
+import os
+import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -20,165 +27,512 @@ from typing import Any
 import mlflow
 import numpy as np
 import pandas as pd
-from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
-from sklearn.preprocessing import StandardScaler
+
+from ml.src.model.calibration import (
+    correct_proba,
+    fit_calibrator,
+    mondrian_thresholds,
+)
+from ml.src.model.fraud_detector import FraudDetectorModel
+from ml.src.model.registry import register_model
+from ml.src.preprocessing.pipeline import build_preprocessing_pipeline
 
 logger = logging.getLogger(__name__)
 
+ROOT_DIR = Path(__file__).resolve().parents[3]
+SRC_DIR = Path(__file__).resolve().parents[1]
+BEST_PARAMS_PATH = ROOT_DIR / "configs" / "best_params.json"
+
+TARGET_COLUMN = "is_fraud"
+DATE_COLUMN = "trans_date_trans_time"
+DEFAULT_ALPHA = 0.02
+REVIEW_RATE_GATE = 0.02
+COVERAGE_SLACK = 0.02
+LATENCY_GATE_SECONDS = 0.050
+UNDERSAMPLING_RATIO = 10
+
+SPARKOV_COLUMNS = [
+    DATE_COLUMN,
+    "cc_num",
+    "amt",
+    "category",
+    "gender",
+    "state",
+    "city_pop",
+    "lat",
+    "long",
+    "dob",
+    "merch_lat",
+    "merch_long",
+    TARGET_COLUMN,
+    "trans_num",
+]
+
+CATEGORIES = [
+    "entertainment",
+    "food_dining",
+    "gas_transport",
+    "grocery_net",
+    "grocery_pos",
+    "health_fitness",
+    "home",
+    "kids_pets",
+    "misc_net",
+    "misc_pos",
+    "personal_care",
+    "shopping_net",
+    "shopping_pos",
+    "travel",
+]
+STATES = [
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
+    "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
+    "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
+    "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
+    "WI", "WY",
+]
+
+DEFAULT_XGB_PARAMS = {
+    "tree_method": "hist",
+    "objective": "binary:logistic",
+    "eval_metric": "logloss",
+    "n_estimators": 120,
+    "max_depth": 6,
+    "learning_rate": 0.1,
+    "subsample": 0.8,
+    "colsample_bytree": 0.8,
+}
+
 
 def sha256_file(path: Path) -> str:
-    """Compute SHA-256 checksum of a file."""
+    """Compute the SHA-256 checksum of a file."""
+
     digest = hashlib.sha256()
-    with path.open("rb") as stream:
+    with Path(path).open("rb") as stream:
         for chunk in iter(lambda: stream.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
 
 
-def generate_synthetic_data(n_samples: int = 500, random_state: int = 42) -> pd.DataFrame:
-    """Generate synthetic Sparkov-like transactions for smoke testing and CI."""
+def _frame_sha256(frame: pd.DataFrame) -> str:
+    """Deterministic content hash for an in-memory Sparkov frame."""
+
+    hashed = pd.util.hash_pandas_object(frame, index=False).to_numpy(dtype="uint64")
+    return hashlib.sha256(hashed.tobytes()).hexdigest()
+
+
+def generate_synthetic_data(
+    n_samples: int = 4000,
+    random_state: int = 42,
+    fraud_rate: float = 0.10,
+) -> pd.DataFrame:
+    """Generate a Sparkov-shaped frame for CI and ``--test-mode``.
+
+    The synthetic signal is deliberately strong (fraud amounts and night hours)
+    so that the smoke pipeline exercises calibration and conformal quantiles
+    without depending on the real Kaggle dataset.
+    """
+
     rng = np.random.default_rng(random_state)
-    dates = pd.date_range("2020-01-01", periods=n_samples, freq="10min")
+    start = pd.Timestamp("2020-01-01 00:00:00")
+    offsets = np.sort(rng.integers(0, 365 * 24 * 60, size=n_samples))
+    timestamps = start + pd.to_timedelta(offsets, unit="m")
 
-    amounts = rng.exponential(scale=70.0, size=n_samples) + 5.0
-    # Artificially inject high amounts for fraud
-    fraud_prob = 0.02
-    is_fraud = (rng.uniform(size=n_samples) < fraud_prob).astype(int)
-    amounts[is_fraud == 1] += rng.uniform(400.0, 1200.0, size=(is_fraud == 1).sum())
+    is_fraud = (rng.uniform(size=n_samples) < fraud_rate).astype(np.int64)
+    min_fraud = min(max(8, int(n_samples * fraud_rate * 0.5)), max(1, n_samples // 20))
+    if int(is_fraud.sum()) < min_fraud:
+        chosen = rng.choice(n_samples, size=min_fraud, replace=False)
+        is_fraud[chosen] = 1
 
-    df = pd.DataFrame({
-        "trans_date_trans_time": dates,
-        "amount": amounts,
-        "is_fraud": is_fraud,
-        "merch_lat": rng.uniform(25.0, 48.0, size=n_samples),
-        "merch_long": rng.uniform(-120.0, -70.0, size=n_samples),
-        "lat": rng.uniform(25.0, 48.0, size=n_samples),
-        "long": rng.uniform(-120.0, -70.0, size=n_samples),
-        "city_pop": rng.integers(500, 1000000, size=n_samples),
-    })
-    return df.sort_values("trans_date_trans_time").reset_index(drop=True)
+    amounts = rng.lognormal(mean=3.3, sigma=0.8, size=n_samples)
+    fraud_mask = is_fraud == 1
+    amounts[fraud_mask] *= rng.uniform(6.0, 18.0, size=fraud_mask.sum())
+
+    base_lat = rng.uniform(25.0, 48.0, size=n_samples)
+    base_long = rng.uniform(-120.0, -70.0, size=n_samples)
+    merch_lat = base_lat + rng.normal(0.0, 0.25, size=n_samples)
+    merch_long = base_long + rng.normal(0.0, 0.25, size=n_samples)
+    merch_lat[fraud_mask] += rng.uniform(2.0, 6.0, size=fraud_mask.sum())
+    merch_long[fraud_mask] -= rng.uniform(2.0, 6.0, size=fraud_mask.sum())
+
+    birth_days = rng.integers(16 * 365, 70 * 365, size=n_samples)
+    dob = pd.Timestamp("2020-01-01") - pd.to_timedelta(birth_days, unit="D")
+
+    categories = rng.choice(CATEGORIES, size=n_samples)
+    if fraud_mask.any():
+        categories[fraud_mask] = rng.choice(
+            ["shopping_net", "misc_net", "travel"], size=fraud_mask.sum()
+        )
+
+    if fraud_mask.any():
+        # Push fraud timestamps into the night window to give XGBoost a
+        # learnable signal independent of the amount.
+        night_offsets = rng.integers(0, 4 * 60, size=fraud_mask.sum())
+        timestamps = pd.Series(timestamps)
+        timestamps.loc[fraud_mask] = (
+            timestamps.loc[fraud_mask].dt.normalize()
+            + pd.to_timedelta(60 + night_offsets, unit="m")
+        )
+        timestamps = pd.DatetimeIndex(timestamps)
+
+    frame = pd.DataFrame(
+        {
+            DATE_COLUMN: timestamps.strftime("%Y-%m-%d %H:%M:%S"),
+            "cc_num": rng.integers(10**15, 10**16, size=n_samples, dtype=np.int64),
+            "amt": np.round(amounts, 2),
+            "category": categories,
+            "gender": rng.choice(["M", "F"], size=n_samples),
+            "state": rng.choice(STATES, size=n_samples),
+            "city_pop": rng.integers(500, 1_500_000, size=n_samples),
+            "lat": np.round(base_lat, 6),
+            "long": np.round(base_long, 6),
+            "dob": dob.strftime("%Y-%m-%d"),
+            "merch_lat": np.round(merch_lat, 6),
+            "merch_long": np.round(merch_long, 6),
+            TARGET_COLUMN: is_fraud,
+            "trans_num": [f"synth-{random_state}-{index:06d}" for index in range(n_samples)],
+        }
+    )
+    return frame.sort_values(DATE_COLUMN).reset_index(drop=True)
+
+
+def _read_sparkov_csv(path: Path) -> pd.DataFrame:
+    """Read only the modelling columns from a Sparkov CSV, sorted by time."""
+
+    available = set(SPARKOV_COLUMNS)
+    frame = pd.read_csv(path, usecols=lambda column: column in available)
+    missing = [column for column in SPARKOV_COLUMNS if column not in frame.columns]
+    if missing:
+        raise ValueError(f"Colonnes Sparkov manquantes dans {path}: {missing}")
+
+    parsed = pd.to_datetime(frame[DATE_COLUMN], errors="raise")
+    order = parsed.sort_values().index
+    return frame.loc[order].reset_index(drop=True)
+
+
+def _chronological_blocks(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    n_rows = len(frame)
+    if n_rows < 30:
+        raise ValueError("Le jeu de donnees doit contenir au moins 30 lignes.")
+    development_end = int(n_rows * 0.70)
+    calibration_end = int(n_rows * 0.85)
+
+    development = frame.iloc[:development_end].copy()
+    prob_calib = frame.iloc[development_end:calibration_end].copy()
+    conformal_calib = frame.iloc[calibration_end:].copy()
+    for block in (prob_calib, conformal_calib):
+        if block[TARGET_COLUMN].nunique() < 2:
+            raise ValueError("Chaque bloc de calibration doit contenir les deux classes.")
+    return development, prob_calib, conformal_calib
 
 
 def step_prepare(
     data_path: Path | None = None,
+    test_path: Path | None = None,
     test_mode: bool = False,
     parent_run: bool = True,
 ) -> dict[str, Any]:
-    """Phase 1: Validate checksum and partition data chronologically (§4.2)."""
+    """Phase 1: validate the dataset and split it chronologically (§4.2)."""
+
     with mlflow.start_run(run_name="1_prepare", nested=parent_run):
-        if test_mode or data_path is None or not data_path.is_file():
-            logger.info("Generating synthetic data for preparation step.")
-            df = generate_synthetic_data(n_samples=600)
-            data_hash = "synthetic-smoke-sha256"
+        if test_mode or data_path is None:
+            logger.info("Generating synthetic Sparkov data (test mode).")
+            frame = generate_synthetic_data(n_samples=4000, random_state=42)
+            test_frame = generate_synthetic_data(n_samples=1000, random_state=1042)
+            data_hash = _frame_sha256(frame)
+            test_data_hash = _frame_sha256(test_frame)
+            source = "synthetic"
         else:
+            data_path = Path(data_path)
+            if not data_path.is_file():
+                raise FileNotFoundError(f"fraudTrain introuvable: {data_path}")
+            if test_path is None:
+                test_path = data_path.parent / "fraudTest.csv"
+            test_path = Path(test_path)
+            if not test_path.is_file():
+                raise FileNotFoundError(
+                    f"fraudTest introuvable: {test_path}. Utilisez --test-mode pour le smoke test."
+                )
+            frame = _read_sparkov_csv(data_path)
+            test_frame = _read_sparkov_csv(test_path)
             data_hash = sha256_file(data_path)
-            df = pd.read_csv(data_path)
-            if "trans_date_trans_time" in df.columns:
-                df["trans_date_trans_time"] = pd.to_datetime(df["trans_date_trans_time"])
-                df = df.sort_values("trans_date_trans_time").reset_index(drop=True)
+            test_data_hash = sha256_file(test_path)
+            source = "sparkov"
 
-        n = len(df)
-        dev_idx = int(n * 0.70)
-        prob_idx = int(n * 0.85)
+        development, prob_calib, conformal_calib = _chronological_blocks(frame)
 
-        development = df.iloc[:dev_idx].copy()
-        prob_calib = df.iloc[dev_idx:prob_idx].copy()
-        conformal_test = df.iloc[prob_idx:].copy()
-
+        mlflow.log_param("data_source", source)
         mlflow.log_param("data_hash", data_hash)
-        mlflow.log_param("total_samples", n)
-        mlflow.log_metric("dev_samples", len(development))
+        mlflow.log_param("test_data_hash", test_data_hash)
+        mlflow.log_metric("total_samples", len(frame))
+        mlflow.log_metric("development_samples", len(development))
         mlflow.log_metric("prob_calib_samples", len(prob_calib))
-        mlflow.log_metric("test_samples", len(conformal_test))
+        mlflow.log_metric("conformal_samples", len(conformal_calib))
+        mlflow.log_metric("test_samples", len(test_frame))
 
         return {
             "development": development,
             "prob_calib": prob_calib,
-            "test": conformal_test,
+            "conformal_calib": conformal_calib,
+            "test": test_frame,
             "data_hash": data_hash,
+            "test_data_hash": test_data_hash,
+            "source": source,
         }
+
+
+def load_best_params(path: Path | None = None) -> tuple[dict[str, Any], str]:
+    """Load ``models.xgb.params`` from configs/best_params.json with a fallback."""
+
+    candidate = Path(path) if path is not None else BEST_PARAMS_PATH
+    if candidate.is_file():
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+            params = payload["models"]["xgb"]["params"]
+            if isinstance(params, dict) and params:
+                return dict(params), str(candidate)
+        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+            logger.warning("Invalid best_params.json (%s); using defaults.", exc)
+    return dict(DEFAULT_XGB_PARAMS), "defaults"
+
+
+def _undersample_indices(
+    y: np.ndarray,
+    ratio: int = UNDERSAMPLING_RATIO,
+    seed: int = 42,
+) -> tuple[np.ndarray, float, dict[str, int]]:
+    """Keep every fraud row and ``ratio`` legitimate rows per fraud."""
+
+    fraud_positions = np.flatnonzero(y == 1)
+    legit_positions = np.flatnonzero(y == 0)
+    n_fraud, n_legit = fraud_positions.size, legit_positions.size
+    if n_fraud == 0 or n_legit == 0:
+        raise ValueError("Le bloc de developpement doit contenir les deux classes.")
+
+    n_kept = min(n_legit, int(ratio) * n_fraud)
+    rng = np.random.default_rng(seed)
+    sampled_legit = rng.choice(legit_positions, size=n_kept, replace=False)
+    kept = rng.permutation(np.concatenate([fraud_positions, sampled_legit]))
+    beta = n_kept / n_legit
+    counts = {
+        "n_fraud": int(n_fraud),
+        "n_legit": int(n_legit),
+        "n_kept_legit": int(n_kept),
+        "n_train_after": int(kept.size),
+    }
+    return kept, float(beta), counts
 
 
 def step_train(
     dev_df: pd.DataFrame,
-    features: list[str] | None = None,
+    params: dict[str, Any] | None = None,
+    seed: int = 42,
     parent_run: bool = True,
 ) -> dict[str, Any]:
-    """Phase 2: Train baseline classifier on development split."""
+    """Phase 2: fit preprocessing on natural data then XGBoost on a balanced sample."""
+
     with mlflow.start_run(run_name="2_train", nested=parent_run):
-        if features is None:
-            features = ["amount", "lat", "long", "city_pop"]
+        if str(SRC_DIR) not in sys.path:
+            sys.path.append(str(SRC_DIR))
+        from models.factory import build_model
 
-        x_dev = dev_df[features].fillna(0).to_numpy()
-        y_dev = dev_df["is_fraud"].to_numpy()
+        model_params, params_source = (
+            (dict(params), "explicit") if params is not None else load_best_params()
+        )
 
-        scaler = StandardScaler()
-        x_scaled = scaler.fit_transform(x_dev)
-
-        model = LogisticRegression(class_weight="balanced", random_state=42)
+        y_dev = dev_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
+        preprocessor = build_preprocessing_pipeline()
         start_time = time.perf_counter()
-        model.fit(x_scaled, y_dev)
+        features_all = preprocessor.fit_transform(dev_df, y_dev)
+        preprocess_duration = time.perf_counter() - start_time
+
+        kept, beta, counts = _undersample_indices(y_dev, seed=seed)
+        x_train = np.asarray(features_all)[kept]
+        y_train = y_dev[kept]
+
+        classifier = build_model("xgb", model_params, seed=seed)
+        start_time = time.perf_counter()
+        classifier.fit(x_train, y_train)
         train_duration = time.perf_counter() - start_time
 
-        mlflow.log_param("model_type", "LogisticRegression")
-        mlflow.log_param("features", ",".join(features))
+        mlflow.log_param("params_source", params_source)
+        mlflow.log_param("model_type", "XGBClassifier")
+        mlflow.log_param("alpha", os.environ.get("ALPHA", str(DEFAULT_ALPHA)))
+        mlflow.log_param("beta", beta)
+        mlflow.log_param("undersampling_ratio", UNDERSAMPLING_RATIO)
+        mlflow.log_params(
+            {f"xgb_{key}": value for key, value in model_params.items() if np.isscalar(value)}
+        )
+        mlflow.log_metric("preprocess_duration_seconds", preprocess_duration)
         mlflow.log_metric("train_duration_seconds", train_duration)
+        for key, value in counts.items():
+            mlflow.log_metric(key, value)
 
         return {
-            "model": model,
-            "scaler": scaler,
-            "features": features,
+            "preprocessor": preprocessor,
+            "classifier": classifier,
+            "beta": beta,
+            "counts": counts,
+            "params": model_params,
+            "feature_count": int(np.asarray(features_all).shape[1]),
         }
+
+
+def _raw_probabilities(
+    train_result: dict[str, Any],
+    frame: pd.DataFrame,
+) -> np.ndarray:
+    features = train_result["preprocessor"].transform(frame)
+    probabilities = train_result["classifier"].predict_proba(features)[:, 1]
+    return correct_proba(probabilities, float(train_result["beta"]))
+
+
+def _apply_calibrator(calibrator: Any, probabilities: np.ndarray) -> np.ndarray:
+    calibrated = np.asarray(calibrator.predict(probabilities), dtype=np.float64)
+    return np.clip(calibrated, 0.0, 1.0)
+
+
+def step_calibrate(
+    train_result: dict[str, Any],
+    prob_calib_df: pd.DataFrame,
+    method: str | None = None,
+    parent_run: bool = True,
+) -> dict[str, Any]:
+    """Phase 3: fit isotonic and sigmoid calibrators, keep the best Brier."""
+
+    with mlflow.start_run(run_name="3_calibrate", nested=parent_run):
+        probabilities = _raw_probabilities(train_result, prob_calib_df)
+        target = prob_calib_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
+        calibrator, selected, brier_before, brier_after = fit_calibrator(
+            probabilities, target, method=method
+        )
+
+        mlflow.log_param("calibration_method", selected)
+        mlflow.log_metric("brier_before_calibration", brier_before)
+        mlflow.log_metric("brier_after_calibration", brier_after)
+        mlflow.log_metric("calibration_rows", len(prob_calib_df))
+
+        return {
+            "calibrator": calibrator,
+            "method": selected,
+            "brier_before": brier_before,
+            "brier_after": brier_after,
+        }
+
+
+def step_conformal(
+    train_result: dict[str, Any],
+    calibration_result: dict[str, Any],
+    conformal_df: pd.DataFrame,
+    alpha: float = DEFAULT_ALPHA,
+    parent_run: bool = True,
+) -> dict[str, float]:
+    """Phase 4: class-conditional (Mondrian) conformal quantiles at alpha."""
+
+    with mlflow.start_run(run_name="4_conformal", nested=parent_run):
+        probabilities = _apply_calibrator(
+            calibration_result["calibrator"],
+            _raw_probabilities(train_result, conformal_df),
+        )
+        target = conformal_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
+        thresholds = mondrian_thresholds(probabilities, target, alpha)
+
+        mlflow.log_param("alpha", alpha)
+        mlflow.log_metric("threshold_legit", thresholds["threshold_legit"])
+        mlflow.log_metric("threshold_fraud", thresholds["threshold_fraud"])
+        mlflow.log_metric("conformal_n_legit", thresholds["n_legit"])
+        mlflow.log_metric("conformal_n_fraud", thresholds["n_fraud"])
+        return {**thresholds, "alpha": float(alpha)}
+
+
+def _prediction_sets(
+    probabilities: np.ndarray,
+    threshold_legit: float,
+    threshold_fraud: float,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Vectorised Mondrian sets: return (legit_in, fraud_in, set_size)."""
+
+    legit_in = probabilities <= threshold_legit
+    fraud_in = probabilities >= (1.0 - threshold_fraud)
+    set_size = legit_in.astype(np.int64) + fraud_in.astype(np.int64)
+    return legit_in, fraud_in, set_size
+
+
+def _measure_latency(pyfunc_model: FraudDetectorModel, sample: pd.DataFrame) -> float:
+    durations: list[float] = []
+    for _, row in sample.iterrows():
+        record = row.to_dict()
+        start = time.perf_counter()
+        pyfunc_model.predict_one(record)
+        durations.append(time.perf_counter() - start)
+    if not durations:
+        return 0.0
+    return float(np.percentile(durations, 95))
 
 
 def step_evaluate(
-    pipeline_artifacts: dict[str, Any],
+    pyfunc_model: FraudDetectorModel,
     test_df: pd.DataFrame,
+    latency_sample_size: int = 200,
     parent_run: bool = True,
 ) -> dict[str, float]:
-    """Phase 3: Evaluate model performance, PR-AUC, and inference latency."""
-    with mlflow.start_run(run_name="3_evaluate", nested=parent_run):
-        model = pipeline_artifacts["model"]
-        scaler = pipeline_artifacts["scaler"]
-        features = pipeline_artifacts["features"]
+    """Phase 5: real metrics on the independent fraudTest.csv block."""
 
-        x_test = test_df[features].fillna(0).to_numpy()
-        y_test = test_df["is_fraud"].to_numpy()
+    with mlflow.start_run(run_name="5_evaluate", nested=parent_run):
+        target = test_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
+        probabilities = pyfunc_model.batch_probabilities(test_df)
 
-        x_scaled = scaler.transform(x_test)
-
-        # Measure latency
-        start_time = time.perf_counter()
-        probs = model.predict_proba(x_scaled)[:, 1]
-        elapsed = time.perf_counter() - start_time
-        latency_p95_sec = elapsed / max(len(x_test), 1)
-
-        # Handle edge case where test set might only have 1 class in small smoke tests
-        if len(np.unique(y_test)) > 1:
-            pr_auc = float(average_precision_score(y_test, probs))
-            roc_auc = float(roc_auc_score(y_test, probs))
+        if np.unique(target).size > 1:
+            pr_auc = float(average_precision_score(target, probabilities))
+            roc_auc = float(roc_auc_score(target, probabilities))
         else:
-            pr_auc = 0.85
-            roc_auc = 0.90
+            pr_auc = 0.0
+            roc_auc = 0.0
+        brier = float(brier_score_loss(target, probabilities)) if target.size else 0.0
 
-        brier = float(brier_score_loss(y_test, probs))
+        legit_in, fraud_in, set_size = _prediction_sets(
+            probabilities,
+            pyfunc_model.threshold_legit,
+            pyfunc_model.threshold_fraud,
+        )
+        covered = np.where(target == 0, legit_in, fraud_in)
+        coverage_legit = float(legit_in[target == 0].mean()) if np.any(target == 0) else 0.0
+        coverage_fraud = float(fraud_in[target == 1].mean()) if np.any(target == 1) else 0.0
 
-        # Simulated conformal coverage (1 - alpha target ~0.95)
-        conformal_coverage = 0.96
-        review_rate = 0.018
+        review_rate = float((set_size != 1).mean())
+        automation_rate = 1.0 - review_rate
+        automatic = set_size == 1
+        automatic_errors = np.where(
+            legit_in & ~fraud_in,
+            target == 1,
+            np.where(fraud_in & ~legit_in, target == 0, False),
+        )
+        auto_error_rate = (
+            float(automatic_errors[automatic].mean()) if automatic.any() else 0.0
+        )
+
+        sample_size = min(latency_sample_size, len(test_df))
+        latency_sample = test_df.sample(n=sample_size, random_state=42)
+        latency_p95 = _measure_latency(pyfunc_model, latency_sample)
 
         metrics = {
+            "alpha": float(pyfunc_model.alpha),
             "pr_auc": pr_auc,
             "roc_auc": roc_auc,
             "brier_score": brier,
-            "latency_p95_sec": latency_p95_sec,
-            "conformal_coverage": conformal_coverage,
+            "conformal_coverage": float(covered.mean()) if covered.size else 0.0,
+            "conformal_coverage_legit": coverage_legit,
+            "conformal_coverage_fraud": coverage_fraud,
             "review_rate": review_rate,
+            "automation_rate": automation_rate,
+            "auto_error_rate": auto_error_rate,
+            "latency_p95_sec": latency_p95,
+            "n_test": float(len(test_df)),
+            "n_test_fraud": float(target.sum()),
         }
-
-        for k, v in metrics.items():
-            mlflow.log_metric(k, v)
+        for key, value in metrics.items():
+            mlflow.log_metric(key, value)
 
         return metrics
 
@@ -186,33 +540,33 @@ def step_evaluate(
 def step_quality_gates(
     metrics: dict[str, float],
     champion_pr_auc: float | None = None,
-    alpha: float = 0.05,
+    alpha: float | None = None,
     parent_run: bool = True,
 ) -> dict[str, bool]:
-    """Phase 4: Verify candidate model passes promotion quality gates (§5.4).
+    """Phase 6: promotion quality gates (§5.4).
 
     Gates:
-    1. Non-regression: candidate PR-AUC >= champion PR-AUC - 0.01 (or >= 0.50 for initial baseline)
+    1. Non-regression: PR-AUC >= champion - 0.01 (>= 0.50 for the first model)
     2. Conformal coverage >= (1 - alpha) - 0.02
-    3. Review rate <= 2% (0.02)
-    4. Inference p95 latency < 50ms (0.050s)
+    3. Review rate <= 2 % of transactions
+    4. Inference p95 < 50 ms
     """
-    with mlflow.start_run(run_name="4_quality_gates", nested=parent_run):
-        # 1. Non-regression gate
+
+    if alpha is None:
+        alpha = float(metrics.get("alpha", DEFAULT_ALPHA))
+    if not 0.0 < alpha < 1.0:
+        raise ValueError("alpha doit etre dans ]0, 1[.")
+
+    with mlflow.start_run(run_name="6_quality_gates", nested=parent_run):
         if champion_pr_auc is not None:
             gate_non_regression = metrics["pr_auc"] >= (champion_pr_auc - 0.01)
         else:
             gate_non_regression = metrics["pr_auc"] >= 0.50
 
-        # 2. Conformal coverage gate
-        target_coverage = (1.0 - alpha) - 0.02
-        gate_coverage = metrics.get("conformal_coverage", 1.0) >= target_coverage
-
-        # 3. Review rate capacity gate (target <= 2%)
-        gate_review_rate = metrics.get("review_rate", 0.0) <= 0.03
-
-        # 4. Latency gate (p95 < 50ms)
-        gate_latency = metrics.get("latency_p95_sec", 0.0) < 0.050
+        target_coverage = (1.0 - alpha) - COVERAGE_SLACK
+        gate_coverage = metrics.get("conformal_coverage", 0.0) >= target_coverage
+        gate_review_rate = metrics.get("review_rate", 1.0) <= REVIEW_RATE_GATE
+        gate_latency = metrics.get("latency_p95_sec", 1.0) < LATENCY_GATE_SECONDS
 
         gates = {
             "gate_non_regression": bool(gate_non_regression),
@@ -220,8 +574,9 @@ def step_quality_gates(
             "gate_review_rate": bool(gate_review_rate),
             "gate_latency": bool(gate_latency),
         }
-
         all_passed = all(gates.values())
+
+        mlflow.log_param("alpha", alpha)
         mlflow.log_param("quality_gates_passed", str(all_passed))
         for gate_name, passed in gates.items():
             mlflow.log_metric(gate_name, 1.0 if passed else 0.0)
@@ -232,56 +587,109 @@ def step_quality_gates(
 
 def step_visualize(
     test_df: pd.DataFrame,
+    pyfunc_model: FraudDetectorModel,
     features: list[str] | None = None,
     output_dir: Path | None = None,
     model_version: str = "1",
+    max_samples: int = 500,
     parent_run: bool = True,
 ) -> dict[str, Any]:
-    """Phase 5: Generate 2D projections (PCA, t-SNE, UMAP) across all 5 views (§4.11)."""
+    """Phase 7: generate PCA / t-SNE / UMAP projections for all 5 views (§4.11)."""
+
     from ml.src.visualization.projections import (
         export_projections_to_cache,
         generate_all_projections,
+        prepare_visualization_sample,
     )
 
-    with mlflow.start_run(run_name="5_visualize", nested=parent_run):
+    with mlflow.start_run(run_name="7_visualize", nested=parent_run):
         if features is None:
-            features = ["amount", "lat", "long", "city_pop"]
+            features = ["amt", "city_pop", "lat", "long", "merch_lat", "merch_long"]
+
+        sample = prepare_visualization_sample(test_df, max_samples=max_samples)
+        probabilities = pyfunc_model.batch_probabilities(sample)
+        y_pred = (probabilities >= 0.5).astype(np.int64)
 
         projections = generate_all_projections(
-            df=test_df,
+            df=sample,
             features=features,
+            y_pred=y_pred,
+            probabilities=probabilities,
             model_version=model_version,
-            max_samples=500,
+            max_samples=max_samples,
         )
 
-        if output_dir is not None:
-            export_projections_to_cache(projections, output_dir)
-
+        output_dir = Path(output_dir) if output_dir is not None else Path(
+            tempfile.mkdtemp(prefix="ml-viz-")
+        )
+        export_projections_to_cache(projections, output_dir)
         mlflow.log_metric("total_projection_files", len(projections))
-        return projections
+        mlflow.log_param("projection_sample_size", len(sample))
+        return {"projections": projections, "directory": output_dir}
 
 
 def step_package_model(
-    classifier: Any,
-    scaler: Any,
-    feature_names: list[str],
+    train_result: dict[str, Any],
+    calibration_result: dict[str, Any],
+    conformal_result: dict[str, float],
     model_name: str = "fraud-detector",
     model_version: str = "1",
-    alpha: float = 0.05,
+    alpha: float = DEFAULT_ALPHA,
+    git_commit: str = "unknown",
+    data_sha256: str = "unknown",
     parent_run: bool = True,
-) -> Any:
-    """Phase 6: Package model into unified MLflow pyfunc wrapper (§5.3)."""
-    from ml.src.model.fraud_detector import FraudDetectorModel
+) -> FraudDetectorModel:
+    """Phase 8: build the self-contained pyfunc wrapper (§5.3)."""
 
-    with mlflow.start_run(run_name="6_package", nested=parent_run):
+    with mlflow.start_run(run_name="8_package", nested=parent_run):
         pyfunc_model = FraudDetectorModel(
-            classifier=classifier,
-            scaler=scaler,
-            feature_names=feature_names,
-            alpha=alpha,
+            classifier=train_result["classifier"],
+            preprocessor=train_result["preprocessor"],
+            calibrator=calibration_result["calibrator"],
+            calibration_method=calibration_result["method"],
+            beta=float(train_result["beta"]),
+            threshold_legit=float(conformal_result["threshold_legit"]),
+            threshold_fraud=float(conformal_result["threshold_fraud"]),
+            alpha=float(alpha),
             model_name=model_name,
-            model_version=model_version,
+            model_version=str(model_version),
+            algorithm="xgboost-calibrated",
+            trained_at=pd.Timestamp.now(tz="UTC").isoformat(),
+            git_commit=git_commit,
+            data_sha256=data_sha256,
         )
         mlflow.log_param("pyfunc_model_name", model_name)
         mlflow.log_param("pyfunc_version", model_version)
+        mlflow.log_param("calibration_method", calibration_result["method"])
+        mlflow.log_param("alpha", alpha)
+        mlflow.log_param("beta", float(train_result["beta"]))
         return pyfunc_model
+
+
+def step_register(
+    pyfunc_model: FraudDetectorModel,
+    input_example: pd.DataFrame,
+    model_name: str = "fraud-detector",
+    pipeline_run_id: str = "",
+    viz_dir: Path | None = None,
+    parent_run: bool = True,
+) -> dict[str, Any]:
+    """Phase 9: log the pyfunc artifact, register a version and alias champion."""
+
+    with mlflow.start_run(run_name="9_register", nested=parent_run):
+        result = register_model(
+            pyfunc_model,
+            input_example,
+            model_name=model_name,
+            pipeline_run_id=pipeline_run_id,
+            viz_dir=viz_dir,
+            description=(
+                "XGBoost + calibration + Mondrian conformal fraud detector "
+                f"(alpha={pyfunc_model.alpha:.3f})"
+            ),
+        )
+        mlflow.log_param("registered_model_name", result["name"])
+        mlflow.log_param("registered_model_version", result["version"])
+        mlflow.log_param("registered_model_alias", result["alias"])
+        mlflow.set_tag("model_uri", result["model_uri"])
+        return result

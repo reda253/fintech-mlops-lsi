@@ -1,7 +1,9 @@
 """Tests for RealPredictor in ml-service."""
 
 import uuid
+from types import SimpleNamespace
 
+import pandas as pd
 from app.main import app
 from app.predictor import RealPredictor
 from fastapi.testclient import TestClient
@@ -10,6 +12,7 @@ from fastapi.testclient import TestClient
 class DummyModel:
     def predict_one(self, record):
         assert "trans_datetime" in record
+        assert "transaction_id" in record
         return {
             "prediction": 1,
             "fraud_probability": 0.94,
@@ -149,3 +152,110 @@ def test_real_predictor_fallback_on_runtime_error(sample_payload):
     # warmup with failing model should fail and leave predictor unready
     real_pred.warmup()
     assert real_pred.is_ready() is False
+
+
+class DataFrameModel:
+    """Mimics a loaded MLflow pyfunc: predict() returns a DataFrame."""
+
+    metadata = SimpleNamespace(
+        metadata={
+            "alpha": 0.02,
+            "algorithm": "xgboost-calibrated",
+            "git_commit": "abc123",
+            "trained_at": "2026-11-01T10:00:00+00:00",
+        }
+    )
+
+    def predict(self, frame):
+        assert isinstance(frame, pd.DataFrame)
+        assert isinstance(frame.loc[0, "customer"]["dob"], str)
+        return pd.DataFrame(
+            [
+                {
+                    "prediction": 0,
+                    "fraud_probability": 0.5,
+                    "prediction_set": [],
+                    "uncertainty": 1.0,
+                    "uncertainty_level": "ELEVEE",
+                    "alpha": 0.02,
+                    "model_name": "fraud-detector",
+                    "model_version": "7",
+                }
+            ]
+        )
+
+
+def test_real_predictor_preserves_empty_set_and_reads_metadata(sample_payload):
+    predictor = RealPredictor(
+        model_uri="models:/fraud-detector/7",
+        version=None,
+        model_instance=DataFrameModel(),
+    )
+    predictor.warmup()
+    assert predictor.is_ready() is True
+    assert predictor.alpha == 0.02
+    assert predictor.git_commit == "abc123"
+
+    info = predictor.get_model_info()
+    assert info.version == "7"
+    assert info.alpha == 0.02
+    assert info.algorithm == "xgboost-calibrated"
+
+    with TestClient(app) as client:
+        app.state.predictor = predictor
+        response = client.post("/predict", json=sample_payload)
+        assert response.status_code == 200
+        data = response.json()
+        assert data["prediction_set"] == []
+        assert data["uncertainty_level"] == "ELEVEE"
+        assert data["alpha"] == 0.02
+        assert data["model"]["version"] == "7"
+
+
+def test_real_predictor_derives_identity_from_uri():
+    predictor = RealPredictor(model_uri="models:/fraud-detector/12")
+    assert predictor.name == "fraud-detector"
+    assert predictor.version == "12"
+
+
+class _BrokenModel:
+    """Model that raises an unexpected error during warm-up."""
+
+    metadata = SimpleNamespace(metadata={"alpha": 0.02})
+
+    def predict(self, frame):
+        raise RuntimeError("signature mismatch")
+
+
+def test_warmup_failure_keeps_pod_ready_false_without_crashing():
+    predictor = RealPredictor(
+        model_uri="models:/fraud-detector/1",
+        model_instance=_BrokenModel(),
+    )
+    predictor.warmup()
+
+    assert predictor.is_ready() is False
+    with TestClient(app) as client:
+        app.state.predictor = predictor
+        response = client.get("/health/ready")
+        assert response.status_code == 503
+
+
+class _SchemaErrorModel:
+    """Model that raises a non-builtin exception at inference time."""
+
+    def predict(self, frame):
+        raise RuntimeError("schema enforcement failed")
+
+
+def test_predict_falls_back_to_review_on_model_exception(sample_payload):
+    from app.schemas import PredictRequest
+
+    predictor = RealPredictor(
+        model_uri="models:/fraud-detector/1",
+        model_instance=_SchemaErrorModel(),
+    )
+    response = predictor.predict(PredictRequest(**sample_payload))
+
+    assert response.prediction_set == [0, 1]
+    assert response.uncertainty_level == "ELEVEE"

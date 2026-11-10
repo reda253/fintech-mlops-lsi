@@ -6,7 +6,7 @@ metadata:
   labels:
     app: ml-service
 data:
-  MODEL_MODE: "mock"
-  MODEL_URI: ""
+  MODEL_MODE: "real"
+  MODEL_URI: "models:/fraud-detector/1"
   MLFLOW_TRACKING_URI: "http://mlflow.ml.svc.cluster.local:5000"
   MODEL_CACHE_DIR: "/tmp/model-cache"
