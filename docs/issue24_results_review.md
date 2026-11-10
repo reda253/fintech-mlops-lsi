@@ -1,8 +1,9 @@
 # Issue #24 — revue du résultat existant
 
 **Décision ouverte, postérieure aux résultats.** Revue du 7 novembre 2026.
-XGBoost reste un candidat provisoire ; aucune promotion de modèle et aucune
-modification de la capacité, de la grille alpha ou des fractions n'est décidée.
+Au moment de cette revue initiale, XGBoost était provisoire et aucun changement
+de capacité, grille ou fractions n'était décidé. D44 étend ensuite la grille
+post hoc ; les nouveaux alpha n'ont pas encore été évalués.
 
 ## Périmètre et provenance
 
@@ -12,8 +13,8 @@ prédiction, aucune lecture de données Sparkov ou de zones de calibration, aucu
 accès au jeu de test final. Les calculs nouveaux sont uniquement arithmétiques
 et statistiques à partir des agrégats enregistrés.
 
-- Dossier local : `C:/Users/Lenovo/Documents/p2-final-candidate-20261107/`.
-- Journal local : `C:/Users/Lenovo/Documents/p2-final-audit/launches.jsonl`.
+- Dossier local initial : artefacts conservés hors dépôt.
+- Journal de lancement initial : conservé hors dépôt.
 - Expérience MLflow : `p2_final_calibration`.
 - Run : `160fa16ab027444fbb813dc5f50ddc36` (identifiant lu dans le journal ;
   aucune interrogation du serveur nécessaire pour cette revue).
@@ -86,7 +87,7 @@ les transitions individuelles entre alpha, faute de prédictions sauvegardées.
 | Bloc | Lignes | Fraudes | Provenance |
 |---|---:|---:|---|
 | Ajustement des quantiles | 97251 | 560 | Compteur explicite `conformal_fit_counts["1"]` |
-| Choix d'alpha | 48625 | NON DISPONIBLE | Aucun compteur de classe ni couverture sauvegardé |
+| Choix d'alpha | 48625 | NON DISPONIBLE pour le premier lancement | Aucun compteur sauvegardé lors du premier lancement ; les versions ultérieures enregistrent ces effectifs et couvertures. |
 | Évaluation | 48626 | 312 | Unique dénominateur compatible avec toutes les couvertures enregistrées |
 
 L'effectif 312 n'a pas été supposé à partir d'un taux arrondi : tous les entiers
@@ -177,9 +178,9 @@ ultérieure ; une entrée de journal ne restaure pas l'indépendance statistique
 - Aucun changement de code, de paramètres, d'alpha, de seuil ou d'artefact initial.
 - Manques de traçabilité : compteur de fraudes et couvertures du bloc de choix,
   compteurs explicites des types d'ensembles et des succès de couverture.
-  Ils devraient être journalisés dans une évolution autorisée ; ils ne sont
-  pas ajoutés rétroactivement comme s'ils avaient été directement enregistrés.
+  Les versions ultérieures enregistrent les effectifs et couvertures du bloc
+  de choix ; ils ne sont pas disponibles rétroactivement pour le premier lancement.
 
 **Décision ouverte, postérieure aux résultats.** La capacité de 2 % n'est
-respectée par aucun alpha de la grille. XGBoost reste provisoire ; aucune
+respectée par aucun alpha de la grille initiale. XGBoost reste provisoire ; aucune
 promotion ni nouvelle sélection n'est effectuée dans cette revue.
