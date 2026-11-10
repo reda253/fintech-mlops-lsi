@@ -1,17 +1,29 @@
 """Probability correction, calibration and Mondrian conformal utilities (§4.10, §5.3).
 
-Pure helpers shared by the training pipeline and the packaged pyfunc model.
-The module deliberately imports only numpy at module level (sklearn is imported
-lazily inside ``fit_calibrator``) so that it stays importable inside the
-ml-service image and inside the MLflow artifact.
+Pure helpers shared by P2's final training, the training pipeline and the
+packaged pyfunc model. The module deliberately imports only numpy at module
+level (sklearn is imported lazily inside the calibrators) so that it stays
+importable inside the ml-service image and inside the MLflow artifact.
 """
 
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from typing import Any
 
 import numpy as np
+
+
+def _proba(p: np.ndarray) -> np.ndarray:
+    values = np.asarray(p, dtype=float)
+    if (
+        values.ndim != 1
+        or not np.isfinite(values).all()
+        or ((values < 0) | (values > 1)).any()
+    ):
+        raise ValueError("Probabilités finies dans [0,1] requises")
+    return values
 
 
 def correct_proba(p: Any, beta: float) -> np.ndarray:
@@ -31,9 +43,25 @@ def correct_proba(p: Any, beta: float) -> np.ndarray:
     return np.asarray(weighted / (weighted + (1.0 - values)), dtype=np.float64)
 
 
-def _logit(probabilities: np.ndarray) -> np.ndarray:
+def _correct_proba(p: np.ndarray, beta: float) -> np.ndarray:
+    """Same correction and validation as ``validation.fold_data.correct_proba``."""
+
+    values = _proba(p)
+    if np.ndim(beta) != 0 or not np.isfinite(beta) or not 0 < beta <= 1:
+        raise ValueError("beta doit etre fini dans ]0, 1].")
+    weighted = beta * values
+    return weighted / (weighted + (1.0 - values))
+
+
+def _logit_flat(probabilities: np.ndarray) -> np.ndarray:
     clipped = np.clip(np.asarray(probabilities, dtype=np.float64), 1e-12, 1.0 - 1e-12)
     return np.log(clipped / (1.0 - clipped))
+
+
+def _logit(p: np.ndarray) -> np.ndarray:
+    """Column of log-odds, kept for P2's sklearn-based ``Calibrator``."""
+
+    return _logit_flat(p).reshape(-1, 1)
 
 
 class IdentityCalibrator:
@@ -56,7 +84,7 @@ class PlattCalibrator:
     def fit(self, probabilities: Any, y: Any) -> PlattCalibrator:
         from sklearn.linear_model import LogisticRegression
 
-        x = _logit(np.asarray(probabilities, dtype=np.float64)).reshape(-1, 1)
+        x = _logit_flat(np.asarray(probabilities, dtype=np.float64)).reshape(-1, 1)
         model = LogisticRegression(C=1e6, solver="lbfgs", max_iter=1000)
         model.fit(x, np.asarray(y, dtype=int))
         self.coef = float(model.coef_[0][0])
@@ -64,7 +92,8 @@ class PlattCalibrator:
         return self
 
     def predict(self, probabilities: Any) -> np.ndarray:
-        z = self.coef * _logit(np.asarray(probabilities, dtype=np.float64)) + self.intercept
+        z = self.coef * _logit_flat(np.asarray(probabilities, dtype=np.float64))
+        z = z + self.intercept
         return 1.0 / (1.0 + np.exp(-z))
 
 
@@ -110,6 +139,37 @@ def fit_calibrator(
 
     brier_after = score(method)
     return candidates[method], method, brier_before, brier_after
+
+
+@dataclass
+class Calibrator:
+    """P2 inference-time calibrator wrapping a fitted sklearn estimator."""
+
+    method: str
+    estimator: object
+
+    def predict(self, p: np.ndarray) -> np.ndarray:
+        values = _proba(p)
+        output = (
+            self.estimator.predict_proba(_logit(values))[:, 1]
+            if self.method == "sigmoid"
+            else self.estimator.predict(values)
+        )
+        return _proba(output)
+
+
+@dataclass
+class CalibratedPriorClassifier:
+    """P2 final-model adapter: prior correction followed by calibration."""
+
+    classifier: object
+    beta: float
+    calibrator: Calibrator
+
+    def predict_proba(self, X: np.ndarray) -> np.ndarray:
+        raw = self.classifier.predict_proba(X)[:, 1]
+        fraud = self.calibrator.predict(_correct_proba(raw, self.beta))
+        return np.column_stack((1 - fraud, fraud))
 
 
 def conformal_quantile(scores: Any, alpha: float) -> float:

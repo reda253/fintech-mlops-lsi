@@ -6,6 +6,8 @@
   "seed": 42,
   "bootstrap_resamples": 10000,
   "alpha": 0.05,
+  "effect_threshold_pr_auc": 0.01,
+  "effect_threshold_provenance": "post_hoc",
   "fold_rows_checked": 250,
   "friedman": {
     "statistic": 40.0,
@@ -178,36 +180,40 @@
   ],
   "nadeau_bengio_sensitivity": {
     "xgb_vs_rf": {
-      "t": 11.587602698988023,
-      "p_value": 1.0366001852944402e-06,
-      "df": 9,
-      "test_train_ratio": 0.25,
-      "unit": "repeat_mean",
-      "interpretation": "sensibilité approximative uniquement"
+      "t": 6.234205145783346,
+      "p_value": 1.0182766114112377e-07,
+      "df": 49,
+      "test_train_ratio": 0.25000000000088896,
+      "unit": "paired_fold",
+      "n_folds": 50,
+      "interpretation": "analyse de sensibilité ; plis répétés corrélés"
     },
     "xgb_vs_mlp": {
-      "t": 13.820935977975303,
-      "p_value": 2.2919783129902416e-07,
-      "df": 9,
-      "test_train_ratio": 0.25,
-      "unit": "repeat_mean",
-      "interpretation": "sensibilité approximative uniquement"
+      "t": 7.884325073794294,
+      "p_value": 2.871958436452612e-10,
+      "df": 49,
+      "test_train_ratio": 0.25000000000088896,
+      "unit": "paired_fold",
+      "n_folds": 50,
+      "interpretation": "analyse de sensibilité ; plis répétés corrélés"
     },
     "xgb_vs_logreg": {
-      "t": 252.36138521535216,
-      "p_value": 1.2257831638367155e-18,
-      "df": 9,
-      "test_train_ratio": 0.25,
-      "unit": "repeat_mean",
-      "interpretation": "sensibilité approximative uniquement"
+      "t": 66.07276777459914,
+      "p_value": 1.4685697523589382e-49,
+      "df": 49,
+      "test_train_ratio": 0.25000000000088896,
+      "unit": "paired_fold",
+      "n_folds": 50,
+      "interpretation": "analyse de sensibilité ; plis répétés corrélés"
     },
     "xgb_vs_nystroem_svc": {
-      "t": 148.0047907780493,
-      "p_value": 1.4916229809736243e-16,
-      "df": 9,
-      "test_train_ratio": 0.25,
-      "unit": "repeat_mean",
-      "interpretation": "sensibilité approximative uniquement"
+      "t": 43.07904360267486,
+      "p_value": 1.298771280447994e-40,
+      "df": 49,
+      "test_train_ratio": 0.25000000000088896,
+      "unit": "paired_fold",
+      "n_folds": 50,
+      "interpretation": "analyse de sensibilité ; plis répétés corrélés"
     }
   },
   "critical_difference": {
@@ -223,10 +229,11 @@
   "selection": {
     "model": "xgb",
     "status": "provisional",
-    "reason": "premier significativement meilleur que deuxième",
+    "reason": "Holm, direction et borne inférieure de l'IC apparié satisfont le seuil d'effet post hoc",
     "candidates": [
       "xgb"
-    ]
+    ],
+    "sensitivity_max_effect_threshold": 0.023695277277932792
   },
   "secondary_metrics": {
     "scope": "exploratory; descriptive means only, no inferential tests",
