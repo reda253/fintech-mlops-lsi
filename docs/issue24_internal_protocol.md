@@ -16,10 +16,10 @@ d'implémentation, non une règle préenregistrée avant le benchmark.
    calibrateur choisi n'est pas réajusté sur la moitié de comparaison.
 3. `conformal_calibration` (15 %) : première moitié chronologique pour les
    quantiles Mondrian par classe ; quart suivant pour sélectionner le plus
-   petit alpha parmi 0,01, 0,05, 0,10 avec revue <= 2 % ; dernier quart pour
+   petit alpha parmi 0,01, 0,02, 0,03, 0,05, 0,10 avec revue <= 2 % ; dernier quart pour
    rapporter couverture par classe, revue, automatisation et erreur automatique.
    Aucun quantile n'est ajusté sur les deux derniers quarts. Les frontières
-   temporelles égales sont refusées plutôt que partagées.
+   temporelles égales sont déplacées à droite pour garder les mêmes dates ensemble.
 
 Le quantile par classe suit l'ordre statistique `ceil((n_c+1)*(1-alpha))` sur
 les scores de non-conformité triés ; si ce rang dépasse `n_c`, aucun quantile
@@ -68,7 +68,8 @@ Ces précisions interviennent après observation du benchmark. Elles ne changent
 ni les paramètres figés, ni le candidat provisoire, ni les zones externes.
 La spec §4.10 demande le plus petit alpha respectant la capacité ; le « par
 exemple <= 2 % » de la spec devient ici la capacité explicitement demandée par
-Basma. Les alpha restent exactement 0,01 / 0,05 / 0,10. La courbe est incluse
+Basma. Le premier lancement utilisait 0,01 / 0,05 / 0,10 ; D44 étend post hoc
+la grille à 0,01 / 0,02 / 0,03 / 0,05 / 0,10. La courbe est incluse
 dans le README du dossier de sortie. La comparaison des Brier se fait hors
 ajustement, mais la mesure sur la moitié de choix peut subir l'optimisme de
 sélection : Brier et ECE sont aussi rapportés sur le quart conforme final.
@@ -134,3 +135,14 @@ Ce journal local n'est pas un mécanisme anti-altération : utiliser un autre
 fichier ou supprimer son historique annule sa garantie de comparaison. Un
 changement motivé reste une déviation documentée, pas une validation scientifique.
 Aucun lancement réel n'a été effectué pour cette vérification.
+
+
+## D44 — extension post hoc du 10 novembre 2026
+
+La capacité reste 2 %. La grille étendue et la règle de déplacement des frontières
+font partie de l'identité du protocole ; le journal exige une raison explicite
+avant toute nouvelle lecture. Le choix utilise uniquement le taux de revue du
+bloc de choix, sans labels. Le bloc d'évaluation a déjà été observé : ses
+nouveaux résultats sont exploratoires. Le rapport compare la couverture fraude
+au plancher `(1-alpha)-0.02` et donne l'erreur automatique pour chaque alpha.
+Les tests binomiaux utilisent une famille Bonferroni de cinq comparaisons.
