@@ -203,6 +203,17 @@ avec la limite ci-dessous, sans modifier retrospectivement cette partition.
    d'equivalence. Le verdict confirmatoire attend Friedman/Wilcoxon/Holm.
    Aucun de ces calculs statistiques n'est execute dans le smoke.
 
+**Décision du 9 novembre 2026, post hoc (issue #23).** Après observation du
+benchmark, Basma fixe le seuil d'effet non négligeable à **0,01 point de
+PR-AUC**. La CLI statistique reçoit ce seuil explicitement via
+`--effect-threshold 0.01` ; le code ne le fixe pas par défaut. Sur les
+résultats existants, la borne inférieure de l'IC bootstrap apparié
+XGBoost − RandomForest est 0,023695277277932792 (≈ 0,0237) : XGBoost
+satisfait la règle pour tout seuil entre 0 et cette borne incluse. Cette
+analyse de sensibilité est **postérieure aux résultats**, exploratoire et
+ne constitue pas une confirmation indépendante. Le statut reste
+`provisional` ; aucune promotion automatique au champion.
+
 Limite du 20/80 acceptee : AP LogReg mesuree 0,2551854001614933 ; IC95 %
 **[0,19923473029601207 ; 0,3202553295288669]** sur **237 fraudes**.
 Par decision de Basma, un ecart de PR-AUC **inferieur a environ 0,03** entre

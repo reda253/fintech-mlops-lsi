@@ -42,18 +42,21 @@ Moyennes des 10 répétitions, sans test d'hypothèse ni sélection après coup.
 | xgb − mlp | 0.201720 | [0.188117, 0.217295] | 1.000 | 0.00195312 | 0.0195312 |
 | nystroem_svc − mlp | -0.332723 | [-0.347272, -0.316283] | -1.000 | 0.00195312 | 0.0195312 |
 
-Sélection provisoire : xgb (premier significativement meilleur que deuxième). Aucune promotion automatique.
+Seuil d'effet non négligeable : 0.010000 point de PR-AUC. Décision **post hoc**, prise après observation du benchmark ; cette réanalyse n'est pas une confirmation indépendante.
+Sensibilité : XGBoost est retenu à titre provisoire pour tout seuil de 0 à 0.023695277277932792 inclus (≈ 0.0237, borne inférieure de l'IC bootstrap apparié face au deuxième modèle). Au-delà, la sélection reste en attente.
+
+Sélection provisoire : xgb (Holm, direction et borne inférieure de l'IC apparié satisfont le seuil d'effet post hoc). Aucune promotion automatique.
 
 ## Sensibilité Nadeau–Bengio
 
-Sur les 10 moyennes de répétition (ddl=9), correction 1/10 + 1/4 : approximation pouvant sur/sous-corriger ; le test original porte sur les plis. Ces p-values sont des analyses de sensibilité et ne changent pas la décision Wilcoxon–Holm.
-- xgb_vs_rf: t=11.5876, p=1.0366e-06
-- xgb_vs_mlp: t=13.8209, p=2.29198e-07
-- xgb_vs_logreg: t=252.3614, p=1.22578e-18
-- xgb_vs_nystroem_svc: t=148.0048, p=1.49162e-16
+Sur les 50 différences de plis appariés (ddl=49) : correction 1/50 + moyenne(n_validation/n_train naturel) calculée sur les effectifs réels. Les répétitions partagent des observations ; ces p-values restent une analyse de sensibilité et ne changent pas la décision Wilcoxon–Holm.
+- xgb_vs_rf: t=6.2342, p=1.01828e-07 ; ratio validation/train moyen=0.25000000
+- xgb_vs_mlp: t=7.8843, p=2.87196e-10 ; ratio validation/train moyen=0.25000000
+- xgb_vs_logreg: t=66.0728, p=1.46857e-49 ; ratio validation/train moyen=0.25000000
+- xgb_vs_nystroem_svc: t=43.0790, p=1.29877e-40 ; ratio validation/train moyen=0.25000000
 
 ![Diagramme de différence critique](figures/critical_difference.png)
 
 La barre CD est celle de Nemenyi, affichée à titre descriptif ; les conclusions reposent sur Wilcoxon–Holm.
 
-Limites : 10 blocs seulement, un seul jeu Sparkov, plis stratifiés non temporels, dépendance résiduelle entre répétitions ; aucune conclusion sur la zone de test final. La sélection reste provisoire et ne mesure pas encore la latence p95 du pipeline complet.
+Limites : 10 blocs seulement, un seul jeu Sparkov, plis stratifiés non temporels, dépendance résiduelle entre répétitions ; aucune conclusion sur la zone de test final. Le seuil d'effet a été décidé post hoc ; aucune promotion automatique. La latence p95 du pipeline complet n'est pas mesurée ici.
