@@ -8,7 +8,6 @@ import json
 import os
 import sys
 from contextlib import contextmanager
-from dataclasses import dataclass
 from datetime import UTC, datetime
 from itertools import pairwise
 from math import ceil
@@ -23,7 +22,6 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from scipy.special import logit
 from scipy.stats import binomtest
 from sklearn.isotonic import IsotonicRegression
 from sklearn.linear_model import LogisticRegression
@@ -46,12 +44,18 @@ from data.load_data import (
 from models.factory import build_model
 from validation.fold_data import correct_proba, guard_training_source
 
+from ml.src.model.calibration import (
+    CalibratedPriorClassifier,
+    Calibrator,
+    _logit,
+    _proba,
+)
 from ml.src.preprocessing.pipeline import (
     build_preprocessing_pipeline,
     split_features_target,
 )
 
-ALPHAS = (0.01, 0.05, 0.10)
+ALPHAS = (0.01, 0.02, 0.03, 0.05, 0.10)
 SEED = 42
 REVIEW_CAPACITY = 0.02
 PROBABILITY_WEIGHTS = (1, 1)
@@ -67,6 +71,7 @@ def protocol_snapshot(params: dict, digest: str) -> dict:
         "outer_fractions": [0.70, 0.15, 0.15],
         "probability_weights": list(PROBABILITY_WEIGHTS),
         "conformal_weights": list(CONFORMAL_WEIGHTS),
+        "internal_tie_policy": "shift_right",
         "review_capacity": REVIEW_CAPACITY,
         "xgb_params": params,
         "best_params_sha256": digest,
@@ -105,6 +110,11 @@ def launch_audit(journal: Path, source: Path, protocol: dict, change_reason: str
                 else []
             )
             previous = [e for e in entries if e.get("event") == "launch_started"]
+            protocol_hash = hashlib.sha256(
+                json.dumps(
+                    protocol, sort_keys=True, separators=(",", ":"), allow_nan=False
+                ).encode("utf-8")
+            ).hexdigest()
             current = {"source": str(source), "protocol": protocol}
             changed = bool(previous) and previous[-1]["configuration"] != current
             if changed and not change_reason.strip():
@@ -134,7 +144,9 @@ def launch_audit(journal: Path, source: Path, protocol: dict, change_reason: str
                     previous=previous[-1]["configuration"],
                     replacement=current,
                 )
-            record("launch_started", configuration=current)
+            record(
+                "launch_started", configuration=current, protocol_sha256=protocol_hash
+            )
             try:
                 yield record
             except BaseException as exc:
@@ -184,56 +196,32 @@ def calibration_metrics(y: np.ndarray, p: np.ndarray) -> dict[str, float]:
 def chronological_parts(
     frame: pd.DataFrame, weights: tuple[int, ...]
 ) -> list[pd.DataFrame]:
-    """Découpe uniquement à partir des dates et des positions."""
+    """Découpe chronologique ; déplace à droite toute frontière de dates égales."""
+    dates = frame[DATE_COLUMN]
     if (
-        not frame[DATE_COLUMN].is_monotonic_increasing
+        dates.isna().any()
+        or not dates.is_monotonic_increasing
         or not weights
         or any(weight <= 0 for weight in weights)
     ):
         raise ValueError("Zone non chronologique ou fractions invalides")
     cuts = [0]
+    nominal = 0
     for weight in weights[:-1]:
-        cuts.append(cuts[-1] + len(frame) * weight // sum(weights))
+        nominal += len(frame) * weight // sum(weights)
+        cut = max(nominal, cuts[-1] + 1)
+        if cut >= len(frame):
+            raise ValueError("Sous-zone chronologique vide")
+        if dates.iloc[cut - 1] == dates.iloc[cut]:
+            cut = int(dates.searchsorted(dates.iloc[cut], side="right"))
+        if cut >= len(frame):
+            raise ValueError("Impossible de séparer les dates sans sous-zone vide")
+        cuts.append(cut)
     cuts.append(len(frame))
     parts = [frame.iloc[a:b].copy() for a, b in pairwise(cuts)]
     if any(part.empty for part in parts):
         raise ValueError("Sous-zone chronologique vide")
-    if any(
-        left[DATE_COLUMN].iloc[-1] >= right[DATE_COLUMN].iloc[0]
-        for left, right in pairwise(parts)
-    ):
-        raise ValueError("Dates communes à une frontière interne")
     return parts
-
-
-def _proba(p: np.ndarray) -> np.ndarray:
-    values = np.asarray(p, dtype=float)
-    if (
-        values.ndim != 1
-        or not np.isfinite(values).all()
-        or ((values < 0) | (values > 1)).any()
-    ):
-        raise ValueError("Probabilités finies dans [0,1] requises")
-    return values
-
-
-def _logit(p: np.ndarray) -> np.ndarray:
-    return logit(np.clip(p, 1e-12, 1 - 1e-12)).reshape(-1, 1)
-
-
-@dataclass
-class Calibrator:
-    method: str
-    estimator: object
-
-    def predict(self, p: np.ndarray) -> np.ndarray:
-        values = _proba(p)
-        output = (
-            self.estimator.predict_proba(_logit(values))[:, 1]
-            if self.method == "sigmoid"
-            else self.estimator.predict(values)
-        )
-        return _proba(output)
 
 
 def fit_calibrators(p: np.ndarray, y: np.ndarray) -> dict[str, Calibrator]:
@@ -292,6 +280,19 @@ def review_rate(members: np.ndarray) -> float:
     return float(np.mean(members.sum(axis=1) != 1))
 
 
+def select_alpha(rows: list[dict]) -> dict | None:
+    """Choisit le plus petit alpha éligible selon la revue seule, sans labels."""
+    return next(
+        (
+            row
+            for row in sorted(rows, key=lambda item: item["alpha"])
+            if row["status"] == "eligible"
+            and row["selection_review_rate"] <= REVIEW_CAPACITY
+        ),
+        None,
+    )
+
+
 def coverage_summary(members: np.ndarray | None, y: np.ndarray) -> dict:
     """Compteurs observés ; None signifie classe absente ou alpha inapplicable."""
     labels = np.asarray(y)
@@ -318,7 +319,7 @@ def coverage_summary(members: np.ndarray | None, y: np.ndarray) -> dict:
 
 
 def exact_fraud_coverage_test(covered: int | None, total: int, alpha: float) -> dict:
-    """Diagnostic bilatéral ; famille fixe des trois alpha, jamais une sélection."""
+    """Diagnostic bilatéral ; famille fixe des cinq alpha, jamais une sélection."""
     if (
         not isinstance(total, Integral)
         or total < 0
@@ -334,7 +335,7 @@ def exact_fraud_coverage_test(covered: int | None, total: int, alpha: float) -> 
         "total": total,
         "nominal_coverage": 1 - alpha,
         "alternative": "two-sided",
-        "comparisons": 3,
+        "comparisons": len(ALPHAS),
         "status": "unavailable",
         "p_raw": None,
         "p_bonferroni": None,
@@ -347,7 +348,7 @@ def exact_fraud_coverage_test(covered: int | None, total: int, alpha: float) -> 
     result.update(
         status="available",
         p_raw=float(test.pvalue),
-        p_bonferroni=min(1.0, 3 * float(test.pvalue)),
+        p_bonferroni=min(1.0, len(ALPHAS) * float(test.pvalue)),
         ci95_clopper_pearson=[float(interval.low), float(interval.high)],
     )
     return result
@@ -378,18 +379,6 @@ def evaluate_sets(members: np.ndarray, y: np.ndarray) -> dict:
         if automatic.any()
         else None,
     }
-
-
-@dataclass
-class CalibratedPriorClassifier:
-    classifier: object
-    beta: float
-    calibrator: Calibrator
-
-    def predict_proba(self, X: np.ndarray) -> np.ndarray:
-        raw = self.classifier.predict_proba(X)[:, 1]
-        fraud = self.calibrator.predict(correct_proba(raw, self.beta))
-        return np.column_stack((1 - fraud, fraud))
 
 
 def _zone_proba(
@@ -497,15 +486,7 @@ def run_workflow(splits: dict[str, pd.DataFrame], params: dict, output: Path) ->
                 "selection_review_rate": review_rate(prediction_membership(p_alpha, q)),
             }
         )
-    selected = next(
-        (
-            row
-            for row in rows
-            if row["status"] == "eligible"
-            and row["selection_review_rate"] <= REVIEW_CAPACITY
-        ),
-        None,
-    )
+    selected = select_alpha(rows)
     # Score the evaluation block only after freezing the capacity decision.
     p_eval, y_eval = _zone_proba(conf_eval, preproc, classifier, beta)
     p_eval_before = p_eval.copy()
@@ -522,6 +503,17 @@ def run_workflow(splits: dict[str, pd.DataFrame], params: dict, output: Path) ->
             row["evaluation"] = evaluate_sets(
                 prediction_membership(p_eval, row["quantiles"]), y_eval
             )
+        observed_fraud_coverage = (
+            row.get("evaluation", {}).get("coverage_by_class", {}).get("1")
+        )
+        floor = 1.0 - row["alpha"] - 0.02
+        row["fraud_coverage_gate"] = {
+            "floor": floor,
+            "observed": observed_fraud_coverage,
+            "met": observed_fraud_coverage >= floor
+            if observed_fraud_coverage is not None
+            else None,
+        }
         row["fraud_coverage_test"] = exact_fraud_coverage_test(
             row.get("evaluation", {}).get("covered_counts", {}).get("1"),
             int((y_eval == 1).sum()),
@@ -579,14 +571,14 @@ def run_workflow(splits: dict[str, pd.DataFrame], params: dict, output: Path) ->
         "ECE : 10 bins uniformes, pondérés par effectif (convention benchmark).",
         f"Effectifs Mondrian par classe : {report['conformal_fit_counts']}.",
         "",
-        "| alpha | statut | revue choix | couverture 0 | couverture 1 | revue évaluation | automatisation | erreur automatique |",
-        "|---:|---|---:|---:|---:|---:|---:|---:|",
+        "| alpha | statut | revue choix | couverture 0 | couverture 1 | plancher fraude | porte fraude | revue évaluation | automatisation | erreur automatique |",
+        "|---:|---|---:|---:|---:|---:|---|---:|---:|---:|",
     ]
     for row in rows:
         metrics = row.get("evaluation", {})
         coverage = metrics.get("coverage_by_class", {})
         lines.append(
-            f"| {row['alpha']} | {row['status']} | {row.get('selection_review_rate', '—')} | {coverage.get('0', '—')} | {coverage.get('1', '—')} | {metrics.get('review_rate', '—')} | {metrics.get('automation_rate', '—')} | {metrics.get('automatic_error_rate', '—')} |"
+            f"| {row['alpha']} | {row['status']} | {row.get('selection_review_rate', '—')} | {coverage.get('0', '—')} | {coverage.get('1', '—')} | {row['fraud_coverage_gate']['floor']} | {row['fraud_coverage_gate']['met']} | {metrics.get('review_rate', '—')} | {metrics.get('automation_rate', '—')} | {metrics.get('automatic_error_rate', '—')} |"
         )
     lines.extend(
         [
@@ -606,11 +598,11 @@ def run_workflow(splits: dict[str, pd.DataFrame], params: dict, output: Path) ->
         [
             "",
             "Tests binomiaux exacts bilatéraux : couverture fraude du bloc d'évaluation contre 1-alpha.",
-            "Bonferroni : p ajusté = min(1, 3 × p brut), famille fixe des trois alpha, même si un alpha est inapplicable.",
+            "Bonferroni : p ajusté = min(1, 5 × p brut), famille fixe des cinq alpha, même si un alpha est inapplicable.",
             "Les intervalles Clopper-Pearson à 95 % sont marginaux, non ajustés ; les intervalles et tests supposent des transactions indépendantes et une probabilité de couverture commune.",
             "La dépendance entre cartes/transactions et l'incertitude de réajustement ne sont pas prises en compte.",
             "Diagnostics descriptifs : ils ne modifient ni la sélection d'alpha ni le statut provisoire du modèle.",
-            "| alpha | statut test | fraudes couvertes | fraudes évaluées | cible | IC 95 % marginal | p exact brut | p Bonferroni (3) |",
+            "| alpha | statut test | fraudes couvertes | fraudes évaluées | cible | IC 95 % marginal | p exact brut | p Bonferroni (5) |",
             "|---:|---|---:|---:|---:|---|---:|---:|",
         ]
     )
@@ -623,7 +615,7 @@ def run_workflow(splits: dict[str, pd.DataFrame], params: dict, output: Path) ->
         [
             "",
             f"Alpha choisi : {selected['alpha'] if selected else 'aucun : capacité non satisfaite ou quantile inapplicable'}.",
-            "Evaluation sur un quart distinct du fit et du choix d'alpha.",
+            "Evaluation sur un quart distinct du fit et du choix d'alpha ; résultats exploratoires car ce bloc a déjà été consulté avant D44.",
             "![Fiabilité](reliability.png)",
             "![Compromis](alpha_review.png)",
         ]
@@ -701,6 +693,14 @@ def main(argv: list[str] | None = None) -> int:
                     "git_commit": _git_commit(),
                     "model_status": "provisional",
                     "best_params_sha256": digest,
+                    "protocol_sha256": hashlib.sha256(
+                        json.dumps(
+                            protocol_snapshot(params, digest),
+                            sort_keys=True,
+                            separators=(",", ":"),
+                            allow_nan=False,
+                        ).encode("utf-8")
+                    ).hexdigest(),
                 }
             ) as run:
                 record("mlflow_run", run_id=run.info.run_id)

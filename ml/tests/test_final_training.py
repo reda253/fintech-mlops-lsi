@@ -87,13 +87,37 @@ def test_review_and_automatic_error_exclude_ambiguous():
     assert result["coverage_by_class"] == {"0": 0.5, "1": 0.5}
 
 
-def test_internal_chronology_refuses_shared_boundary():
+def test_internal_chronology_moves_shared_boundary_right():
     frame = synthetic_splits()["conformal_calibration"].copy()
-    frame.iloc[199, frame.columns.get_loc("trans_date_trans_time")] = frame.iloc[200][
-        "trans_date_trans_time"
+    date = "trans_date_trans_time"
+    frame.iloc[199, frame.columns.get_loc(date)] = frame.iloc[200][date]
+    parts = final.chronological_parts(frame, (2, 1, 1))
+    assert [len(part) for part in parts] == [201, 99, 100]
+    assert parts[0][date].max() < parts[1][date].min()
+    assert parts[1][date].max() < parts[2][date].min()
+    assert sum(map(len, parts)) == len(frame)
+
+
+def test_nonmonotonic_review_grid_finds_new_alpha():
+    probabilities = np.linspace(0, 1, 101)
+    thresholds = {0.01: 0.7, 0.02: 0.5, 0.03: 0.48, 0.05: 0.3, 0.10: 0.2}
+    rows = [
+        {
+            "alpha": alpha,
+            "status": "eligible",
+            "selection_review_rate": final.review_rate(
+                final.prediction_membership(probabilities, {0: q, 1: q})
+            ),
+        }
+        for alpha, q in thresholds.items()
     ]
-    with pytest.raises(ValueError, match="Dates communes"):
-        final.chronological_parts(frame, (2, 1, 1))
+    assert rows[0]["selection_review_rate"] > rows[1]["selection_review_rate"]
+    assert rows[-1]["selection_review_rate"] > rows[1]["selection_review_rate"]
+    assert (
+        final.select_alpha([row for row in rows if row["alpha"] in (0.01, 0.05, 0.10)])
+        is None
+    )
+    assert final.select_alpha(rows)["alpha"] == 0.02
 
 
 def test_integration_uses_disjoint_zones_and_calibrated_artifact(tmp_path, monkeypatch):
@@ -206,6 +230,8 @@ def test_cli_with_real_pipeline_on_synthetic_csv(tmp_path):
         "choice_block_metrics",
         "choice_block_metrics",
         "choice_block_metrics",
+        "choice_block_metrics",
+        "choice_block_metrics",
         "launch_completed",
     ]
     assert events[1]["zones"] == list(final.ZONE_NAMES)
@@ -214,7 +240,7 @@ def test_cli_with_real_pipeline_on_synthetic_csv(tmp_path):
         "probability_calibration": 600,
         "conformal_calibration": 600,
     }
-    for event, row in zip(events[3:6], report["alpha_results"], strict=True):
+    for event, row in zip(events[3:8], report["alpha_results"], strict=True):
         assert event["alpha"] == row["alpha"]
         assert event["fraud_count"] == row["choice"]["fraud_count"] == 75
         assert event["class_counts"] == row["choice"]["class_counts"]
@@ -228,6 +254,38 @@ def test_cli_with_real_pipeline_on_synthetic_csv(tmp_path):
     assert prediction["prediction_set"] == [1]
     assert prediction["alpha"] == model.alpha == report["selected_alpha"]
     assert model.threshold_fraud == report["alpha_results"][0]["quantiles"]["1"]
+    for row in report["alpha_results"]:
+        gate = row["fraud_coverage_gate"]
+        assert gate["floor"] == pytest.approx(1 - row["alpha"] - 0.02)
+        assert gate["met"] == (gate["observed"] >= gate["floor"])
+        assert "automatic_error_rate" in row["evaluation"]
+    code = (
+        "import sys, joblib; "
+        "sys.path.insert(0, 'ml-service'); "
+        "model = joblib.load(sys.argv[1]); "
+        "assert 'ml.src.final.train_final' not in sys.modules; "
+        "assert type(model.classifier).__module__ == 'ml.src.model.calibration'; "
+        "from app.predictor import RealPredictor; "
+        "service = RealPredictor(model_instance=model); "
+        "service.warmup(); assert service.is_ready(); "
+        "import mlflow.pyfunc; "
+        "mlflow.pyfunc.save_model(path=sys.argv[2], python_model=model, pip_requirements=[]); "
+        "loaded_service = RealPredictor(model_uri=sys.argv[2]); "
+        "loaded_service.warmup(); assert loaded_service.is_ready(); "
+        "assert 'ml.src.final.train_final' not in sys.modules"
+    )
+    subprocess.run(
+        [
+            sys.executable,
+            "-B",
+            "-c",
+            code,
+            str(output / "candidate_model.joblib"),
+            str(tmp_path / "serving_model"),
+        ],
+        cwd=root,
+        check=True,
+    )
 
 
 def test_overlapping_probability_and_conformal_periods_rejected(tmp_path):
@@ -425,7 +483,7 @@ def test_inapplicable_alpha_still_records_choice_counts(tmp_path, monkeypatch):
     final.record_choice_metrics(
         report, lambda event, **details: events.append((event, details))
     )
-    assert len(events) == 3
+    assert len(events) == len(final.ALPHAS)
     assert [e[1]["alpha"] for e in events] == list(final.ALPHAS)
     for event, details in events:
         assert event == "choice_block_metrics"
@@ -440,9 +498,9 @@ def test_exact_binomial_and_bonferroni_hand_calculation(covered):
     # Binomial(5, .5): the two extreme outcomes have mass 2 / 32.
     result = final.exact_fraud_coverage_test(covered, 5, 0.5)
     assert result["alternative"] == "two-sided"
-    assert result["comparisons"] == 3
+    assert result["comparisons"] == 5
     assert result["p_raw"] == pytest.approx(1 / 16)
-    assert result["p_bonferroni"] == pytest.approx(3 / 16)
+    assert result["p_bonferroni"] == pytest.approx(5 / 16)
     lo, hi = result["ci95_clopper_pearson"]
     if covered == 0:
         assert lo == 0.0
@@ -460,7 +518,7 @@ def test_coverage_test_unavailable_is_not_a_zero_p_value(covered, total):
     assert result["p_raw"] is None
     assert result["p_bonferroni"] is None
     assert result["ci95_clopper_pearson"] is None
-    assert result["comparisons"] == 3
+    assert result["comparisons"] == 5
     json.dumps(result, allow_nan=False)
 
 
@@ -487,16 +545,55 @@ def test_report_has_adjacent_exact_and_adjusted_tests_without_reducing_family(
     monkeypatch.setattr(final, "mondrian_quantiles", quantiles)
     output = tmp_path / "report"
     report = final.run_workflow(synthetic_splits(), {}, output)
-    assert report["selected_alpha"] == 0.05
+    assert report["selected_alpha"] == 0.02
     saved = json.loads((output / "results.json").read_text(encoding="utf8"))
     text = (output / "report.md").read_text(encoding="utf8")
-    assert "| p exact brut | p Bonferroni (3) |" in text
+    assert "| p exact brut | p Bonferroni (5) |" in text
     assert "transactions indépendantes" in text
     assert "marginaux, non ajustés" in text
     assert saved["alpha_results"][0]["fraud_coverage_test"]["p_raw"] is None
     for row in saved["alpha_results"][1:]:
         test = row["fraud_coverage_test"]
         assert test["total"] == test["covered"] == 50
-        assert test["comparisons"] == 3
-        assert test["p_bonferroni"] == min(1.0, 3 * test["p_raw"])
+        assert test["comparisons"] == 5
+        assert test["p_bonferroni"] == min(1.0, 5 * test["p_raw"])
         assert f"| {test['p_raw']} | {test['p_bonferroni']} |" in text
+
+
+def test_inference_prior_correction_matches_training():
+    from ml.src.model.calibration import _correct_proba
+
+    values = np.array([0.0, 0.1, 0.5, 0.9, 1.0])
+    np.testing.assert_allclose(
+        _correct_proba(values, 0.123), final.correct_proba(values, 0.123)
+    )
+
+
+def test_protocol_hash_and_grid_change_are_recorded(tmp_path):
+    import hashlib
+
+    journal = tmp_path / "launches.jsonl"
+    source = tmp_path / "data/raw/fraudTrain.csv"
+    old = final.protocol_snapshot({}, "digest")
+    old["alphas"] = [0.01, 0.05, 0.1]
+    with final.launch_audit(journal, source, old):
+        pass
+    new = final.protocol_snapshot({}, "digest")
+    with (
+        pytest.raises(ValueError, match="protocol-change-reason"),
+        final.launch_audit(journal, source, new),
+    ):
+        pytest.fail("changed grid accepted without explicit reason")
+    with final.launch_audit(journal, source, new, "D44: synthetic test"):
+        pass
+    events = [
+        json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines()
+    ]
+    expected = hashlib.sha256(
+        json.dumps(new, sort_keys=True, separators=(",", ":"), allow_nan=False).encode(
+            "utf-8"
+        )
+    ).hexdigest()
+    assert events[-2]["event"] == "launch_started"
+    assert events[-2]["protocol_sha256"] == expected
+    assert events[-3]["event"] == "protocol_change_acknowledged"
