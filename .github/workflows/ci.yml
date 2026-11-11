@@ -38,6 +38,9 @@ jobs:
       - name: Test registry publication identity and complete digest inventory
         run: python3 -B -m unittest discover -s deploy/bootstrap -p test_registry_release.py
 
+      - name: Test isolated GitOps pilot boundaries
+        run: python3 -B -m unittest discover -s deploy/bootstrap -p test_gitops_pilot.py
+
       - name: Check repository structure
         run: |
           test -f docker-compose.yml

@@ -1,0 +1,14 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "AppProject",
+  "metadata": {"name": "fintech-pilot", "namespace": "argocd"},
+  "spec": {
+    "sourceRepos": ["https://github.com/reda253/fintech-mlops-lsi.git"],
+    "destinations": [{"server": "https://kubernetes.default.svc", "namespace": "fintech-gitops-pilot"}],
+    "clusterResourceWhitelist": [],
+    "namespaceResourceWhitelist": [
+      {"group": "apps", "kind": "Deployment"},
+      {"group": "", "kind": "Service"}
+    ]
+  }
+}
