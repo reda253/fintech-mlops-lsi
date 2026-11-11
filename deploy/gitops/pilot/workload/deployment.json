@@ -1,0 +1,45 @@
+{
+  "apiVersion": "apps/v1",
+  "kind": "Deployment",
+  "metadata": {"name": "pilot-frontend"},
+  "spec": {
+    "replicas": 1,
+    "selector": {"matchLabels": {"app": "pilot-frontend"}},
+    "template": {
+      "metadata": {"labels": {"app": "pilot-frontend"}},
+      "spec": {
+        "automountServiceAccountToken": false,
+        "nodeSelector": {"kubernetes.io/arch": "amd64"},
+        "securityContext": {
+          "runAsNonRoot": true,
+          "runAsUser": 10001,
+          "runAsGroup": 10001,
+          "fsGroup": 10001,
+          "seccompProfile": {"type": "RuntimeDefault"}
+        },
+        "containers": [
+          {
+            "name": "frontend",
+            "image": "ghcr.io/reda253/fintech-mlops-lsi/frontend@sha256:e5ed667899fc461f9170198e84b03485066a48fb95499b80a156eb588785625a",
+            "imagePullPolicy": "Always",
+            "ports": [{"name": "http", "containerPort": 8080}],
+            "env": [{"name": "GATEWAY_UPSTREAM", "value": "http://127.0.0.1:9"}],
+            "readinessProbe": {"httpGet": {"path": "/healthz", "port": "http"}},
+            "livenessProbe": {"httpGet": {"path": "/healthz", "port": "http"}},
+            "resources": {
+              "requests": {"cpu": "50m", "memory": "64Mi"},
+              "limits": {"cpu": "200m", "memory": "128Mi"}
+            },
+            "securityContext": {
+              "allowPrivilegeEscalation": false,
+              "readOnlyRootFilesystem": true,
+              "capabilities": {"drop": ["ALL"]}
+            },
+            "volumeMounts": [{"name": "tmp", "mountPath": "/tmp"}]
+          }
+        ],
+        "volumes": [{"name": "tmp", "emptyDir": {"medium": "Memory", "sizeLimit": "64Mi"}}]
+      }
+    }
+  }
+}

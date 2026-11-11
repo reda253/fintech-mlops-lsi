@@ -1,0 +1,15 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Application",
+  "metadata": {"name": "fintech-pilot", "namespace": "argocd"},
+  "spec": {
+    "project": "fintech-pilot",
+    "source": {
+      "repoURL": "https://github.com/reda253/fintech-mlops-lsi.git",
+      "targetRevision": "main",
+      "path": "deploy/gitops/pilot/workload"
+    },
+    "destination": {"server": "https://kubernetes.default.svc", "namespace": "fintech-gitops-pilot"},
+    "syncPolicy": {"syncOptions": ["Prune=false", "FailOnSharedResource=true"]}
+  }
+}
