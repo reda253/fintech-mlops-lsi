@@ -184,3 +184,15 @@ ultérieure ; une entrée de journal ne restaure pas l'indépendance statistique
 **Décision ouverte, postérieure aux résultats.** La capacité de 2 % n'est
 respectée par aucun alpha de la grille initiale. XGBoost reste provisoire ; aucune
 promotion ni nouvelle sélection n'est effectuée dans cette revue.
+
+
+## Test final consommé — décision de Basma, 11 novembre 2026
+
+Le test final a été consommé le 10 novembre 2026 pour le candidat provisoire
+d’empreinte `aa1565caf7fed3af833a5613fd76416b6489c9a9f31ee8c523d65e5d9113da33`.
+L’empreinte de la source enregistrée a été comparée par Basma à celle de
+`fraudTest.csv` et correspond. La commande et l’auteur du lancement ne sont
+pas tracés dans le journal. Le journal conserve un début et une fin, mais ne
+prouve pas qu’aucune autre lecture n’a eu lieu. Les IC bootstrap n’ont pas été
+calculés ; aucune prédiction par ligne n’a été conservée dans le dossier connu.
+Aucune décision ultérieure de sélection ou de réglage ne doit s’appuyer sur ce jeu.
