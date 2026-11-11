@@ -11,6 +11,7 @@ import subprocess
 import time
 from urllib.error import HTTPError, URLError
 from urllib.request import ProxyHandler, HTTPRedirectHandler, Request, build_opener
+from uuid import uuid4
 
 
 OLD = "e9a57d9ce1f864d1da5a027dfbdede644eb13fe7"
@@ -147,19 +148,20 @@ def run(inventory, openssl):
         def ready(port):
             return request(port, "/actuator/health/readiness") == (200, {"status": "UP"})
 
+        fixture_id = uuid4()
         with ExitStack() as v1:
             old_port = start("auth-v1", old_auth, auth_env, *app_flags, port=8081, stack=v1)
             wait_for(lambda: ready(old_port), "Auth V1")
             require(sql(HISTORY).splitlines() == ["1"], "Expected V1 only before upgrade")
             sql("INSERT INTO auth.users (id, username, password_hash, roles, enabled) "
-                "VALUES ('9879fb23-7b7d-4529-807e-3bf2be571054', 'upgrade-fixture', "
+                f"VALUES ('{fixture_id}', 'upgrade-fixture', "
                 "'not-a-login-hash', ARRAY['ANALYSTE'], false);")
         print("Baseline: Auth V1 applied and fixture row inserted.", flush=True)
         auth_port = start("auth", images["auth-service"], auth_env | {"JWT_PRIVATE_KEY": key},
                           *app_flags, port=8081)
         wait_for(lambda: ready(auth_port), "Auth V2")
         require(sql(HISTORY).splitlines() == ["1", "2"], "Expected successful V1 and V2 migrations")
-        require(sql("SELECT username FROM auth.users WHERE id = '9879fb23-7b7d-4529-807e-3bf2be571054' "
+        require(sql(f"SELECT username FROM auth.users WHERE id = '{fixture_id}' "
                     "AND NOT enabled;") == "upgrade-fixture", "Pre-upgrade row not preserved")
         print("Upgrade: Flyway V2 applied and V1 data preserved.", flush=True)
 
