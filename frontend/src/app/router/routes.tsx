@@ -4,15 +4,16 @@ import { LoginPage } from '@/features/auth/LoginPage';
 import { WelcomePage } from '@/features/welcome/WelcomePage';
 import { PlaceholderPage } from '@/features/placeholder/PlaceholderPage';
 import { ForbiddenPage, NotFoundPage } from '@/features/placeholder/StatusPages';
+import { ClientsPage } from '@/features/customers/ClientsPage';
+import { ClientDetailPage } from '@/features/customers/ClientDetailPage';
+import { ClientFormPage } from '@/features/customers/ClientFormPage';
+import { TransactionsPage } from '@/features/transactions/TransactionsPage';
+import { InvestigationPage } from '@/features/investigation/InvestigationPage';
 import { RequireAuth } from '../guards/RequireAuth';
 import { RootRedirect } from '../guards/RootRedirect';
 import { RequirePermission } from '../guards/RequirePermission';
 import { PATHS } from './paths';
 
-/**
- * Table de routage centralisée. Chaque route protégée déclare la permission requise ;
- * les pages seront remplacées lot par lot (voir README).
- */
 export const routes: RouteObject[] = [
   { path: '/', element: <RootRedirect /> },
   { path: PATHS.welcome, element: <WelcomePage /> },
@@ -29,26 +30,31 @@ export const routes: RouteObject[] = [
           {
             element: <RequirePermission permission="customers:read" />,
             children: [
-              { path: PATHS.clients, element: <PlaceholderPage title="Clients" lot={3} mockup="04 — clients" /> },
-              { path: '/clients/:id', element: <PlaceholderPage title="Fiche client" lot={3} mockup="05 — détail client" /> },
+              { path: PATHS.clients, element: <ClientsPage /> },
+              { path: '/clients/:id', element: <ClientDetailPage /> },
             ],
           },
           {
             element: <RequirePermission permission="customers:write" />,
             children: [
-              { path: PATHS.clientNew, element: <PlaceholderPage title="Nouveau client" lot={3} mockup="06 — formulaire client" /> },
-              { path: '/clients/:id/edit', element: <PlaceholderPage title="Modifier le client" lot={3} mockup="06 — formulaire client" /> },
+              { path: PATHS.clientNew, element: <ClientFormPage /> },
+              { path: '/clients/:id/edit', element: <ClientFormPage /> },
             ],
           },
           {
             element: <RequirePermission permission="transactions:read" />,
-            children: [{ path: PATHS.transactions, element: <PlaceholderPage title="Transactions" lot={3} mockup="07 — transactions" /> }],
+            children: [{ path: PATHS.transactions, element: <TransactionsPage /> }],
+          },
+          {
+            element: <RequirePermission permission="risk:read" />,
+            children: [
+              { path: PATHS.investigation, element: <InvestigationPage /> },
+              { path: '/investigation/:transactionId', element: <InvestigationPage /> },
+            ],
           },
           {
             element: <RequirePermission permission="reviews:read" />,
             children: [
-              { path: PATHS.investigation, element: <PlaceholderPage title="Investigation" lot={4} mockup="08 / 08b — investigation" /> },
-              { path: '/investigation/:transactionId', element: <PlaceholderPage title="Investigation" lot={4} mockup="08 / 08b — investigation" /> },
               { path: PATHS.reviews, element: <PlaceholderPage title="Smart Review" lot={4} mockup="09 — file de revue" /> },
               { path: '/reviews/:id', element: <PlaceholderPage title="Dossier de revue" lot={4} mockup="10 / 10b / 10c — décision" /> },
             ],
