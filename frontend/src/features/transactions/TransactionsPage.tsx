@@ -114,8 +114,9 @@ export function TransactionsPage() {
       });
       setItems(res.items);
       setTotal(res.total);
-      if (res.items.length > 0) {
-        setSelectedId((prev) => (res.items.some((x) => x.id === prev) ? prev : res.items[0].id));
+      const firstItem = res.items[0];
+      if (firstItem) {
+        setSelectedId((prev) => (res.items.some((x) => x.id === prev) ? prev : firstItem.id));
       }
     } catch {
       const filtered = MOCK_TRANSACTIONS_LIST.filter((tx) => {
@@ -132,8 +133,9 @@ export function TransactionsPage() {
         maxVal !== undefined;
       setItems(filtered);
       setTotal(isFiltered ? filtered.length : MOCK_TRANSACTIONS_TOTAL);
-      if (filtered.length > 0) {
-        setSelectedId((prev) => (filtered.some((x) => x.id === prev) ? prev : filtered[0].id));
+      const firstFiltered = filtered[0];
+      if (firstFiltered) {
+        setSelectedId((prev) => (filtered.some((x) => x.id === prev) ? prev : firstFiltered.id));
       }
     } finally {
       setLoading(false);
@@ -142,6 +144,13 @@ export function TransactionsPage() {
 
   useEffect(() => {
     void load();
+    if (import.meta.env.VITE_USE_MOCKS === 'false') {
+      const timer = window.setInterval(() => {
+        void load();
+      }, 5000);
+      return () => window.clearInterval(timer);
+    }
+    return undefined;
   }, [load]);
 
   const applyFilters = () => {
@@ -178,6 +187,7 @@ export function TransactionsPage() {
 
   return (
     <div className={styles.page}>
+      {/* ── En-tête ─────────────────────────────────────────── */}
       <header className={styles.header}>
         <div>
           <h1 className={styles.title}>Transactions</h1>
@@ -190,6 +200,7 @@ export function TransactionsPage() {
         </span>
       </header>
 
+      {/* ── Carte des filtres ───────────────────────────────── */}
       <section className={styles.filterCard}>
         <div className={styles.filterRow}>
           <div className={styles.selectChip}>
@@ -302,6 +313,7 @@ export function TransactionsPage() {
         </div>
       </section>
 
+      {/* ── Grille principale : Tableau + Panneau de détail ── */}
       <div className={styles.mainGrid}>
         <section className={styles.card}>
           <div className={styles.tableWrap}>
@@ -447,6 +459,7 @@ export function TransactionsPage() {
           </footer>
         </section>
 
+        {/* ── Panneau latéral droit : Détail de la transaction ── */}
         {selected && (
           <aside className={styles.detailCard}>
             <div className={styles.detailHeader}>

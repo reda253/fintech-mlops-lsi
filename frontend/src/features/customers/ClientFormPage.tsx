@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { PATHS } from '@/app/router/paths';
 import { customersApi } from '@/api/customers';
-import type { Customer } from '@/types/customer';
 import { MOCK_CUSTOMERS } from './mockCustomers';
 import styles from './ClientFormPage.module.css';
 
@@ -98,7 +97,8 @@ export function ClientFormPage() {
         setLast4(c.cardLast4);
       } catch {
         if (!alive) return;
-        const c: Customer = MOCK_CUSTOMERS.find((x) => x.id === id) ?? MOCK_CUSTOMERS[0];
+        const c = MOCK_CUSTOMERS.find((x) => x.id === id) ?? MOCK_CUSTOMERS[0];
+        if (!c) return;
         setForm({
           firstName: c.firstName,
           lastName: c.lastName,

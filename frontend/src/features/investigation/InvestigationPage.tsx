@@ -189,8 +189,11 @@ export function InvestigationPage() {
   const { transactionId } = useParams<{ transactionId?: string }>();
   const [tx, setTx] = useState<TransactionItem>(
     () =>
-      MOCK_TRANSACTIONS_LIST.find((t) => t.id === transactionId || t.transNum.startsWith(transactionId ?? '')) ??
-      MOCK_TRANSACTIONS_LIST[1],
+      (MOCK_TRANSACTIONS_LIST.find(
+        (t) => t.id === transactionId || t.transNum.startsWith(transactionId ?? ''),
+      ) ??
+        MOCK_TRANSACTIONS_LIST[1] ??
+        MOCK_TRANSACTIONS_LIST[0]) as TransactionItem,
   );
   const [activeTab, setActiveTab] = useState<TabKey>('overview');
 
@@ -215,8 +218,10 @@ export function InvestigationPage() {
         const found =
           MOCK_TRANSACTIONS_LIST.find(
             (item) => item.id === targetId || item.transNum.startsWith(targetId),
-          ) ?? MOCK_TRANSACTIONS_LIST[1];
-        setTx(found);
+          ) ??
+          MOCK_TRANSACTIONS_LIST[1] ??
+          MOCK_TRANSACTIONS_LIST[0];
+        if (found) setTx(found);
       }
     })();
     return () => {
@@ -225,7 +230,8 @@ export function InvestigationPage() {
   }, [transactionId]);
 
   const contextMeta: ContextMeta = useMemo(() => {
-    if (CONTEXT_BY_TX[tx.id]) return CONTEXT_BY_TX[tx.id];
+    const preset = CONTEXT_BY_TX[tx.id];
+    if (preset) return preset;
     const baseTime = formatDateTime(tx.transDateTime);
     return {
       distanceKm: 540,
@@ -268,13 +274,10 @@ export function InvestigationPage() {
       decisionChoice === 'APPROUVER' ? 'APPROUVEE' : 'BLOQUEE';
 
     // Met à jour la transaction en mémoire (pour que la liste Transactions reflète aussi le changement)
-    const idx = MOCK_TRANSACTIONS_LIST.findIndex((item) => item.id === tx.id);
-    if (idx !== -1) {
-      MOCK_TRANSACTIONS_LIST[idx] = {
-        ...MOCK_TRANSACTIONS_LIST[idx],
-        status: finalStatus,
-        decisionSource: 'MANUELLE',
-      };
+    const existing = MOCK_TRANSACTIONS_LIST.find((item) => item.id === tx.id);
+    if (existing) {
+      existing.status = finalStatus;
+      existing.decisionSource = 'MANUELLE';
     }
 
     setTx((prev) => ({
@@ -363,7 +366,8 @@ export function InvestigationPage() {
             type="button"
             className={`${styles.demoChip} ${tx.id === 'tx-bfc6490f' ? styles.demoChipActive : ''}`}
             onClick={() => {
-              setTx(MOCK_TRANSACTIONS_LIST[1]);
+              const target = MOCK_TRANSACTIONS_LIST[1];
+              if (target) setTx(target);
               setActiveTab('overview');
             }}
           >
@@ -373,7 +377,8 @@ export function InvestigationPage() {
             type="button"
             className={`${styles.demoChip} ${tx.id === 'tx-bd658318' ? styles.demoChipActive : ''}`}
             onClick={() => {
-              setTx(MOCK_TRANSACTIONS_LIST[6]);
+              const target = MOCK_TRANSACTIONS_LIST[6];
+              if (target) setTx(target);
               setActiveTab('overview');
             }}
           >
@@ -383,7 +388,8 @@ export function InvestigationPage() {
             type="button"
             className={`${styles.demoChip} ${tx.id === 'tx-613b9873' ? styles.demoChipActive : ''}`}
             onClick={() => {
-              setTx(MOCK_TRANSACTIONS_LIST[0]);
+              const target = MOCK_TRANSACTIONS_LIST[0];
+              if (target) setTx(target);
               setActiveTab('overview');
             }}
           >

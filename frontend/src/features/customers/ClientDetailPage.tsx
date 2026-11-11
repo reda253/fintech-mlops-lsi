@@ -38,11 +38,16 @@ function sparkPath(values: number[], width = 160, height = 46) {
   const min = Math.min(...values);
   const span = max - min || 1;
   const step = width / (values.length - 1 || 1);
-  const pts = values.map((v, i) => [i * step, height - ((v - min) / span) * (height - 8) - 4]);
+  const pts: Array<[number, number]> = values.map((v, i) => [
+    i * step,
+    height - ((v - min) / span) * (height - 8) - 4,
+  ]);
   return pts
-    .map(([x, y], i) => {
+    .map((pt, i) => {
+      const [x, y] = pt;
       if (i === 0) return `M${x.toFixed(1)} ${y.toFixed(1)}`;
-      const [px, py] = pts[i - 1];
+      const prev = pts[i - 1] ?? pt;
+      const [px, py] = prev;
       const cx = (px + x) / 2;
       return `C${cx.toFixed(1)} ${py.toFixed(1)} ${cx.toFixed(1)} ${y.toFixed(1)} ${x.toFixed(1)} ${y.toFixed(1)}`;
     })
@@ -131,7 +136,8 @@ export function ClientDetailPage() {
         const fallback =
           MOCK_CUSTOMERS.find((c) => c.id === id) ??
           MOCK_CUSTOMERS.find((c) => c.id === 'c-001') ??
-          MOCK_CUSTOMERS[0];
+          MOCK_CUSTOMERS[0] ??
+          null;
         setCustomer(fallback);
         setTransactions(MOCK_TRANSACTIONS);
       } finally {
@@ -158,11 +164,19 @@ export function ClientDetailPage() {
     const min = Math.min(...amounts);
     const span = max - min || 1;
     const step = w / (amounts.length - 1);
-    const pts = amounts.map((v, i) => [i * step, h - ((v - min) / span) * (h - 34) - 10] as [number, number]);
-    let line = `M${pts[0][0]} ${pts[0][1]}`;
+    const pts: Array<[number, number]> = amounts.map((v, i) => [
+      i * step,
+      h - ((v - min) / span) * (h - 34) - 10,
+    ]);
+    const firstPt = pts[0];
+    if (!firstPt) return { line: '', area: '' };
+    let line = `M${firstPt[0]} ${firstPt[1]}`;
     for (let i = 1; i < pts.length; i += 1) {
-      const [px, py] = pts[i - 1];
-      const [x, y] = pts[i];
+      const prev = pts[i - 1];
+      const curr = pts[i];
+      if (!prev || !curr) continue;
+      const [px, py] = prev;
+      const [x, y] = curr;
       const cx = (px + x) / 2;
       line += ` C${cx} ${py} ${cx} ${y} ${x} ${y}`;
     }
@@ -197,7 +211,7 @@ export function ClientDetailPage() {
             </svg>
             Modifier
           </Link>
-          <Link to={PATHS.transactions} className={styles.primaryBtn}>
+          <Link to={`${PATHS.transactions}?customerId=${customer.id}`} className={styles.primaryBtn}>
             <svg width="15" height="15" viewBox="0 0 16 16" aria-hidden="true">
               <path d="M2 5h12M2 5l3-3M2 5l3 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
               <path d="M14 11H2m12 0l-3-3m3 3l-3 3" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
