@@ -1,0 +1,134 @@
+name: Publish reviewed images to GHCR
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm_publish:
+        description: Publish eleven images from main (no cluster deployment)
+        type: boolean
+        required: true
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ghcr-publication-${{ github.repository }}
+  cancel-in-progress: false
+
+env:
+  REPOSITORY: ${{ github.repository }}
+  COMMIT: ${{ github.sha }}
+  RUN_ID: ${{ github.run_id }}
+  ATTEMPT: ${{ github.run_attempt }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.targets.outputs.matrix }}
+    steps:
+      - name: Require explicit publication from main
+        env:
+          SELECTED_REF: ${{ github.ref }}
+          CONFIRM: ${{ inputs.confirm_publish }}
+        run: |
+          test "$SELECTED_REF" = refs/heads/main
+          test "$CONFIRM" = true
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Compute trusted build targets
+        id: targets
+        run: |
+          matrix=$(python3 -B deploy/bootstrap/registry_release.py matrix --repository "$REPOSITORY" --commit "$COMMIT" --run-id "$RUN_ID" --attempt "$ATTEMPT")
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
+  publish:
+    needs: plan
+    name: Publish ${{ matrix.module }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      MODULE: ${{ matrix.module }}
+      IMAGE: ${{ matrix.image }}
+      CONTEXT: ${{ matrix.context }}
+      DOCKERFILE: ${{ matrix.dockerfile }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Build reviewed source on Linux AMD64
+        run: |
+          test "$(git rev-parse HEAD)" = "$COMMIT"
+          docker build --platform linux/amd64 \
+            --label "org.opencontainers.image.source=https://github.com/$REPOSITORY" \
+            --label "org.opencontainers.image.revision=$COMMIT" \
+            -f "$DOCKERFILE" -t "$IMAGE" "$CONTEXT"
+      - name: Block publication on critical image vulnerabilities
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.image }}
+          scanners: vuln
+          severity: CRITICAL
+          ignore-unfixed: false
+          exit-code: '1'
+          format: table
+      - name: Authenticate to GHCR after successful scan
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GHCR_ACTOR: ${{ github.actor }}
+        run: echo "$GHCR_TOKEN" | docker login ghcr.io -u "$GHCR_ACTOR" --password-stdin
+      - name: Push and record registry digest
+        run: |
+          docker push "$IMAGE"
+          python3 -B deploy/bootstrap/registry_release.py receipt \
+            --repository "$REPOSITORY" --commit "$COMMIT" --run-id "$RUN_ID" \
+            --attempt "$ATTEMPT" --module "$MODULE" > "receipt-$MODULE.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: registry-receipt-${{ matrix.module }}
+          path: receipt-${{ matrix.module }}.json
+          if-no-files-found: error
+          retention-days: 30
+      - name: Remove registry session
+        if: always()
+        run: docker logout ghcr.io
+
+  inventory:
+    needs: publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: registry-receipt-*
+          merge-multiple: true
+          path: receipts
+      - name: Require all eleven digests from this exact run
+        run: |
+          python3 -B deploy/bootstrap/registry_release.py inventory \
+            --repository "$REPOSITORY" --commit "$COMMIT" --run-id "$RUN_ID" \
+            --attempt "$ATTEMPT" --receipts receipts > registry-release.json
+          echo 'Complete GHCR inventory attached. Nothing deployed; GitOps promotion still requires review.' >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: registry-release
+          path: registry-release.json
+          if-no-files-found: error
+          retention-days: 30

@@ -1,6 +1,9 @@
 spring:
   application:
     name: risk-service
+  lifecycle:
+    # K8s grace period is 30 s and preStop takes 5 s: finish in-flight requests before SIGKILL (§6.8).
+    timeout-per-shutdown-phase: 20s
 
   datasource:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/fintech}
@@ -43,6 +46,11 @@ management:
     health:
       probes:
         enabled: true           # /actuator/health/liveness and /readiness
+      group:
+        liveness:
+          include: livenessState
+        readiness:
+          include: readinessState,db  # never rabbit: the outbox buffers events while the broker is down
   health:
     livenessstate:
       enabled: true
@@ -54,5 +62,7 @@ management:
     distribution:
       percentiles-histogram:
         http.server.requests: true
+        http.client.requests: true    # calls to other services (risk, customer, ml-service)
       slo:
         http.server.requests: 50ms,100ms,250ms,500ms,1s,2s,5s
+        http.client.requests: 50ms,100ms,250ms,500ms,1s,2s,5s

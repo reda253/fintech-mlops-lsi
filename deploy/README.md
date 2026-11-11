@@ -8,3 +8,5 @@ Existing ML manifests remain separately owned and are not replaced by the applic
 Separate PostgreSQL/RabbitMQ base and persistence tests: [Kubernetes data](../docs/kubernetes-data.md).
 
 Protected local release and explicit first-install stages: [Shared deployment](../docs/kubernetes-shared-deployment.md).
+
+Manual scanned GHCR publication and complete digest inventory (prerequisite for #40): [Registry publication](../docs/registry-publication.md).
