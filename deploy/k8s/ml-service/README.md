@@ -27,7 +27,7 @@ The `ml-service-config` ConfigMap controls where predictions come from:
 | Mock | `MODEL_MODE: "mock"`, `MODEL_URI: ""` | Deterministic amount heuristic, no MLflow dependency |
 | Real | `MODEL_MODE: "real"`, `MODEL_URI: "models:/fraud-detector/1"` | Loads the packaged pyfunc artifact from MLflow, `alpha` from model metadata |
 
-The committed ConfigMap points at the production model `models:/fraud-detector/1`. Until P2's real artifact is registered, the **live kind cluster** can be pointed at the synthetic validation model instead:
+The committed ConfigMap points at the production model `models:/fraud-detector/1`. The D44 candidate is registered there as a provisional version and does not own the `champion` alias. For dashboard or rollback checks, the **live kind cluster** can be pointed at the synthetic validation model instead:
 
 ```bash
 kubectl -n ml patch configmap ml-service-config --type merge \

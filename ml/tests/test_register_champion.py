@@ -2,20 +2,28 @@
 
 from __future__ import annotations
 
+import json
 import tempfile
 from pathlib import Path
+from types import SimpleNamespace
 
 import joblib
 import mlflow
 import pandas as pd
+from mlflow.tracking import MlflowClient
 from sklearn.linear_model import LogisticRegression
 
 from ml.scripts.register_champion import (
     DEFAULT_INPUT_EXAMPLE,
     _resolve_thresholds,
+    build_model_from_payload,
     register_candidate,
 )
-from ml.src.model.calibration import IdentityCalibrator, conformal_quantile
+from ml.src.model.calibration import (
+    CalibratedPriorClassifier,
+    IdentityCalibrator,
+    conformal_quantile,
+)
 from ml.src.pipeline.smoke import dispose_sqlite_tracking_engine
 from ml.src.pipeline.steps import generate_synthetic_data
 from ml.src.preprocessing.pipeline import build_preprocessing_pipeline
@@ -50,6 +58,20 @@ def test_register_candidate_fixture_roundtrip():
         root = Path(tmp)
         artifact = root / "candidate_model.joblib"
         joblib.dump(_candidate_payload(), artifact)
+        metadata_path = root / "metadata.json"
+        metadata_path.write_text(
+            json.dumps(
+                {
+                    "status": "PROVISIONAL",
+                    "run_id": "a23b25c3a46444e5ae4da4058f729dc8",
+                    "alpha": 0.02,
+                    "beta": 1.0,
+                    "git_commit": "p2commit",
+                    "data_sha256": "p2hash",
+                }
+            ),
+            encoding="utf-8",
+        )
         uri = f"sqlite:///{(root / 'registry.db').as_posix()}"
         try:
             result = register_candidate(
@@ -58,12 +80,18 @@ def test_register_candidate_fixture_roundtrip():
                 experiment="test-register-champion",
                 model_name="fraud-detector-p2-test",
                 alpha=0.02,
+                metadata_path=metadata_path,
             )
             assert result["version"] == "1"
-            assert result["alias"] == "champion"
+            assert result["alias"] is None
             assert result["tags"]["alpha"] == "0.02"
             assert result["tags"]["git_commit"] == "p2commit"
             assert result["tags"]["data_sha256"] == "p2hash"
+            assert result["tags"]["status"] == "PROVISIONAL"
+            assert result["tags"]["source_run_id"] == "a23b25c3a46444e5ae4da4058f729dc8"
+
+            registered = MlflowClient().get_registered_model("fraud-detector-p2-test")
+            assert "champion" not in registered.aliases
 
             loaded = mlflow.pyfunc.load_model(result["model_uri"])
             output = loaded.predict(DEFAULT_INPUT_EXAMPLE)
@@ -76,6 +104,33 @@ def test_register_candidate_fixture_roundtrip():
             assert output["alpha"].tolist() == [0.02, 0.02]
         finally:
             dispose_sqlite_tracking_engine(uri)
+
+
+def test_build_model_from_p2_nested_wrapper():
+    payload = _candidate_payload()
+    nested = CalibratedPriorClassifier(
+        classifier=payload["classifier"],
+        beta=0.25,
+        calibrator=payload["calibrator"],
+    )
+    p2_model = SimpleNamespace(
+        preprocessor=payload["preprocessor"],
+        classifier=nested,
+        threshold_legit=0.20,
+        threshold_fraud=0.80,
+        alpha=0.02,
+        feature_names=["feature"],
+    )
+
+    model = build_model_from_payload(p2_model)
+
+    assert model.classifier is payload["classifier"]
+    assert model.calibrator is payload["calibrator"]
+    assert model.beta == 0.25
+    assert model.threshold_legit == 0.20
+    assert model.threshold_fraud == 0.80
+    assert model.alpha == 0.02
+    assert model.feature_names == ["feature"]
 
 
 def test_resolve_thresholds_from_scores():

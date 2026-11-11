@@ -39,8 +39,8 @@ _RUNTIME_FILES = (
 
 PIP_REQUIREMENTS = [
     "mlflow-skinny==3.17.2",
-    "numpy==2.5.4",
-    "pandas==3.1.0",
+    "numpy==2.4.6",
+    "pandas==3.0.6",
     "scikit-learn==1.9.1",
     "xgboost-cpu==3.2.0",
 ]
@@ -139,11 +139,16 @@ def register_model(
     pipeline_run_id: str = "",
     viz_dir: Path | None = None,
     description: str | None = None,
+    set_champion: bool = True,
+    extra_tags: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Log, register and alias the packaged fraud detector.
+    """Log, register and optionally alias the packaged fraud detector.
 
     Must be called inside an active MLflow run: the run becomes the model
     version source, which is where visualization artifacts are attached.
+
+    ``set_champion=False`` registers a provisional version without moving the
+    ``champion`` alias, so a candidate can be validated before promotion.
     """
 
     active_run = mlflow.active_run()
@@ -185,16 +190,19 @@ def register_model(
         "pipeline_run_id": pipeline_run_id or active_run.info.run_id,
         "trained_at": str(metadata.get("trained_at", "unknown")),
     }
+    if extra_tags:
+        tags.update({key: str(value) for key, value in extra_tags.items()})
     for key, value in tags.items():
         client.set_model_version_tag(model_name, version, key, value)
     if description:
         client.update_model_version(model_name, version, description=description)
-    client.set_registered_model_alias(model_name, "champion", version)
+    if set_champion:
+        client.set_registered_model_alias(model_name, "champion", version)
 
     return {
         "name": model_name,
         "version": version,
-        "alias": "champion",
+        "alias": "champion" if set_champion else None,
         "model_uri": f"models:/{model_name}/{version}",
         "run_id": active_run.info.run_id,
         "registered_at": datetime.now(UTC).isoformat(),

@@ -87,11 +87,24 @@ When P2 delivers the candidate artifact (preprocessor, classifier, calibrator, b
 ```bash
 PYTHONPATH=. python -m ml.scripts.register_champion \
   --artifact /path/to/candidate_model.joblib \
+  --metadata /path/to/metadata.json \
   --tracking-uri http://localhost:5000 \
   --model-name fraud-detector --alpha 0.02
 ```
 
-The script accepts either a dict payload or a single estimator with `predict_proba`, resolves thresholds or raw conformal scores, tags the version with `git_commit`/`data_sha256`/`alpha`/`beta`, and moves the `champion` alias.
+The script accepts a dict payload, P2's nested `FraudDetectorModel` (calibrator and beta inside `CalibratedPriorClassifier`) or a single estimator with `predict_proba`. It resolves thresholds or raw conformal scores, carries `run_id`/`git_commit`/`data_sha256`/`protocol_sha256` provenance tags, and registers a **provisional** version without moving the `champion` alias. Pass `--promote` only after parity validation.
+
+Replay the handoff cases against the local wrapper, the registered pyfunc and the HTTP service:
+
+```bash
+PYTHONPATH=. python -m ml.scripts.verify_handoff \
+  --zip /path/to/d44_handoff.zip \
+  --tracking-uri http://localhost:5000 \
+  --model-uri models:/fraud-detector/1 \
+  --service-url http://localhost:8000
+```
+
+The script verifies the ZIP and joblib SHA-256, checks raw/rounded probabilities, sets and decisions, and covers `[0, 1]` with a fake-threshold model (the frozen D44 thresholds cannot produce it).
 
 ## Serving against the registry
 

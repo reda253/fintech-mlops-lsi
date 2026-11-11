@@ -102,6 +102,40 @@ def test_register_model_tags_alias_and_load_roundtrip():
             dispose_sqlite_tracking_engine(uri)
 
 
+def test_register_model_provisional_keeps_existing_champion():
+    with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as tmp:
+        uri = f"sqlite:///{(Path(tmp) / 'registry.db').as_posix()}"
+        mlflow.set_tracking_uri(uri)
+        mlflow.set_experiment("test-registry-provisional")
+        try:
+            model, input_example = _tiny_model()
+            with mlflow.start_run():
+                first = register_model(
+                    model,
+                    input_example,
+                    model_name="fraud-detector-provisional",
+                    set_champion=True,
+                )
+            with mlflow.start_run():
+                second = register_model(
+                    model,
+                    input_example,
+                    model_name="fraud-detector-provisional",
+                    set_champion=False,
+                    extra_tags={"status": "PROVISIONAL"},
+                )
+
+            assert first["alias"] == "champion"
+            assert second["alias"] is None
+            client = MlflowClient()
+            registered = client.get_registered_model("fraud-detector-provisional")
+            assert str(registered.aliases["champion"]) == "1"
+            version = client.get_model_version("fraud-detector-provisional", "2")
+            assert version.tags["status"] == "PROVISIONAL"
+        finally:
+            dispose_sqlite_tracking_engine(uri)
+
+
 def test_build_input_example_uses_nested_customer():
     frame = generate_synthetic_data(n_samples=20, random_state=3)
     example = build_input_example(frame)

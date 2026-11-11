@@ -47,7 +47,7 @@ mlflow-skinny==3.17.2
 mlflow-tracing==3.17.2
 multidict==7.1.0
 narwhals==2.27.1
-numpy==2.5.4
+numpy==2.4.6
 opentelemetry-api==1.45.1
 opentelemetry-proto==1.45.1
 opentelemetry-sdk==1.45.1

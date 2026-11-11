@@ -1,13 +1,18 @@
 """Register P2's candidate artifact as ``fraud-detector`` (T21d).
 
-P2 hands over raw objects, not a ready pyfunc: a dict with the fitted
-preprocessor, classifier, calibrator, beta and conformal thresholds (or scores).
-This script rebuilds the P3 wrapper, logs it with a signature and registers a
-new model version with the champion alias.
+P2 hands over raw objects, not a ready pyfunc: either a dict with the fitted
+preprocessor, classifier, calibrator, beta and conformal thresholds, or a
+``FraudDetectorModel`` whose calibrator and beta live inside a nested
+``CalibratedPriorClassifier``. This script rebuilds the P3 wrapper, logs it
+with a signature and registers a new model version.
+
+The candidate is provisional by default: it gets its own version but does not
+move the ``champion`` alias. Pass ``--promote`` only after parity validation.
 
 Usage:
     python -m ml.scripts.register_champion \
         --artifact /path/to/candidate_model.joblib \
+        --metadata /path/to/metadata.json \
         --tracking-uri http://localhost:5000 \
         --alpha 0.02
 """
@@ -82,6 +87,47 @@ def _first(payload: dict[str, Any], *names: str) -> Any:
     return None
 
 
+def _normalise_payload(payload: Any) -> Any:
+    """Turn P2's nested ``FraudDetectorModel`` into the dict contract.
+
+    P2's joblib carries ``classifier=CalibratedPriorClassifier``, where the
+    inner estimator, ``beta`` and calibrator are nested. Bare estimators and
+    plain dicts are returned unchanged.
+    """
+
+    if isinstance(payload, dict) or not hasattr(payload, "classifier"):
+        return payload
+
+    wrapped = payload.classifier
+    if wrapped is None:
+        raise ValueError("Le modele candidat ne contient pas de classifier.")
+
+    if hasattr(wrapped, "beta"):
+        classifier = getattr(wrapped, "classifier", wrapped)
+        beta = getattr(wrapped, "beta", None)
+        calibrator = getattr(wrapped, "calibrator", None)
+        calibration_method = getattr(
+            calibrator, "method", type(calibrator).__name__ if calibrator is not None else None
+        )
+    else:
+        classifier = wrapped
+        beta = getattr(payload, "beta", None)
+        calibrator = getattr(payload, "calibrator", None)
+        calibration_method = getattr(payload, "calibration_method", None)
+
+    return {
+        "preprocessor": getattr(payload, "preprocessor", None),
+        "classifier": classifier,
+        "calibrator": calibrator,
+        "calibration_method": calibration_method,
+        "beta": beta,
+        "feature_names": getattr(payload, "feature_names", None),
+        "threshold_legit": getattr(payload, "threshold_legit", None),
+        "threshold_fraud": getattr(payload, "threshold_fraud", None),
+        "alpha": getattr(payload, "alpha", None),
+    }
+
+
 def _resolve_thresholds(
     payload: dict[str, Any],
     alpha: float,
@@ -115,8 +161,11 @@ def build_model_from_payload(
     model_version: str = "1",
     git_commit: str = "unknown",
     data_sha256: str = "unknown",
+    trained_at: str | None = None,
 ) -> FraudDetectorModel:
-    """Adapt either a dict payload or a single full pipeline into the wrapper."""
+    """Adapt a dict payload, P2's wrapper or a bare estimator to our wrapper."""
+
+    payload = _normalise_payload(payload)
 
     if isinstance(payload, dict):
         preprocessor = _first(payload, "preprocessor", "pipeline", "preproc", "feature_pipeline")
@@ -124,10 +173,11 @@ def build_model_from_payload(
         if classifier is None:
             raise ValueError("Le dict candidat doit contenir 'classifier' ou 'model'.")
         calibrator = payload.get("calibrator")
+        feature_names = payload.get("feature_names")
         threshold_legit, threshold_fraud = _resolve_thresholds(payload, alpha)
         metadata = payload.get("metadata") or {}
-        trained_at = payload.get("trained_at") or metadata.get("trained_at")
-        payload_alpha = payload.get("alpha", metadata.get("alpha", alpha))
+        trained_at = payload.get("trained_at") or metadata.get("trained_at") or trained_at
+        payload_alpha = payload.get("alpha") or metadata.get("alpha", alpha)
         beta = payload.get("beta", metadata.get("beta"))
         calibration_method = (
             payload.get("calibration_method")
@@ -140,10 +190,14 @@ def build_model_from_payload(
     else:
         # Single object: assumed to consume raw Sparkov rows and expose predict_proba.
         if not hasattr(payload, "predict_proba"):
-            raise TypeError("Le joblib doit etre un dict ou un estimateur avec predict_proba().")
+            raise TypeError(
+                "Le joblib doit etre un dict, un FraudDetectorModel ou un estimateur "
+                "avec predict_proba()."
+            )
         preprocessor = None
         classifier = payload
         calibrator = None
+        feature_names = None
         threshold_legit = 0.0
         threshold_fraud = 0.0
         payload_alpha = alpha
@@ -157,9 +211,10 @@ def build_model_from_payload(
         calibrator=calibrator,
         calibration_method=str(calibration_method),
         beta=None if beta is None else float(beta),
+        feature_names=feature_names,
         threshold_legit=float(threshold_legit),
         threshold_fraud=float(threshold_fraud),
-        alpha=float(payload_alpha),
+        alpha=float(payload_alpha or alpha),
         model_name=model_name,
         model_version=str(model_version),
         algorithm="xgboost-calibrated",
@@ -203,8 +258,10 @@ def register_candidate(
     git_commit: str | None = None,
     data_sha256: str | None = None,
     input_example_path: Path | None = None,
+    metadata_path: Path | None = None,
+    promote: bool = False,
 ) -> dict[str, Any]:
-    """Load, package, register and alias P2's candidate artifact."""
+    """Load, package and register P2's candidate; provisional unless promoted."""
 
     import joblib
 
@@ -212,28 +269,52 @@ def register_candidate(
         mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment)
 
+    metadata: dict[str, Any] = {}
+    if metadata_path is not None:
+        metadata = json.loads(Path(metadata_path).read_text(encoding="utf-8"))
+
     payload = joblib.load(Path(artifact_path))
     model = build_model_from_payload(
         payload,
-        alpha=alpha,
+        alpha=float(metadata.get("alpha", alpha)),
         model_name=model_name,
         model_version=model_version,
-        git_commit=git_commit or _current_git_commit(),
-        data_sha256=data_sha256 or "unknown",
+        git_commit=git_commit or str(metadata.get("git_commit") or _current_git_commit()),
+        data_sha256=data_sha256 or str(metadata.get("data_sha256") or "unknown"),
+        trained_at=metadata.get("timestamp_utc"),
     )
     input_example = load_input_example(input_example_path)
+    status = "CHAMPION" if promote else str(metadata.get("status", "PROVISIONAL"))
+    extra_tags = {
+        "status": status,
+        "source_run_id": str(metadata.get("run_id", "unknown")),
+        "source_launch_id": str(metadata.get("launch_id", "unknown")),
+        "protocol_sha256": str(metadata.get("protocol_sha256", "unknown")),
+        "source_model_sha256": str(metadata.get("model_sha256", "unknown")),
+        "source_artifact": Path(artifact_path).name,
+    }
 
     with mlflow.start_run(run_name=f"register-{model_name}-v{model_version}") as run:
         mlflow.set_tag("source", "p2-candidate-artifact")
         mlflow.set_tag("artifact_file", Path(artifact_path).name)
+        mlflow.set_tag("status", status)
+        for key, value in extra_tags.items():
+            if value != "unknown":
+                mlflow.set_tag(key, value)
         mlflow.log_param("alpha", model.alpha)
         mlflow.log_param("beta", model.beta)
+        if metadata_path is not None:
+            mlflow.log_artifact(str(metadata_path))
         result = register_model(
             model,
             input_example,
             model_name=model_name,
             pipeline_run_id=run.info.run_id,
-            description=f"Imported from P2 candidate artifact ({Path(artifact_path).name})",
+            description=(
+                f"P2 candidate artifact ({Path(artifact_path).name}), {status.lower()}"
+            ),
+            set_champion=promote,
+            extra_tags=extra_tags,
         )
         for key, value in result["tags"].items():
             mlflow.set_tag(f"model_{key}", value)
@@ -243,6 +324,7 @@ def register_candidate(
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Register P2's candidate as fraud-detector")
     parser.add_argument("--artifact", type=Path, required=True)
+    parser.add_argument("--metadata", type=Path, default=None)
     parser.add_argument("--tracking-uri", default=None)
     parser.add_argument("--experiment", default="fraud-detector-registry")
     parser.add_argument("--model-name", default="fraud-detector")
@@ -251,6 +333,11 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--git-commit", default=None)
     parser.add_argument("--data-sha256", default=None)
     parser.add_argument("--input-example", type=Path, default=None)
+    parser.add_argument(
+        "--promote",
+        action="store_true",
+        help="Move the champion alias to this version (default: provisional).",
+    )
     args = parser.parse_args(argv)
 
     result = register_candidate(
@@ -263,6 +350,8 @@ def main(argv: list[str] | None = None) -> int:
         git_commit=args.git_commit,
         data_sha256=args.data_sha256,
         input_example_path=args.input_example,
+        metadata_path=args.metadata,
+        promote=args.promote,
     )
     print(json.dumps(result, indent=2, default=str))
     return 0
