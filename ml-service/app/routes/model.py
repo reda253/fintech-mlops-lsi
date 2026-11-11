@@ -35,13 +35,60 @@ def get_model_info(request: Request) -> ModelInfo:
 
 @router.get("/performance", summary="Offline metrics (benchmark, statistical tests, final test with CI, fairness)")
 def get_performance(request: Request) -> dict[str, Any]:
-    """Return comprehensive offline benchmark, statistical validation, and fairness audit (§4.8, §4.9)."""
+    """Return offline evidence for the served version.
+
+    In real mode the final-test block is read from the MLflow run attached to
+    the served model version (or its pipeline parent). If that run has no
+    evaluation metrics, the endpoint says ``unavailable`` instead of showing
+    invented numbers. Mock mode is explicitly labelled ``demo``.
+    """
+
     predictor = get_predictor(request)
     info = predictor.get_model_info()
+
+    if info.mode != "real":
+        return {
+            "model": info.model_dump(),
+            "status": "demo",
+            "source": "demo",
+            "detail": "Mock mode: values below are illustrative, not measured.",
+            **_demo_performance(info),
+        }
+
+    measured = _performance_from_registry(info)
+    if measured is None:
+        return {
+            "model": info.model_dump(),
+            "status": "unavailable",
+            "source": "none",
+            "detail": (
+                "No evaluation metrics are attached to the served MLflow run. "
+                "Run the pipeline evaluation step or query the benchmark report."
+            ),
+            "benchmark": None,
+            "statistical_validation": None,
+            "final_test_evaluation": None,
+            "fairness_audit": None,
+        }
 
     return {
         "model": info.model_dump(),
         "status": "ready",
+        "source": "mlflow_run",
+        "detail": "Metrics read from the served MLflow run.",
+        "benchmark": None,
+        "statistical_validation": None,
+        "final_test_evaluation": measured["final_test_evaluation"],
+        "fairness_audit": None,
+        "run_id": measured["run_id"],
+        "run_tags": measured["tags"],
+    }
+
+
+def _demo_performance(info: Any) -> dict[str, Any]:
+    """Illustrative benchmark payload used only when ``MODEL_MODE=mock``."""
+
+    return {
         "benchmark": {
             "evaluation_metric": "pr_auc",
             "cross_validation": "10x5_folds",
@@ -62,14 +109,14 @@ def get_performance(request: Request) -> dict[str, Any]:
                 {"comparison": "XGBoost vs RandomForest", "p_value": 0.0084, "adjusted_alpha": 0.025, "significant": True},
                 {"comparison": "XGBoost vs SVM", "p_value": 0.032, "adjusted_alpha": 0.05, "significant": True},
             ],
-            "conclusion": "XGBoost is statistically superior across all repeated cross-validation folds.",
+            "conclusion": "Illustrative mock values: XGBoost ranks first.",
         },
         "final_test_evaluation": {
             "pr_auc": {"value": 0.891, "ci_95": [0.875, 0.906]},
             "roc_auc": {"value": 0.982, "ci_95": [0.976, 0.988]},
             "brier_score": {"value": 0.012, "ci_95": [0.009, 0.015]},
             "conformal_metrics": {
-                "alpha": 0.05,
+                "alpha": info.alpha,
                 "coverage_legit": 0.958,
                 "coverage_fraud": 0.952,
                 "review_rate": 0.018,
@@ -91,6 +138,124 @@ def get_performance(request: Request) -> dict[str, Any]:
             ],
         },
     }
+
+
+_EVALUATION_METRICS = (
+    "pr_auc",
+    "roc_auc",
+    "brier_score",
+    "conformal_coverage",
+    "conformal_coverage_legit",
+    "conformal_coverage_fraud",
+    "review_rate",
+    "automation_rate",
+    "auto_error_rate",
+    "latency_p95_sec",
+)
+
+
+def _model_version(info: Any) -> Any:
+    """Resolve the served version or alias to an MLflow ModelVersion."""
+
+    from mlflow.tracking import MlflowClient
+
+    client = MlflowClient()
+    if str(info.version).isdigit():
+        return client.get_model_version(info.name, str(info.version))
+    return client.get_model_version_by_alias(info.name, str(info.version))
+
+
+def _run_evaluation_metrics(client: Any, run_id: str) -> tuple[dict[str, float], dict[str, str], str]:
+    """Read metrics from a run, following ``mlflow.parentRunId`` once."""
+
+    run = client.get_run(run_id)
+    metrics = dict(run.data.metrics)
+    tags = dict(run.data.tags)
+    if not any(key in metrics for key in _EVALUATION_METRICS):
+        parent_id = tags.get("mlflow.parentRunId")
+        if parent_id:
+            parent = client.get_run(parent_id)
+            metrics = dict(parent.data.metrics)
+            tags = {**parent.data.tags, **tags}
+            run_id = parent_id
+    return metrics, tags, run_id
+
+
+def _performance_from_registry(info: Any) -> dict[str, Any] | None:
+    """Build the final-test block from the served version's MLflow run."""
+
+    try:
+        from mlflow.tracking import MlflowClient
+
+        client = MlflowClient()
+        version = _model_version(info)
+        metrics, tags, run_id = _run_evaluation_metrics(client, version.run_id)
+    except Exception as exc:  # noqa: BLE001 - performance is best effort
+        logger.warning("Unable to read performance from MLflow: %s", exc)
+        return None
+
+    if not any(key in metrics for key in _EVALUATION_METRICS):
+        return None
+
+    return {
+        "run_id": run_id,
+        "tags": {
+            key: tags[key]
+            for key in ("git_commit", "data_sha256", "calibration_method", "status")
+            if key in tags
+        },
+        "final_test_evaluation": {
+            "pr_auc": {"value": metrics.get("pr_auc")},
+            "roc_auc": {"value": metrics.get("roc_auc")},
+            "brier_score": {"value": metrics.get("brier_score")},
+            "conformal_metrics": {
+                "alpha": metrics.get("alpha", info.alpha),
+                "coverage_legit": metrics.get("conformal_coverage_legit"),
+                "coverage_fraud": metrics.get("conformal_coverage_fraud"),
+                "coverage_global": metrics.get("conformal_coverage"),
+                "review_rate": metrics.get("review_rate"),
+                "automation_rate": metrics.get("automation_rate"),
+                "auto_error_rate": metrics.get("auto_error_rate"),
+            },
+            "latency_p95_sec": metrics.get("latency_p95_sec"),
+            "n_test": metrics.get("n_test"),
+            "n_test_fraud": metrics.get("n_test_fraud"),
+        },
+    }
+
+
+def _download_viz_from_registry(
+    predictor: BasePredictor,
+    method: str,
+    view: str,
+) -> dict[str, Any] | None:
+    """Download ``viz/<method>_<view>.json`` from the deployed model version run."""
+
+    info = predictor.get_model_info()
+    if info.mode != "real":
+        return None
+    try:
+        import mlflow
+        from mlflow.tracking import MlflowClient
+
+        client = MlflowClient()
+        if str(info.version).isdigit():
+            version = client.get_model_version(info.name, str(info.version))
+        else:
+            version = client.get_model_version_by_alias(info.name, str(info.version))
+
+        local_path = mlflow.artifacts.download_artifacts(
+            run_id=version.run_id,
+            artifact_path=f"viz/{method}_{view}.json",
+            dst_path=str(cache_manager.cache_dir / "downloads" / str(info.version)),
+        )
+        with Path(local_path).open("r", encoding="utf-8") as stream:
+            data = json.load(stream)
+        cache_manager.write_viz(method, view, data, version=info.version)
+        return data
+    except Exception as exc:  # noqa: BLE001 - visualization is best effort
+        logger.debug("Unable to download %s_%s viz from MLflow: %s", method, view, exc)
+        return None
 
 
 @router.get(
@@ -122,8 +287,8 @@ def get_visualizations(
     predictor = get_predictor(request)
     info = predictor.get_model_info()
 
-    # Check disk cache first
-    cached_file = cache_manager.get_viz_path(method, view)
+    # Check the version-scoped disk cache first.
+    cached_file = cache_manager.get_viz_path(method, view, info.version)
     if cached_file.is_file():
         try:
             with cached_file.open("r", encoding="utf-8") as f:
@@ -141,6 +306,11 @@ def get_visualizations(
                 return Projection(**data)
         except (json.JSONDecodeError, OSError) as exc:
             logger.debug("Failed reading alternate cached projection file %s: %s", alt_cached_file, exc)
+
+    # Cache miss: fetch the artifacts attached to the registered model version.
+    registry_data = _download_viz_from_registry(predictor, method, view)
+    if registry_data is not None:
+        return Projection(**registry_data)
 
     # Fallback to generated demo points
     demo_points = [

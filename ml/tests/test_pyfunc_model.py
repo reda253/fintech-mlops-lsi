@@ -198,3 +198,111 @@ def test_fraud_detector_conformal_sets():
     assert "prediction_set" in result
     assert "uncertainty_level" in result
     assert result["alpha"] == 0.05
+
+
+class _ConstantPreprocessor:
+    def transform_one(self, record):
+        return np.zeros(3, dtype=np.float32)
+
+    def transform(self, frame):
+        return np.zeros((len(frame), 3), dtype=np.float32)
+
+
+class _ConstantClassifier:
+    def __init__(self, probability: float):
+        self.probability = probability
+
+    def predict_proba(self, features):
+        n_rows = len(features)
+        return np.tile(
+            np.array([[1.0 - self.probability, self.probability]]), (n_rows, 1)
+        )
+
+
+def _serving_record() -> dict:
+    return {
+        "transaction_id": "11111111-1111-1111-1111-111111111111",
+        "trans_datetime": "2020-07-14T02:13:45",
+        "amount": 150.0,
+        "category": "shopping_net",
+        "merch_lat": 40.71,
+        "merch_long": -74.01,
+        "customer": {
+            "dob": "1962-05-18",
+            "gender": "F",
+            "city_pop": 1577385,
+            "lat": 40.65,
+            "long": -73.95,
+            "state": "NY",
+        },
+    }
+
+
+def test_predict_returns_dataframe_and_preserves_empty_set():
+    """An empty Mondrian set is a valid outcome and must not become [0, 1]."""
+    model = FraudDetectorModel(
+        classifier=_ConstantClassifier(0.5),
+        preprocessor=_ConstantPreprocessor(),
+        threshold_legit=0.1,
+        threshold_fraud=0.1,
+        alpha=0.02,
+    )
+    output = model.predict(None, pd.DataFrame([_serving_record()]))
+
+    assert isinstance(output, pd.DataFrame)
+    assert list(output.columns) == [
+        "prediction",
+        "fraud_probability",
+        "prediction_set",
+        "uncertainty",
+        "uncertainty_level",
+        "alpha",
+        "model_name",
+        "model_version",
+    ]
+    assert output.loc[0, "prediction_set"] == []
+    assert output.loc[0, "uncertainty_level"] == "ELEVEE"
+    assert output.loc[0, "alpha"] == 0.02
+    assert model.predict_one(_serving_record())["prediction_set"] == []
+
+
+def test_predict_batch_matches_predict_one():
+    train_data = pd.DataFrame(
+        [
+            {
+                "trans_date_trans_time": "2026-10-24 12:00:00",
+                "dob": "1990-01-01",
+                "amt": 10.0,
+                "category": "shopping_net",
+                "gender": "M",
+                "state": "NY",
+                "city_pop": 100000,
+                "lat": 40.0,
+                "long": -74.0,
+                "merch_lat": 40.0,
+                "merch_long": -74.0,
+            },
+            {
+                "trans_date_trans_time": "2026-10-24 23:00:00",
+                "dob": "1980-01-01",
+                "amt": 900.0,
+                "category": "shopping_net",
+                "gender": "F",
+                "state": "NY",
+                "city_pop": 100000,
+                "lat": 40.0,
+                "long": -74.0,
+                "merch_lat": 40.0,
+                "merch_long": -74.0,
+            },
+        ]
+    )
+    pipeline = build_preprocessing_pipeline()
+    features = pipeline.fit_transform(train_data)
+    classifier = LogisticRegression().fit(features, np.array([0, 1]))
+    model = FraudDetectorModel(classifier=classifier, preprocessor=pipeline, alpha=0.02)
+
+    batch = model.predict(None, pd.DataFrame([_serving_record()]))
+    single = model.predict_one(_serving_record())
+    assert batch.loc[0, "prediction"] == single["prediction"]
+    assert np.isclose(batch.loc[0, "fraud_probability"], single["fraud_probability"], atol=1e-4)

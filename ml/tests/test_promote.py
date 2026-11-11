@@ -46,7 +46,7 @@ def tmp_configmap(tmp_path: Path) -> Path:
 def test_patch_configmap_updates_model_uri(tmp_configmap: Path) -> None:
     old_version = patch_configmap(tmp_configmap, "3")
     content = yaml.safe_load(tmp_configmap.read_text(encoding="utf-8"))
-    assert content["data"]["MODEL_URI"] == "models:/fraud-detector/3"
+    assert content["data"]["MODEL_URI"] == "models:/fraud-detector@champion"
     assert content["data"]["MODEL_MODE"] == "real"
     assert old_version == ""  # was empty initially
 
@@ -61,7 +61,7 @@ def test_patch_configmap_returns_old_version(tmp_configmap: Path) -> None:
     assert old_version == "2"
 
     content = yaml.safe_load(tmp_configmap.read_text(encoding="utf-8"))
-    assert content["data"]["MODEL_URI"] == "models:/fraud-detector/3"
+    assert content["data"]["MODEL_URI"] == "models:/fraud-detector@champion"
 
 
 def test_patch_configmap_raises_if_no_configmap_doc(tmp_path: Path) -> None:
@@ -85,7 +85,7 @@ def test_build_pr_body_contains_version() -> None:
     body = build_pr_body("3", "2", metrics, run_id="abc123", tracking_uri="http://mlflow:5000")
     assert "fraud-detector` v3" in body
     assert "0.9100" in body
-    assert "models:/fraud-detector/3" in body
+    assert "models:/fraud-detector@champion" in body
     assert "models:/fraud-detector/2" in body
     assert "abc123" in body
 
@@ -122,7 +122,7 @@ def test_promote_dry_run_patches_configmap(
     assert result["pr_number"] == 0
     assert result["branch"] == "promote/model-v4"
     content = yaml.safe_load(tmp_configmap.read_text(encoding="utf-8"))
-    assert content["data"]["MODEL_URI"] == "models:/fraud-detector/4"
+    assert content["data"]["MODEL_URI"] == "models:/fraud-detector@champion"
 
 
 # ── promote (mocked GitHub API) ──────────────────────────────────────────────
@@ -198,6 +198,7 @@ def test_promote_opens_pr(
     import ml.src.pipeline.promote as mod
 
     monkeypatch.setattr(mod, "CONFIGMAP_PATH", str(tmp_configmap))
+    monkeypatch.setattr(mod, "set_champion_alias", lambda *args, **kwargs: None)
 
     mocks = _make_mock_responses(42)
     mock_get.side_effect = [
@@ -231,7 +232,7 @@ def test_promote_opens_pr(
 
     # Verify configmap was patched
     content = yaml.safe_load(tmp_configmap.read_text(encoding="utf-8"))
-    assert content["data"]["MODEL_URI"] == "models:/fraud-detector/5"
+    assert content["data"]["MODEL_URI"] == "models:/fraud-detector@champion"
     assert content["data"]["MODEL_MODE"] == "real"
 
 

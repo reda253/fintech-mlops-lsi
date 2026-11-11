@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
             model_uri=settings.model_uri,
             cache_dir=settings.model_cache_dir,
             name="fraud-detector",
-            version="1",
+            version=None,
         )
 
     predictor.warmup()

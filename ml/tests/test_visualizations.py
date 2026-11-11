@@ -35,7 +35,7 @@ def test_projections_shapes():
 
 def test_generate_all_projections_facets():
     df = generate_synthetic_data(n_samples=100)
-    features = ["amount", "lat", "long", "city_pop"]
+    features = ["amt", "lat", "long", "city_pop"]
 
     projections = generate_all_projections(
         df=df,
@@ -64,7 +64,7 @@ def test_generate_all_projections_facets():
 
 def test_export_projections_to_cache():
     df = generate_synthetic_data(n_samples=30)
-    features = ["amount", "lat", "long", "city_pop"]
+    features = ["amt", "lat", "long", "city_pop"]
     projections = generate_all_projections(df=df, features=features, max_samples=30)
 
     with tempfile.TemporaryDirectory() as tmp_dir:
