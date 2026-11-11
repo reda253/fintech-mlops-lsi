@@ -178,16 +178,22 @@ class RealPredictor(BasePredictor):
         self._identity_from_uri()
 
     def _identity_from_uri(self) -> None:
-        """Derive model name/version from ``models:/<name>/<version-or-alias>``."""
+        """Derive model name/version from ``models:/<name>/<ref>`` or ``<name>@<alias>``."""
 
         prefix = "models:/"
         if not self.model_uri.startswith(prefix):
             return
-        parts = self.model_uri[len(prefix):].split("/")
-        if len(parts) < 2:
+        reference = self.model_uri[len(prefix):]
+        if "@" in reference:
+            name, reference = reference.split("@", 1)
+        else:
+            parts = reference.split("/")
+            if len(parts) < 2:
+                return
+            name, reference = parts[0], parts[1]
+        if not name or not reference:
             return
-        self.name = parts[0]
-        reference = parts[1]
+        self.name = name
         if self.version != "unknown":
             return
         if reference.isdigit():

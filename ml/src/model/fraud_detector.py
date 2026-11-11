@@ -169,6 +169,42 @@ class FraudDetectorModel(mlflow.pyfunc.PythonModel):
         self.git_commit = git_commit
         self.data_sha256 = data_sha256
 
+    def __setstate__(self, state: dict[str, Any]) -> None:
+        """Backfill attributes missing from pre-T21 pickles.
+
+        P2's D44 joblib stores the calibrator and beta inside
+        ``classifier=CalibratedPriorClassifier``; those artifacts predate the
+        flat ``calibrator``/``beta``/``calibration_method`` attributes. They
+        stay ``None`` here so the nested classifier is not calibrated twice.
+        """
+
+        defaults: dict[str, Any] = {
+            "preprocessor": None,
+            "calibrator": None,
+            "calibration_method": None,
+            "beta": None,
+            "feature_names": None,
+            "threshold_legit": 0.50,
+            "threshold_fraud": 0.50,
+            "alpha": 0.02,
+            "model_name": "fraud-detector",
+            "model_version": "1",
+            "algorithm": "xgboost-calibrated",
+            "trained_at": None,
+            "git_commit": "unknown",
+            "data_sha256": "unknown",
+        }
+        for key, value in defaults.items():
+            state.setdefault(key, value)
+
+        nested_calibrator = getattr(state.get("classifier"), "calibrator", None)
+        if state["calibration_method"] is None and nested_calibrator is not None:
+            state["calibration_method"] = getattr(
+                nested_calibrator, "method", type(nested_calibrator).__name__
+            )
+
+        self.__dict__.update(state)
+
     def transform_record(self, record: dict[str, Any]) -> np.ndarray:
         """Adapt API record to Sparkov format and transform through the fitted preprocessing pipeline."""
         sparkov_record = adapt_to_sparkov_record(record)

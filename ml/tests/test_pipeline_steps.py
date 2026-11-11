@@ -1,9 +1,11 @@
 """Tests for modular ML pipeline steps and CI smoke pipeline (T21)."""
 
+import inspect
 import tempfile
 from pathlib import Path
 
 import mlflow
+import numpy as np
 import pytest
 
 from ml.src.pipeline.smoke import dispose_sqlite_tracking_engine, run_smoke
@@ -117,16 +119,51 @@ def test_train_calibrate_conformal_and_evaluate(local_mlflow_env):
     assert conformal["alpha"] == 0.02
     assert model.alpha == 0.02
     assert 0.0 <= metrics["review_rate"] <= 1.0
-    assert 0.0 <= metrics["auto_error_rate"] <= 1.0
+    assert metrics["auto_error_rate"] is None or 0.0 <= metrics["auto_error_rate"] <= 1.0
     assert metrics["conformal_coverage_fraud"] > 0.0
     assert metrics["latency_p95_sec"] >= 0.0
     assert metrics["alpha"] == 0.02
+    assert conformal["fit_rows"] + conformal["choice_rows"] + conformal["evaluation_rows"] == len(
+        prep["conformal_calib"]
+    )
+
+
+def test_calibrate_and_conformal_use_d46_splits(local_mlflow_env):
+    with mlflow.start_run():
+        prep = step_prepare(test_mode=True, parent_run=True)
+        train_res = step_train(dev_df=prep["development"], parent_run=True)
+        calibration = step_calibrate(
+            train_result=train_res,
+            prob_calib_df=prep["prob_calib"],
+            parent_run=True,
+        )
+        conformal = step_conformal(
+            train_result=train_res,
+            calibration_result=calibration,
+            conformal_df=prep["conformal_calib"],
+            parent_run=True,
+        )
+
+    assert calibration["fit_rows"] == len(prep["prob_calib"]) // 2
+    assert calibration["choice_rows"] == len(prep["prob_calib"]) - calibration["fit_rows"]
+    assert conformal["fit_rows"] + conformal["choice_rows"] + conformal[
+        "evaluation_rows"
+    ] == len(prep["conformal_calib"])
+    assert conformal["fit_rows"] > conformal["choice_rows"]
+    assert conformal["alpha_selection_status"] in {
+        "selected",
+        "no_eligible_alpha",
+    }
+    assert conformal["alpha"] in {0.01, 0.02, 0.03, 0.05, 0.10}
+    assert set(conformal["alpha_selection"]) == {"0.01", "0.02", "0.03", "0.05", "0.1"}
 
 
 def test_quality_gates_boundary_and_alpha_propagation(local_mlflow_env):
     base = {
         "pr_auc": 0.88,
         "conformal_coverage": 0.97,
+        "conformal_coverage_legit": 0.98,
+        "conformal_coverage_fraud": 0.97,
         "review_rate": 0.020,
         "latency_p95_sec": 0.010,
         "alpha": DEFAULT_ALPHA,
@@ -148,26 +185,78 @@ def test_quality_gates_boundary_and_alpha_propagation(local_mlflow_env):
 def test_coverage_gate_uses_model_alpha(local_mlflow_env):
     metrics = {
         "pr_auc": 0.90,
+        "conformal_coverage_legit": 0.94,
+        "conformal_coverage_fraud": 0.94,
         "review_rate": 0.01,
         "latency_p95_sec": 0.01,
         "alpha": 0.05,
     }
     with mlflow.start_run():
         at_alpha_05 = step_quality_gates(
-            metrics={**metrics, "conformal_coverage": 0.94}, parent_run=True
+            metrics=metrics, baseline_pr_auc=0.30, parent_run=True
         )
         at_alpha_02 = step_quality_gates(
-            metrics={**metrics, "alpha": 0.02, "conformal_coverage": 0.94}, parent_run=True
+            metrics={**metrics, "alpha": 0.02}, baseline_pr_auc=0.30, parent_run=True
         )
 
     assert at_alpha_05["gate_coverage"] is True
+    assert at_alpha_05["gate_coverage_legit"] is True
+    assert at_alpha_05["gate_coverage_fraud"] is True
     assert at_alpha_02["gate_coverage"] is False
+
+
+def test_coverage_gate_rejects_low_fraud_coverage_despite_global_average(local_mlflow_env):
+    metrics = {
+        "pr_auc": 0.90,
+        "conformal_coverage": 0.995,
+        "conformal_coverage_legit": 0.999,
+        "conformal_coverage_fraud": 0.90,
+        "review_rate": 0.01,
+        "latency_p95_sec": 0.01,
+        "alpha": 0.02,
+    }
+    with mlflow.start_run():
+        gates = step_quality_gates(
+            metrics=metrics, baseline_pr_auc=0.30, parent_run=True
+        )
+
+    assert gates["gate_coverage_legit"] is True
+    assert gates["gate_coverage_fraud"] is False
+    assert gates["gate_coverage"] is False
+    assert gates["all_passed"] is False
+
+
+def test_non_regression_uses_logreg_baseline(local_mlflow_env):
+    metrics = {
+        "pr_auc": 0.41,
+        "conformal_coverage_legit": 0.98,
+        "conformal_coverage_fraud": 0.98,
+        "review_rate": 0.015,
+        "latency_p95_sec": 0.010,
+    }
+    with mlflow.start_run():
+        above = step_quality_gates(
+            metrics=metrics, baseline_pr_auc=0.40, parent_run=True
+        )
+        below = step_quality_gates(
+            metrics={**metrics, "pr_auc": 0.39}, baseline_pr_auc=0.40, parent_run=True
+        )
+
+    assert above["gate_non_regression"] is True
+    assert below["gate_non_regression"] is False
+
+
+def test_non_regression_requires_champion_or_baseline():
+    with pytest.raises(ValueError, match="champion_pr_auc ou baseline_pr_auc"):
+        step_quality_gates(metrics={"pr_auc": 0.90})
 
 
 def test_quality_gates_rejects_regression(local_mlflow_env):
     metrics = {
         "pr_auc": 0.60,
         "conformal_coverage": 0.97,
+        "conformal_coverage_legit": 0.97,
+        "conformal_coverage_fraud": 0.97,
         "review_rate": 0.015,
         "latency_p95_sec": 0.010,
     }
@@ -177,6 +266,37 @@ def test_quality_gates_rejects_regression(local_mlflow_env):
         )
     assert gates["all_passed"] is False
     assert gates["gate_non_regression"] is False
+
+
+def test_latency_sample_defaults_to_one_thousand():
+    default = inspect.signature(step_evaluate).parameters["latency_sample_size"].default
+    assert default == 1000
+
+
+def test_auto_error_rate_is_none_when_nothing_is_automatic(local_mlflow_env):
+    class AlwaysReviewModel:
+        alpha = 0.02
+        threshold_legit = 0.40
+        threshold_fraud = 0.40
+
+        def batch_probabilities(self, frame):
+            return np.full(len(frame), 0.50)
+
+        def predict_one(self, record):
+            return {"prediction_set": []}
+
+    frame = generate_synthetic_data(n_samples=20, random_state=5)
+    with mlflow.start_run():
+        metrics = step_evaluate(
+            pyfunc_model=AlwaysReviewModel(),
+            test_df=frame,
+            latency_sample_size=5,
+            parent_run=True,
+        )
+
+    assert metrics["review_rate"] == 1.0
+    assert metrics["auto_error_rate"] is None
+    assert metrics["latency_sample_size"] == 5.0
 
 
 def test_smoke_pipeline_end_to_end():

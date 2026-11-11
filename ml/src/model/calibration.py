@@ -101,10 +101,17 @@ def fit_calibrator(
     probabilities: Any,
     y: Any,
     method: str | None = None,
+    evaluation_probabilities: Any | None = None,
+    evaluation_target: Any | None = None,
 ) -> tuple[Any, str, float, float]:
     """Fit isotonic and sigmoid calibrators; keep the lowest Brier score.
 
-    Returns ``(calibrator, method, brier_before, brier_after)``.
+    By default the Brier comparison uses the same rows as the fit. Pass
+    ``evaluation_probabilities``/``evaluation_target`` to fit on one block and
+    select on a disjoint block (D46: separate calibrator fit and comparison).
+
+    Returns ``(calibrator, method, brier_before, brier_after)`` where both
+    Brier values are measured on the evaluation block.
     """
 
     from sklearn.isotonic import IsotonicRegression
@@ -117,7 +124,20 @@ def fit_calibrator(
     if p.size == 0:
         raise ValueError("Aucune donnee de calibration fournie.")
 
-    brier_before = float(brier_score_loss(target, p))
+    eval_p = p if evaluation_probabilities is None else np.asarray(
+        evaluation_probabilities, dtype=np.float64
+    )
+    eval_target = target if evaluation_target is None else np.asarray(
+        evaluation_target, dtype=int
+    )
+    if eval_p.size != eval_target.size:
+        raise ValueError(
+            "evaluation_probabilities et evaluation_target doivent avoir la meme taille."
+        )
+    if eval_p.size == 0:
+        raise ValueError("Aucune donnee d'evaluation de calibration fournie.")
+
+    brier_before = float(brier_score_loss(eval_target, eval_p))
 
     if np.unique(target).size < 2:
         calibrator = IdentityCalibrator().fit(p, target)
@@ -129,8 +149,8 @@ def fit_calibrator(
     }
 
     def score(name: str) -> float:
-        calibrated = np.clip(candidates[name].predict(p), 0.0, 1.0)
-        return float(brier_score_loss(target, calibrated))
+        calibrated = np.clip(candidates[name].predict(eval_p), 0.0, 1.0)
+        return float(brier_score_loss(eval_target, calibrated))
 
     if method is None:
         method = min(candidates, key=score)

@@ -233,6 +233,22 @@ def _current_git_commit() -> str:
         return "unknown"
 
 
+def _validate_promotion_gates(path: Path) -> dict[str, bool]:
+    """Refuse promotion unless every §5.4 gate is explicitly true."""
+
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    gates = payload.get("gates", payload)
+    if not isinstance(gates, dict):
+        raise TypeError("Le fichier de portes doit contenir un objet JSON.")
+    gate_items = {key: value for key, value in gates.items() if key.startswith("gate_")}
+    if not gate_items:
+        raise ValueError("Aucune porte 'gate_*' trouvee dans le fichier de promotion.")
+    failed = sorted(key for key, value in gate_items.items() if value is not True)
+    if failed:
+        raise ValueError(f"Portes non validees : {', '.join(failed)}")
+    return {key: True for key in gate_items}
+
+
 def load_input_example(path: Path | None) -> pd.DataFrame:
     if path is None:
         return DEFAULT_INPUT_EXAMPLE.copy()
@@ -260,10 +276,16 @@ def register_candidate(
     input_example_path: Path | None = None,
     metadata_path: Path | None = None,
     promote: bool = False,
+    gates_path: Path | None = None,
 ) -> dict[str, Any]:
     """Load, package and register P2's candidate; provisional unless promoted."""
 
     import joblib
+
+    if promote:
+        if gates_path is None:
+            raise ValueError("--promote exige --gates avec les portes de qualite.")
+        _validate_promotion_gates(gates_path)
 
     if tracking_uri:
         mlflow.set_tracking_uri(tracking_uri)
@@ -314,6 +336,7 @@ def register_candidate(
                 f"P2 candidate artifact ({Path(artifact_path).name}), {status.lower()}"
             ),
             set_champion=promote,
+            set_challenger=not promote,
             extra_tags=extra_tags,
         )
         for key, value in result["tags"].items():
@@ -336,7 +359,13 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--promote",
         action="store_true",
-        help="Move the champion alias to this version (default: provisional).",
+        help="Move the champion alias to this version (requires --gates).",
+    )
+    parser.add_argument(
+        "--gates",
+        type=Path,
+        default=None,
+        help="JSON quality-gate report required by --promote.",
     )
     args = parser.parse_args(argv)
 
@@ -352,6 +381,7 @@ def main(argv: list[str] | None = None) -> int:
         input_example_path=args.input_example,
         metadata_path=args.metadata,
         promote=args.promote,
+        gates_path=args.gates,
     )
     print(json.dumps(result, indent=2, default=str))
     return 0

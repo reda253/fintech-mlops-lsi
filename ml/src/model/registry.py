@@ -139,7 +139,8 @@ def register_model(
     pipeline_run_id: str = "",
     viz_dir: Path | None = None,
     description: str | None = None,
-    set_champion: bool = True,
+    set_champion: bool = False,
+    set_challenger: bool = True,
     extra_tags: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     """Log, register and optionally alias the packaged fraud detector.
@@ -147,8 +148,8 @@ def register_model(
     Must be called inside an active MLflow run: the run becomes the model
     version source, which is where visualization artifacts are attached.
 
-    ``set_champion=False`` registers a provisional version without moving the
-    ``champion`` alias, so a candidate can be validated before promotion.
+    The default is a ``challenger`` version: ``champion`` is only moved when a
+    caller explicitly passes ``set_champion=True`` after every quality gate.
     """
 
     active_run = mlflow.active_run()
@@ -198,11 +199,20 @@ def register_model(
         client.update_model_version(model_name, version, description=description)
     if set_champion:
         client.set_registered_model_alias(model_name, "champion", version)
+    if set_challenger:
+        client.set_registered_model_alias(model_name, "challenger", version)
+
+    aliases = {}
+    if set_champion:
+        aliases["champion"] = version
+    if set_challenger:
+        aliases["challenger"] = version
 
     return {
         "name": model_name,
         "version": version,
-        "alias": "champion" if set_champion else None,
+        "alias": "champion" if set_champion else ("challenger" if set_challenger else None),
+        "aliases": aliases,
         "model_uri": f"models:/{model_name}/{version}",
         "run_id": active_run.info.run_id,
         "registered_at": datetime.now(UTC).isoformat(),

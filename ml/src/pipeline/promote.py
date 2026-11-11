@@ -41,9 +41,11 @@ GH_API = "https://api.github.com"
 
 
 def patch_configmap(configmap_path: Path, new_version: str) -> str:
-    """Read the ConfigMap YAML and update MODEL_URI to the new version.
+    """Switch the ConfigMap to the stable ``@champion`` alias.
 
-    Returns the old version string (or '' if not set).
+    The exact version is moved in the MLflow registry, not hard-coded here, so
+    a later promotion does not need a Git change. Returns the previous version
+    or alias reference (``''`` when the ConfigMap was still mock).
     """
     text = configmap_path.read_text(encoding="utf-8")
     docs = list(yaml.safe_load_all(text))
@@ -56,19 +58,35 @@ def patch_configmap(configmap_path: Path, new_version: str) -> str:
     data: dict[str, str] = configmap.setdefault("data", {})
     old_uri = data.get("MODEL_URI", "")
 
-    # Parse old version number for logging
-    old_version = ""
+    # Parse the previous version/alias for logging and the PR body.
+    old_reference = ""
     m = re.search(r"/(\d+)$", old_uri)
     if m:
-        old_version = m.group(1)
+        old_reference = m.group(1)
+    elif "@" in old_uri:
+        old_reference = old_uri.rsplit("@", 1)[-1]
 
-    data["MODEL_URI"] = f"models:/fraud-detector/{new_version}"
+    data["MODEL_URI"] = "models:/fraud-detector@champion"
     data["MODEL_MODE"] = "real"  # switch away from mock
 
     # Re-serialise — preserve key ordering
     new_text = yaml.dump(configmap, default_flow_style=False, sort_keys=False, allow_unicode=True)
     configmap_path.write_text(new_text, encoding="utf-8")
-    return old_version
+    return old_reference
+
+
+def set_champion_alias(
+    model_name: str,
+    model_version: str,
+    tracking_uri: str,
+) -> None:
+    """Move the ``champion`` alias to ``model_version`` in the registry."""
+
+    from mlflow.tracking import MlflowClient
+
+    client = MlflowClient(tracking_uri=tracking_uri)
+    client.set_registered_model_alias(model_name, "champion", str(model_version))
+    logger.info("Moved champion alias to %s/%s", model_name, model_version)
 
 
 # --------------------------------------------------------------------------- #
@@ -260,7 +278,8 @@ def build_pr_body(
         "### Change",
         "",
         f"- **Before:** `MODEL_URI=models:/fraud-detector/{old_version or '(mock)'}`",
-        f"- **After:** `MODEL_URI=models:/fraud-detector/{model_version}`",
+        "- **After:** `MODEL_URI=models:/fraud-detector@champion`",
+        f"- **Champion alias:** moved to `fraud-detector` v{model_version}",
         "",
         "### MLflow Run",
         "",
@@ -320,19 +339,31 @@ def promote(
     if not configmap_path.exists():
         raise FileNotFoundError(f"ConfigMap not found at: {configmap_path}")
 
-    # 1. Patch the ConfigMap locally
+    # 1. Move the alias in the registry (the ConfigMap resolves @champion).
+    if not dry_run:
+        set_champion_alias("fraud-detector", model_version, tracking_uri)
+
+    # 2. Patch the ConfigMap locally. If it already points at @champion, the
+    # promotion is registry-only and no Git PR is needed.
+    already_alias = "models:/fraud-detector@champion" in configmap_path.read_text(
+        encoding="utf-8"
+    )
     old_version = patch_configmap(configmap_path, model_version)
     new_content = configmap_path.read_text(encoding="utf-8")
     logger.info(
-        "Patched %s: MODEL_URI v%s → v%s",
+        "Patched %s: MODEL_URI v%s → @champion (v%s)",
         CONFIGMAP_PATH,
         old_version or "(mock)",
         model_version,
     )
 
+    if already_alias:
+        logger.info("ConfigMap already uses @champion; promotion is registry-only.")
+        return {"branch": "", "pr_url": "", "pr_number": 0, "mode": "alias_only"}
+
     if dry_run:
         logger.info("[DRY RUN] Skipping GitHub API calls. Branch: %s", branch)
-        return {"branch": branch, "pr_url": "", "pr_number": 0}
+        return {"branch": branch, "pr_url": "", "pr_number": 0, "mode": "configmap"}
 
     # 2. Create branch off default branch
     default_branch, head_sha = get_default_branch_sha(repo, token)
@@ -363,7 +394,12 @@ def promote(
                 "Could not enable auto-merge (repository may require manual setup): %s", exc
             )
 
-    return {"branch": branch, "pr_url": pr_url, "pr_number": pr_number}
+    return {
+        "branch": branch,
+        "pr_url": pr_url,
+        "pr_number": pr_number,
+        "mode": "configmap",
+    }
 
 
 # --------------------------------------------------------------------------- #

@@ -38,20 +38,20 @@ The reusable helper is `ml/tracking_smoke.py::log_smoke_run(tracking_uri, experi
 
 1. `prepare` — chronological 70/15/15 split of `fraudTrain.csv`, independent `fraudTest.csv`.
 2. `train` — preprocessing fitted on natural data, XGBoost fitted on a 1:10 undersampled block (`beta` logged).
-3. `calibrate` — isotonic vs sigmoid, lowest Brier score wins.
-4. `conformal` — Mondrian class-conditional quantiles at `alpha` (default `0.02`, D44).
-5. `evaluate` — PR-AUC, ROC-AUC, Brier, coverage, review/automation rates, auto-error rate, p95 latency on the independent test block.
-6. `quality_gates` — PR-AUC non-regression, coverage `>= 1 - alpha - 0.02`, review rate `<= 2 %`, p95 `< 50 ms`.
+3. `calibrate` — isotonic vs sigmoid fitted on 50 % and selected on the other 50 % (D46).
+4. `conformal` — Mondrian class-conditional quantiles on 50 %, alpha chosen on 25 % by review capacity, last 25 % scored after freezing alpha (D46).
+5. `evaluate` — PR-AUC, ROC-AUC, Brier, per-class coverage, review/automation rates, auto-error rate, p95 latency on 1 000 calls.
+6. `quality_gates` — PR-AUC non-regression (champion − 0.01, or the logistic-regression baseline on the first run), per-class coverage `>= 1 - alpha - 0.02`, review rate `<= 2 %`, p95 `< 50 ms`.
 7. `visualize` — PCA / t-SNE / UMAP projections for the 5 dashboard facets.
 8. `package` — self-contained `FraudDetectorModel` pyfunc (calibration + conformal sets).
-9. `register` — `fraud-detector` model version, tags, `champion` alias, viz artifacts.
+9. `register` — `fraud-detector` model version, tags and `challenger` alias; `champion` is moved only by an explicit promotion.
 
-Run the synthetic smoke pipeline (no Sparkov CSVs needed):
+Run the synthetic smoke pipeline (no Sparkov CSVs needed); omit `--alpha` to let D46 select it:
 
 ```bash
 PYTHONPATH=. python -m ml.src.pipeline.run \
   --tracking-uri http://localhost:5000 \
-  --test-mode --model-name fraud-detector-smoke --alpha 0.02
+  --test-mode --model-name fraud-detector-smoke
 ```
 
 Run on the real data (place `fraudTrain.csv` and `fraudTest.csv` in `ml/data/raw/`):
@@ -61,7 +61,7 @@ PYTHONPATH=. python -m ml.src.pipeline.run \
   --mode full --tracking-uri http://localhost:5000 \
   --data-path ml/data/raw/fraudTrain.csv \
   --test-path ml/data/raw/fraudTest.csv \
-  --model-name fraud-detector --alpha 0.02
+  --model-name fraud-detector
 ```
 
 > The pipeline refuses to register when a quality gate fails. Use `--no-register` for a dry run.
@@ -92,7 +92,7 @@ PYTHONPATH=. python -m ml.scripts.register_champion \
   --model-name fraud-detector --alpha 0.02
 ```
 
-The script accepts a dict payload, P2's nested `FraudDetectorModel` (calibrator and beta inside `CalibratedPriorClassifier`) or a single estimator with `predict_proba`. It resolves thresholds or raw conformal scores, carries `run_id`/`git_commit`/`data_sha256`/`protocol_sha256` provenance tags, and registers a **provisional** version without moving the `champion` alias. Pass `--promote` only after parity validation.
+The script accepts a dict payload, P2's nested `FraudDetectorModel` (calibrator and beta inside `CalibratedPriorClassifier`) or a single estimator with `predict_proba`. It resolves thresholds or raw conformal scores, carries `run_id`/`git_commit`/`data_sha256`/`protocol_sha256` provenance tags, and registers a **provisional** version with the `challenger` alias. Promotion is explicit: `--promote --gates <report.json>` refuses unless every `gate_*` entry in the report is `true`.
 
 Replay the handoff cases against the local wrapper, the registered pyfunc and the HTTP service:
 
@@ -112,8 +112,8 @@ The script verifies the ZIP and joblib SHA-256, checks raw/rounded probabilities
 
 ```yaml
 MODEL_MODE: "real"
-MODEL_URI: "models:/fraud-detector/1"
+MODEL_URI: "models:/fraud-detector@champion"
 MLFLOW_TRACKING_URI: "http://mlflow.ml.svc.cluster.local:5000"
 ```
 
-`alpha` is read from the model metadata, and `/api/v1/ml/viz/{method}` downloads the version's `viz/*.json` artifact on a cache miss.
+`alpha` is read from the model metadata, and `/api/v1/ml/viz/{method}` downloads the version's `viz/*.json` artifact on a cache miss. `/api/v1/ml/performance` reads the served version's MLflow run: it returns `status: ready` with measured metrics, `status: unavailable` when the run has none, and `status: demo` in mock mode.

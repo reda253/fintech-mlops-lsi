@@ -10,12 +10,14 @@ from types import SimpleNamespace
 import joblib
 import mlflow
 import pandas as pd
+import pytest
 from mlflow.tracking import MlflowClient
 from sklearn.linear_model import LogisticRegression
 
 from ml.scripts.register_champion import (
     DEFAULT_INPUT_EXAMPLE,
     _resolve_thresholds,
+    _validate_promotion_gates,
     build_model_from_payload,
     register_candidate,
 )
@@ -83,7 +85,7 @@ def test_register_candidate_fixture_roundtrip():
                 metadata_path=metadata_path,
             )
             assert result["version"] == "1"
-            assert result["alias"] is None
+            assert result["alias"] == "challenger"
             assert result["tags"]["alpha"] == "0.02"
             assert result["tags"]["git_commit"] == "p2commit"
             assert result["tags"]["data_sha256"] == "p2hash"
@@ -92,6 +94,7 @@ def test_register_candidate_fixture_roundtrip():
 
             registered = MlflowClient().get_registered_model("fraud-detector-p2-test")
             assert "champion" not in registered.aliases
+            assert str(registered.aliases["challenger"]) == "1"
 
             loaded = mlflow.pyfunc.load_model(result["model_uri"])
             output = loaded.predict(DEFAULT_INPUT_EXAMPLE)
@@ -131,6 +134,47 @@ def test_build_model_from_p2_nested_wrapper():
     assert model.threshold_fraud == 0.80
     assert model.alpha == 0.02
     assert model.feature_names == ["feature"]
+
+
+def test_promotion_requires_a_complete_gate_report(tmp_path):
+    with pytest.raises(ValueError, match="gates"):
+        register_candidate(
+            tmp_path / "missing.joblib",
+            promote=True,
+        )
+
+    report = tmp_path / "gates.json"
+    report.write_text(
+        json.dumps(
+            {
+                "gates": {
+                    "gate_non_regression": True,
+                    "gate_coverage_fraud": False,
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    with pytest.raises(ValueError, match="gate_coverage_fraud"):
+        _validate_promotion_gates(report)
+
+
+def test_promotion_accepts_all_true_gates(tmp_path):
+    report = tmp_path / "gates.json"
+    report.write_text(
+        json.dumps(
+            {
+                "gate_non_regression": True,
+                "gate_coverage": True,
+                "gate_coverage_legit": True,
+                "gate_coverage_fraud": True,
+                "gate_review_rate": True,
+                "gate_latency": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert all(_validate_promotion_gates(report).values())
 
 
 def test_resolve_thresholds_from_scores():

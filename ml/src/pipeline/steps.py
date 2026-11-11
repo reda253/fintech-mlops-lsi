@@ -21,6 +21,7 @@ import os
 import sys
 import tempfile
 import time
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -47,9 +48,11 @@ BEST_PARAMS_PATH = ROOT_DIR / "configs" / "best_params.json"
 TARGET_COLUMN = "is_fraud"
 DATE_COLUMN = "trans_date_trans_time"
 DEFAULT_ALPHA = 0.02
+ALPHA_GRID = (0.01, 0.02, 0.03, 0.05, 0.10)
 REVIEW_RATE_GATE = 0.02
 COVERAGE_SLACK = 0.02
 LATENCY_GATE_SECONDS = 0.050
+LATENCY_SAMPLE_SIZE = 1000
 UNDERSAMPLING_RATIO = 10
 
 SPARKOV_COLUMNS = [
@@ -238,7 +241,9 @@ def step_prepare(
     with mlflow.start_run(run_name="1_prepare", nested=parent_run):
         if test_mode or data_path is None:
             logger.info("Generating synthetic Sparkov data (test mode).")
-            frame = generate_synthetic_data(n_samples=4000, random_state=42)
+            # D46 splits the conformal block 50/25/25; 12k rows keep enough
+            # per-class observations for alpha=0.02 to remain applicable.
+            frame = generate_synthetic_data(n_samples=12000, random_state=42)
             test_frame = generate_synthetic_data(n_samples=1000, random_state=1042)
             data_hash = _frame_sha256(frame)
             test_data_hash = _frame_sha256(test_frame)
@@ -393,57 +398,257 @@ def _apply_calibrator(calibrator: Any, probabilities: np.ndarray) -> np.ndarray:
     return np.clip(calibrated, 0.0, 1.0)
 
 
+def _chronological_parts(
+    frame: pd.DataFrame,
+    weights: tuple[int, ...],
+) -> list[pd.DataFrame]:
+    """Split a chronological block without separating equal timestamps (D46).
+
+    Mirrors ``ml/src/final/train_final.py::chronological_parts`` so a retrain
+    reproduces the validated method: moving a boundary to the right is safer
+    than leaking a same-timestamp transaction across two zones.
+    """
+
+    if not weights or any(weight <= 0 for weight in weights):
+        raise ValueError("Fractions de decoupage invalides.")
+    dates = pd.to_datetime(frame[DATE_COLUMN])
+    if dates.isna().any() or not dates.is_monotonic_increasing:
+        raise ValueError("Le bloc a decouper doit etre chronologique.")
+
+    cuts = [0]
+    nominal = 0
+    total = sum(weights)
+    for weight in weights[:-1]:
+        nominal += len(frame) * weight // total
+        cut = max(nominal, cuts[-1] + 1)
+        if cut >= len(frame):
+            raise ValueError("Sous-bloc chronologique vide.")
+        if dates.iloc[cut - 1] == dates.iloc[cut]:
+            cut = int(dates.searchsorted(dates.iloc[cut], side="right"))
+        if cut >= len(frame):
+            raise ValueError("Impossible de separer les dates sans sous-bloc vide.")
+        cuts.append(cut)
+    cuts.append(len(frame))
+    parts = [frame.iloc[start:end].copy() for start, end in pairwise(cuts)]
+    if any(part.empty for part in parts):
+        raise ValueError("Sous-bloc chronologique vide.")
+    return parts
+
+
 def step_calibrate(
     train_result: dict[str, Any],
     prob_calib_df: pd.DataFrame,
     method: str | None = None,
     parent_run: bool = True,
 ) -> dict[str, Any]:
-    """Phase 3: fit isotonic and sigmoid calibrators, keep the best Brier."""
+    """Phase 3: fit calibrators on 50 % and select on the other 50 % (D46)."""
 
     with mlflow.start_run(run_name="3_calibrate", nested=parent_run):
-        probabilities = _raw_probabilities(train_result, prob_calib_df)
-        target = prob_calib_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
+        fit_df, choice_df = _chronological_parts(prob_calib_df, (1, 1))
+        for block in (fit_df, choice_df):
+            if block[TARGET_COLUMN].nunique() < 2:
+                raise ValueError("Chaque moitie de calibration doit contenir les deux classes.")
+
+        fit_probabilities = _raw_probabilities(train_result, fit_df)
+        fit_target = fit_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
+        choice_probabilities = _raw_probabilities(train_result, choice_df)
+        choice_target = choice_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
+
         calibrator, selected, brier_before, brier_after = fit_calibrator(
-            probabilities, target, method=method
+            fit_probabilities,
+            fit_target,
+            method=method,
+            evaluation_probabilities=choice_probabilities,
+            evaluation_target=choice_target,
         )
 
         mlflow.log_param("calibration_method", selected)
         mlflow.log_metric("brier_before_calibration", brier_before)
         mlflow.log_metric("brier_after_calibration", brier_after)
         mlflow.log_metric("calibration_rows", len(prob_calib_df))
+        mlflow.log_metric("calibration_fit_rows", len(fit_df))
+        mlflow.log_metric("calibration_choice_rows", len(choice_df))
 
         return {
             "calibrator": calibrator,
             "method": selected,
             "brier_before": brier_before,
             "brier_after": brier_after,
+            "fit_rows": len(fit_df),
+            "choice_rows": len(choice_df),
         }
+
+
+def _review_rate(probabilities: np.ndarray, thresholds: dict[str, float]) -> float:
+    _, _, set_size = _prediction_sets(
+        probabilities,
+        thresholds["threshold_legit"],
+        thresholds["threshold_fraud"],
+    )
+    return float((set_size != 1).mean())
 
 
 def step_conformal(
     train_result: dict[str, Any],
     calibration_result: dict[str, Any],
     conformal_df: pd.DataFrame,
-    alpha: float = DEFAULT_ALPHA,
+    alpha: float | None = None,
+    alpha_grid: tuple[float, ...] = ALPHA_GRID,
     parent_run: bool = True,
-) -> dict[str, float]:
-    """Phase 4: class-conditional (Mondrian) conformal quantiles at alpha."""
+) -> dict[str, Any]:
+    """Phase 4: D46 50/25/25 split with alpha selection on the choice block.
+
+    The first half fits the Mondrian quantiles, the second quarter chooses the
+    alpha that keeps the review rate under capacity (labels are never used),
+    and the last quarter is scored only after alpha is frozen.
+    """
 
     with mlflow.start_run(run_name="4_conformal", nested=parent_run):
-        probabilities = _apply_calibrator(
+        fit_df, choice_df, evaluation_df = _chronological_parts(conformal_df, (2, 1, 1))
+        fit_probabilities = _apply_calibrator(
             calibration_result["calibrator"],
-            _raw_probabilities(train_result, conformal_df),
+            _raw_probabilities(train_result, fit_df),
         )
-        target = conformal_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
-        thresholds = mondrian_thresholds(probabilities, target, alpha)
+        fit_target = fit_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
+        choice_probabilities = _apply_calibrator(
+            calibration_result["calibrator"],
+            _raw_probabilities(train_result, choice_df),
+        )
 
-        mlflow.log_param("alpha", alpha)
+        candidates = tuple(sorted({float(value) for value in alpha_grid}))
+        if alpha is not None:
+            candidates = (float(alpha),)
+        if not candidates or any(not 0.0 < value < 1.0 for value in candidates):
+            raise ValueError("alpha doit etre dans ]0, 1[.")
+
+        rows: list[dict[str, Any]] = []
+        for candidate in candidates:
+            try:
+                thresholds = mondrian_thresholds(fit_probabilities, fit_target, candidate)
+            except ValueError as exc:
+                rows.append(
+                    {"alpha": candidate, "status": "inapplicable", "reason": str(exc)}
+                )
+                continue
+            rows.append(
+                {
+                    "alpha": candidate,
+                    "status": "eligible",
+                    "thresholds": thresholds,
+                    "selection_review_rate": _review_rate(
+                        choice_probabilities, thresholds
+                    ),
+                }
+            )
+
+        if alpha is not None:
+            selected = next(
+                (row for row in rows if row["status"] == "eligible"),
+                None,
+            )
+            if selected is None:
+                raise ValueError(
+                    "alpha fixe inapplicable: le bloc conforme ne contient pas assez "
+                    "d'observations par classe."
+                )
+            selection_status = "forced"
+        else:
+            eligible = [
+                row
+                for row in rows
+                if row["status"] == "eligible"
+                and row["selection_review_rate"] <= REVIEW_RATE_GATE
+            ]
+            if eligible:
+                selected = min(eligible, key=lambda row: row["alpha"])
+                selection_status = "selected"
+            else:
+                selected = min(
+                    (row for row in rows if row["status"] == "eligible"),
+                    key=lambda row: (row["selection_review_rate"], row["alpha"]),
+                    default=None,
+                )
+                if selected is None:
+                    raise ValueError("Aucun alpha applicable sur le bloc conforme.")
+                selection_status = "no_eligible_alpha"
+                logger.warning(
+                    "No alpha keeps the review rate under %.2f%%; best observed is %.2f%%.",
+                    REVIEW_RATE_GATE * 100,
+                    selected["selection_review_rate"] * 100,
+                )
+
+        selected_alpha = float(selected["alpha"])
+        thresholds = selected["thresholds"]
+        evaluation_probabilities = _apply_calibrator(
+            calibration_result["calibrator"],
+            _raw_probabilities(train_result, evaluation_df),
+        )
+        evaluation_target = evaluation_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
+        legit_in, fraud_in, set_size = _prediction_sets(
+            evaluation_probabilities,
+            thresholds["threshold_legit"],
+            thresholds["threshold_fraud"],
+        )
+        evaluation_coverage_legit = (
+            float(legit_in[evaluation_target == 0].mean())
+            if np.any(evaluation_target == 0)
+            else 0.0
+        )
+        evaluation_coverage_fraud = (
+            float(fraud_in[evaluation_target == 1].mean())
+            if np.any(evaluation_target == 1)
+            else 0.0
+        )
+        evaluation_review_rate = float((set_size != 1).mean())
+
+        mlflow.log_param("alpha", selected_alpha)
+        mlflow.log_param("alpha_selection_status", selection_status)
         mlflow.log_metric("threshold_legit", thresholds["threshold_legit"])
         mlflow.log_metric("threshold_fraud", thresholds["threshold_fraud"])
         mlflow.log_metric("conformal_n_legit", thresholds["n_legit"])
         mlflow.log_metric("conformal_n_fraud", thresholds["n_fraud"])
-        return {**thresholds, "alpha": float(alpha)}
+        mlflow.log_metric("conformal_fit_rows", len(fit_df))
+        mlflow.log_metric("conformal_choice_rows", len(choice_df))
+        mlflow.log_metric("conformal_evaluation_rows", len(evaluation_df))
+        mlflow.log_metric("selection_review_rate", selected["selection_review_rate"])
+        mlflow.log_metric("evaluation_review_rate", evaluation_review_rate)
+        mlflow.log_metric("evaluation_coverage_legit", evaluation_coverage_legit)
+        mlflow.log_metric("evaluation_coverage_fraud", evaluation_coverage_fraud)
+        for row in rows:
+            if row["status"] == "eligible":
+                mlflow.log_metric(
+                    f"alpha_{row['alpha']:.2f}_review_rate".replace(".", "_"),
+                    row["selection_review_rate"],
+                )
+        mlflow.log_dict(
+            {
+                str(row["alpha"]): row.get("selection_review_rate")
+                if row["status"] == "eligible"
+                else row["status"]
+                for row in rows
+            },
+            "alpha_selection.json",
+        )
+
+        return {
+            **thresholds,
+            "alpha": selected_alpha,
+            "alpha_grid": [row["alpha"] for row in rows],
+            "alpha_selection": {
+                str(row["alpha"]): row.get("selection_review_rate")
+                if row["status"] == "eligible"
+                else row["status"]
+                for row in rows
+            },
+            "alpha_selection_status": selection_status,
+            "selection_review_rate": selected["selection_review_rate"],
+            "evaluation_review_rate": evaluation_review_rate,
+            "evaluation_coverage_legit": evaluation_coverage_legit,
+            "evaluation_coverage_fraud": evaluation_coverage_fraud,
+            "fit_rows": len(fit_df),
+            "choice_rows": len(choice_df),
+            "evaluation_rows": len(evaluation_df),
+        }
 
 
 def _prediction_sets(
@@ -474,9 +679,9 @@ def _measure_latency(pyfunc_model: FraudDetectorModel, sample: pd.DataFrame) -> 
 def step_evaluate(
     pyfunc_model: FraudDetectorModel,
     test_df: pd.DataFrame,
-    latency_sample_size: int = 200,
+    latency_sample_size: int = LATENCY_SAMPLE_SIZE,
     parent_run: bool = True,
-) -> dict[str, float]:
+) -> dict[str, float | None]:
     """Phase 5: real metrics on the independent fraudTest.csv block."""
 
     with mlflow.start_run(run_name="5_evaluate", nested=parent_run):
@@ -508,15 +713,15 @@ def step_evaluate(
             target == 1,
             np.where(fraud_in & ~legit_in, target == 0, False),
         )
-        auto_error_rate = (
-            float(automatic_errors[automatic].mean()) if automatic.any() else 0.0
+        auto_error_rate: float | None = (
+            float(automatic_errors[automatic].mean()) if automatic.any() else None
         )
 
         sample_size = min(latency_sample_size, len(test_df))
         latency_sample = test_df.sample(n=sample_size, random_state=42)
         latency_p95 = _measure_latency(pyfunc_model, latency_sample)
 
-        metrics = {
+        metrics: dict[str, float | None] = {
             "alpha": float(pyfunc_model.alpha),
             "pr_auc": pr_auc,
             "roc_auc": roc_auc,
@@ -528,55 +733,140 @@ def step_evaluate(
             "automation_rate": automation_rate,
             "auto_error_rate": auto_error_rate,
             "latency_p95_sec": latency_p95,
+            "latency_sample_size": float(sample_size),
             "n_test": float(len(test_df)),
             "n_test_fraud": float(target.sum()),
         }
         for key, value in metrics.items():
-            mlflow.log_metric(key, value)
+            if value is not None:
+                mlflow.log_metric(key, value)
 
         return metrics
 
 
+def load_logreg_params(path: Path | None = None) -> dict[str, Any]:
+    """Load ``models.logreg.params`` with a conservative fallback."""
+
+    candidate = Path(path) if path is not None else BEST_PARAMS_PATH
+    if candidate.is_file():
+        try:
+            payload = json.loads(candidate.read_text(encoding="utf-8"))
+            params = payload["models"]["logreg"]["params"]
+            if isinstance(params, dict) and params:
+                return dict(params)
+        except (KeyError, TypeError, json.JSONDecodeError) as exc:
+            logger.warning("Invalid logreg params in best_params.json (%s); using defaults.", exc)
+    return {"solver": "lbfgs", "max_iter": 1000, "C": 0.01}
+
+
+def step_logreg_baseline(
+    train_result: dict[str, Any],
+    dev_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    params: dict[str, Any] | None = None,
+    seed: int = 42,
+    parent_run: bool = True,
+) -> dict[str, float]:
+    """Phase 5b: score the logistic-regression reference on the test block.
+
+    §5.4 replaces the first-run absolute PR-AUC minimum with "at least the
+    logistic regression". The reference is fitted on the development block with
+    the same preprocessing and evaluated on the same independent test block.
+    """
+
+    with mlflow.start_run(run_name="5b_logreg_baseline", nested=parent_run):
+        if str(SRC_DIR) not in sys.path:
+            sys.path.append(str(SRC_DIR))
+        from models.factory import build_model
+
+        model_params = dict(params) if params is not None else load_logreg_params()
+        preprocessor = train_result["preprocessor"]
+        x_dev = np.asarray(preprocessor.transform(dev_df))
+        x_test = np.asarray(preprocessor.transform(test_df))
+        y_dev = dev_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
+        y_test = test_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
+
+        classifier = build_model("logreg", model_params, seed=seed)
+        classifier.fit(x_dev, y_dev)
+        probabilities = np.asarray(classifier.predict_proba(x_test), dtype=np.float64)[:, 1]
+
+        if np.unique(y_test).size > 1:
+            pr_auc = float(average_precision_score(y_test, probabilities))
+            roc_auc = float(roc_auc_score(y_test, probabilities))
+        else:
+            pr_auc = 0.0
+            roc_auc = 0.0
+        brier = float(brier_score_loss(y_test, probabilities)) if y_test.size else 0.0
+
+        mlflow.log_params({f"logreg_{key}": value for key, value in model_params.items()})
+        mlflow.log_metric("logreg_pr_auc", pr_auc)
+        mlflow.log_metric("logreg_roc_auc", roc_auc)
+        mlflow.log_metric("logreg_brier_score", brier)
+        return {"pr_auc": pr_auc, "roc_auc": roc_auc, "brier_score": brier}
+
+
 def step_quality_gates(
-    metrics: dict[str, float],
+    metrics: dict[str, float | None],
     champion_pr_auc: float | None = None,
+    baseline_pr_auc: float | None = None,
     alpha: float | None = None,
     parent_run: bool = True,
 ) -> dict[str, bool]:
     """Phase 6: promotion quality gates (§5.4).
 
     Gates:
-    1. Non-regression: PR-AUC >= champion - 0.01 (>= 0.50 for the first model)
-    2. Conformal coverage >= (1 - alpha) - 0.02
+    1. Non-regression: PR-AUC >= champion - 0.01, or >= logistic regression
+       on the first run (no champion yet)
+    2. Per-class conformal coverage >= (1 - alpha) - 0.02
     3. Review rate <= 2 % of transactions
     4. Inference p95 < 50 ms
     """
 
     if alpha is None:
-        alpha = float(metrics.get("alpha", DEFAULT_ALPHA))
+        alpha = float(metrics.get("alpha") or DEFAULT_ALPHA)
     if not 0.0 < alpha < 1.0:
         raise ValueError("alpha doit etre dans ]0, 1[.")
+    if champion_pr_auc is None and baseline_pr_auc is None:
+        raise ValueError("champion_pr_auc ou baseline_pr_auc requis pour la non-regression.")
 
     with mlflow.start_run(run_name="6_quality_gates", nested=parent_run):
+        pr_auc = float(metrics.get("pr_auc") if metrics.get("pr_auc") is not None else 0.0)
         if champion_pr_auc is not None:
-            gate_non_regression = metrics["pr_auc"] >= (champion_pr_auc - 0.01)
+            reference = float(champion_pr_auc)
+            gate_non_regression = pr_auc >= (reference - 0.01)
         else:
-            gate_non_regression = metrics["pr_auc"] >= 0.50
+            reference = float(baseline_pr_auc or 0.0)
+            gate_non_regression = pr_auc >= reference
 
         target_coverage = (1.0 - alpha) - COVERAGE_SLACK
-        gate_coverage = metrics.get("conformal_coverage", 0.0) >= target_coverage
-        gate_review_rate = metrics.get("review_rate", 1.0) <= REVIEW_RATE_GATE
-        gate_latency = metrics.get("latency_p95_sec", 1.0) < LATENCY_GATE_SECONDS
+        coverage_legit = metrics.get("conformal_coverage_legit")
+        coverage_fraud = metrics.get("conformal_coverage_fraud")
+        gate_coverage_legit = (
+            coverage_legit is not None and float(coverage_legit) >= target_coverage
+        )
+        gate_coverage_fraud = (
+            coverage_fraud is not None and float(coverage_fraud) >= target_coverage
+        )
+        gate_coverage = gate_coverage_legit and gate_coverage_fraud
+        review_rate = metrics.get("review_rate")
+        latency = metrics.get("latency_p95_sec")
+        gate_review_rate = (
+            review_rate is not None and float(review_rate) <= REVIEW_RATE_GATE
+        )
+        gate_latency = latency is not None and float(latency) < LATENCY_GATE_SECONDS
 
         gates = {
             "gate_non_regression": bool(gate_non_regression),
             "gate_coverage": bool(gate_coverage),
+            "gate_coverage_legit": bool(gate_coverage_legit),
+            "gate_coverage_fraud": bool(gate_coverage_fraud),
             "gate_review_rate": bool(gate_review_rate),
             "gate_latency": bool(gate_latency),
         }
         all_passed = all(gates.values())
 
         mlflow.log_param("alpha", alpha)
+        mlflow.log_param("non_regression_reference", reference)
         mlflow.log_param("quality_gates_passed", str(all_passed))
         for gate_name, passed in gates.items():
             mlflow.log_metric(gate_name, 1.0 if passed else 0.0)
@@ -672,9 +962,14 @@ def step_register(
     model_name: str = "fraud-detector",
     pipeline_run_id: str = "",
     viz_dir: Path | None = None,
+    promote: bool = False,
     parent_run: bool = True,
 ) -> dict[str, Any]:
-    """Phase 9: log the pyfunc artifact, register a version and alias champion."""
+    """Phase 9: log the pyfunc artifact and register a version.
+
+    The pipeline registers a ``challenger`` by default; ``champion`` is only
+    moved by an explicit promotion once every quality gate has been signed off.
+    """
 
     with mlflow.start_run(run_name="9_register", nested=parent_run):
         result = register_model(
@@ -687,6 +982,8 @@ def step_register(
                 "XGBoost + calibration + Mondrian conformal fraud detector "
                 f"(alpha={pyfunc_model.alpha:.3f})"
             ),
+            set_champion=promote,
+            set_challenger=not promote,
         )
         mlflow.log_param("registered_model_name", result["name"])
         mlflow.log_param("registered_model_version", result["version"])

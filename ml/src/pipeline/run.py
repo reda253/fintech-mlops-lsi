@@ -22,10 +22,10 @@ import mlflow
 from ml.src.model.registry import build_input_example
 from ml.src.pipeline.promote import promote as open_promotion_pr
 from ml.src.pipeline.steps import (
-    DEFAULT_ALPHA,
     step_calibrate,
     step_conformal,
     step_evaluate,
+    step_logreg_baseline,
     step_package_model,
     step_prepare,
     step_quality_gates,
@@ -62,19 +62,19 @@ def run_pipeline(
 ) -> bool:
     """Execute the end-to-end ML pipeline with parent-child runs and quality gates."""
 
-    resolved_alpha = float(
-        alpha if alpha is not None else os.environ.get("ALPHA", DEFAULT_ALPHA)
-    )
-    if not 0.0 < resolved_alpha < 1.0:
+    requested_alpha = alpha
+    if requested_alpha is None and os.environ.get("ALPHA"):
+        requested_alpha = float(os.environ["ALPHA"])
+    if requested_alpha is not None and not 0.0 < requested_alpha < 1.0:
         raise ValueError("alpha doit etre dans ]0, 1[.")
 
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment)
 
     logger.info(
-        "Starting ML pipeline (mode=%s, alpha=%.3f, tracking_uri=%s)...",
+        "Starting ML pipeline (mode=%s, alpha=%s, tracking_uri=%s)...",
         mode,
-        resolved_alpha,
+        f"{requested_alpha:.3f}" if requested_alpha is not None else "D46 selection",
         tracking_uri,
     )
 
@@ -83,7 +83,9 @@ def run_pipeline(
         mlflow.set_tag("git_commit", commit)
         mlflow.set_tag("pipeline_mode", mode)
         mlflow.log_param("mode", mode)
-        mlflow.log_param("alpha", resolved_alpha)
+        mlflow.log_param(
+            "alpha_mode", "fixed" if requested_alpha is not None else "selected"
+        )
 
         # 1. Prepare
         logger.info("[Step 1/9] Running data preparation...")
@@ -110,14 +112,24 @@ def run_pipeline(
         )
         mlflow.set_tag("calibration_method", calibration_result["method"])
 
-        # 4. Conformal quantiles
-        logger.info("[Step 4/9] Computing Mondrian conformal thresholds (alpha=%.3f)...", resolved_alpha)
+        # 4. Conformal quantiles (D46: 50/25/25, alpha chosen on the middle block)
+        logger.info("[Step 4/9] Computing Mondrian conformal thresholds...")
         conformal_result = step_conformal(
             train_result=train_result,
             calibration_result=calibration_result,
             conformal_df=prep_result["conformal_calib"],
-            alpha=resolved_alpha,
+            alpha=requested_alpha,
             parent_run=True,
+        )
+        resolved_alpha = float(conformal_result["alpha"])
+        mlflow.log_param("alpha", resolved_alpha)
+        mlflow.log_param(
+            "alpha_selection_status", conformal_result["alpha_selection_status"]
+        )
+        logger.info(
+            "Selected alpha=%.3f (%s).",
+            resolved_alpha,
+            conformal_result["alpha_selection_status"],
         )
 
         # 5. Package the pyfunc wrapper before evaluation
@@ -140,6 +152,16 @@ def run_pipeline(
         eval_metrics = step_evaluate(
             pyfunc_model=pyfunc_model,
             test_df=prep_result["test"],
+            latency_sample_size=1000,
+            parent_run=True,
+        )
+
+        # 6b. First-run non-regression reference: logistic regression (§5.4)
+        logger.info("[Step 6b/9] Scoring the logistic-regression baseline...")
+        baseline_metrics = step_logreg_baseline(
+            train_result=train_result,
+            dev_df=prep_result["development"],
+            test_df=prep_result["test"],
             parent_run=True,
         )
 
@@ -148,6 +170,7 @@ def run_pipeline(
         gate_results = step_quality_gates(
             metrics=eval_metrics,
             champion_pr_auc=champion_pr_auc,
+            baseline_pr_auc=baseline_metrics["pr_auc"],
             alpha=resolved_alpha,
             parent_run=True,
         )
@@ -241,7 +264,8 @@ def main() -> None:
     parser.add_argument(
         "--alpha",
         type=float,
-        default=float(os.environ.get("ALPHA", DEFAULT_ALPHA)),
+        default=None,
+        help="Alpha fixe. Omis, D46 choisit le plus petit alpha sous 2 %% de revue.",
     )
     parser.add_argument("--no-register", action="store_true")
 

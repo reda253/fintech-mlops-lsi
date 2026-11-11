@@ -25,9 +25,19 @@ The `ml-service-config` ConfigMap controls where predictions come from:
 | Mode | Config | Behaviour |
 |---|---|---|
 | Mock | `MODEL_MODE: "mock"`, `MODEL_URI: ""` | Deterministic amount heuristic, no MLflow dependency |
-| Real | `MODEL_MODE: "real"`, `MODEL_URI: "models:/fraud-detector/1"` | Loads the packaged pyfunc artifact from MLflow, `alpha` from model metadata |
+| Real | `MODEL_MODE: "real"`, `MODEL_URI: "models:/fraud-detector@champion"` | Loads the packaged pyfunc artifact from MLflow, `alpha` from model metadata |
 
-The committed ConfigMap points at the production model `models:/fraud-detector/1`. The D44 candidate is registered there as a provisional version and does not own the `champion` alias. For dashboard or rollback checks, the **live kind cluster** can be pointed at the synthetic validation model instead:
+The committed ConfigMap stays **mock** until a model has passed every quality gate and owns the `champion` alias. Promote in two steps:
+
+1. Register the candidate as a provisional version with the `challenger` alias.
+2. After the registry and non-regression gates pass, run `register_champion.py --promote --gates <report>` to move `champion`, then switch the ConfigMap to:
+
+```yaml
+MODEL_MODE: "real"
+MODEL_URI: "models:/fraud-detector@champion"
+```
+
+A fresh Argo CD deployment therefore never depends on a hard-coded version that may not exist. For dashboard or rollback checks, the **live kind cluster** can be pointed at the synthetic validation model instead:
 
 ```bash
 kubectl -n ml patch configmap ml-service-config --type merge \
@@ -35,7 +45,7 @@ kubectl -n ml patch configmap ml-service-config --type merge \
 kubectl -n ml rollout restart deploy/ml-service
 ```
 
-Do not commit that smoke URI. The production ConfigMap must remain `models:/fraud-detector/<version>`.
+Do not commit that smoke URI. The production ConfigMap must use the stable alias `models:/fraud-detector@champion`.
 
 ### Fail-safe behaviour
 

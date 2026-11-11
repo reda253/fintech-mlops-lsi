@@ -53,10 +53,11 @@ def test_real_predictor_predict_flow(sample_payload):
         assert data["uncertainty_level"] == "FAIBLE"
         assert data["model"]["version"] == "real-1"
 
-        # Check performance endpoint
+        # Check performance endpoint: no MLflow metrics for the dummy model
         perf_resp = client.get("/api/v1/ml/performance")
         assert perf_resp.status_code == 200
         perf_data = perf_resp.json()
+        assert perf_data["status"] in {"ready", "unavailable"}
         assert "benchmark" in perf_data
         assert "statistical_validation" in perf_data
         assert "final_test_evaluation" in perf_data
@@ -69,6 +70,35 @@ def test_real_predictor_predict_flow(sample_payload):
         assert viz_data["method"] == "pca"
         assert viz_data["view"] == "class"
         assert len(viz_data["points"]) > 0
+
+
+def test_identity_from_alias_uri(monkeypatch):
+    """``models:/name@alias`` must not be split on '/', and must not crash."""
+
+    import mlflow.tracking
+
+    def _raise(*args, **kwargs):
+        raise RuntimeError("offline")
+
+    monkeypatch.setattr(
+        mlflow.tracking.MlflowClient, "get_model_version_by_alias", _raise
+    )
+    predictor = RealPredictor(
+        model_uri="models:/fraud-detector@champion",
+        model_instance=object(),
+    )
+    assert predictor.name == "fraud-detector"
+    # Alias resolution is best effort; the alias itself is a usable fallback.
+    assert predictor.version == "champion"
+
+
+def test_identity_from_version_uri():
+    predictor = RealPredictor(
+        model_uri="models:/fraud-detector/7",
+        model_instance=object(),
+    )
+    assert predictor.name == "fraud-detector"
+    assert predictor.version == "7"
 
 
 def test_real_predictor_not_ready_when_no_model():

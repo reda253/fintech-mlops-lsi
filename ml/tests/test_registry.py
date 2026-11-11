@@ -74,6 +74,8 @@ def test_register_model_tags_alias_and_load_roundtrip():
                     input_example,
                     model_name="fraud-detector-test",
                     pipeline_run_id=run.info.run_id,
+                    set_champion=True,
+                    set_challenger=False,
                 )
 
             assert result["version"] == "1"
@@ -122,18 +124,43 @@ def test_register_model_provisional_keeps_existing_champion():
                     input_example,
                     model_name="fraud-detector-provisional",
                     set_champion=False,
+                    set_challenger=True,
                     extra_tags={"status": "PROVISIONAL"},
                 )
 
             assert first["alias"] == "champion"
-            assert second["alias"] is None
+            assert second["alias"] == "challenger"
             client = MlflowClient()
             registered = client.get_registered_model("fraud-detector-provisional")
             assert str(registered.aliases["champion"]) == "1"
+            assert str(registered.aliases["challenger"]) == "2"
             version = client.get_model_version("fraud-detector-provisional", "2")
             assert version.tags["status"] == "PROVISIONAL"
         finally:
             dispose_sqlite_tracking_engine(uri)
+
+
+def test_fraud_detector_setstate_backfills_old_pickle_attributes():
+    model = FraudDetectorModel.__new__(FraudDetectorModel)
+    nested_classifier = type(
+        "CalibratedPriorClassifier",
+        (),
+        {
+            "calibrator": type("Sigmoid", (), {"method": "sigmoid"})(),
+        },
+    )()
+
+    model.__setstate__({"classifier": nested_classifier})
+
+    assert model.preprocessor is None
+    assert model.calibrator is None
+    assert model.beta is None
+    assert model.calibration_method == "sigmoid"
+    assert model.threshold_legit == 0.50
+    assert model.threshold_fraud == 0.50
+    assert model.alpha == 0.02
+    assert model.model_name == "fraud-detector"
+    assert model.git_commit == "unknown"
 
 
 def test_build_input_example_uses_nested_customer():
