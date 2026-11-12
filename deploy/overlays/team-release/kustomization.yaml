@@ -1,0 +1,30 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../team
+# Published source 64b1d7d; GHCR run 43243659942, attempt 1.
+images:
+  - name: fintech-api-gateway
+    newName: ghcr.io/reda253/fintech-mlops-lsi/api-gateway
+    digest: sha256:5267606552a6199b58afe1f2f4ffef0066b7cbd04f429a147d2edfaa20320147
+  - name: fintech-audit-service
+    newName: ghcr.io/reda253/fintech-mlops-lsi/audit-service
+    digest: sha256:f5b6f907b3368af2a76f2aefa89ccaf3005309035d18280c013f978369e3aa6d
+  - name: fintech-auth-service
+    newName: ghcr.io/reda253/fintech-mlops-lsi/auth-service
+    digest: sha256:4fc8ca98421011b7b55405cc32ea5caddf00ddda41862dc05766a1a5e37af295
+  - name: fintech-customer-service
+    newName: ghcr.io/reda253/fintech-mlops-lsi/customer-service
+    digest: sha256:8d7a9f002e6932be50ea8821db498212968b9b2a8b9db82a649598709a595e87
+  - name: fintech-frontend
+    newName: ghcr.io/reda253/fintech-mlops-lsi/frontend
+    digest: sha256:b130b15f5cb3ec26504ce4e625775cd1a55bb2b3ed0a3f6ec95a41a8f3f78d53
+  - name: fintech-notification-service
+    newName: ghcr.io/reda253/fintech-mlops-lsi/notification-service
+    digest: sha256:30598c39d91074d8a57a83154d184e2409feff6df4d114f07ff25402316612a4
+  - name: fintech-risk-service
+    newName: ghcr.io/reda253/fintech-mlops-lsi/risk-service
+    digest: sha256:1d951ccc7048bd224e41ee72320a644cb471cc192b9e5904f4a8b0524e0fedb1
+  - name: fintech-transaction-service
+    newName: ghcr.io/reda253/fintech-mlops-lsi/transaction-service
+    digest: sha256:6a111692c00a5460633fb16f163524adcf85cc1c08fb3e7bc57fe847a44dd2f3

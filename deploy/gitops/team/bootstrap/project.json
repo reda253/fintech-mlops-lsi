@@ -1,0 +1,16 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "AppProject",
+  "metadata": {"name": "fintech-team", "namespace": "argocd"},
+  "spec": {
+    "sourceRepos": ["https://github.com/reda253/fintech-mlops-lsi.git"],
+    "destinations": [{"server": "https://kubernetes.default.svc", "namespace": "fintech"}],
+    "clusterResourceWhitelist": [],
+    "namespaceResourceWhitelist": [
+      {"group": "apps", "kind": "Deployment"},
+      {"group": "", "kind": "Service"},
+      {"group": "", "kind": "ConfigMap"},
+      {"group": "networking.k8s.io", "kind": "Ingress"}
+    ]
+  }
+}
