@@ -155,11 +155,26 @@ pour cette mesure. Les métriques sont partagées via `final_metrics.py`.
 Le journal doit être monté de façon persistante et être accessible à l’utilisateur
 du Job. Les prédictions doivent figurer dans le manifeste vérifié.
 
-L’adaptation est à réaliser par Omar puis à tester avant D48 : artefact absent,
-empreinte du candidat incorrecte, manifeste altéré et prédictions modifiées
-font échouer le pipeline, sans lecture de la source finale. Le lancement D48
-attend le merge, les tests et la CI verts, puis la confirmation de cette intégration.
-Il ne déclenche aucune promotion.
+L’adaptation est réalisée dans `ml/src/pipeline` : `run.py --mode evaluate`
+charge le modèle gelé du registry et `step_evaluate` vérifie puis consomme le
+répertoire D48 (`artifact_manifest.json`, `predictions.csv`, historique et
+empreintes du modèle). Artefact absent, empreinte du candidat incorrecte,
+manifeste altéré, prédictions modifiées, décision différente de D48 ou
+alpha/seuils incohérents font échouer le pipeline avant toute lecture de la
+source finale et avant l’ouverture du run MLflow. Le mode évaluation ne
+entraîne, n’enregistre et ne promeut rien.
+
+```bash
+PYTHONPATH=. python -m ml.src.pipeline.run --mode evaluate \
+  --evaluation-dir /outside/repo/d48-results \
+  --candidate-sha256 aa1565caf7fed3af833a5613fd76416b6489c9a9f31ee8c523d65e5d9113da33 \
+  --model-uri models:/fraud-detector/1 \
+  --baseline-pr-auc <reference-pr-auc> \
+  --tracking-uri http://localhost:5000
+```
+
+Le lancement D48 reste conditionnel : merge des correctifs, tests et CI verts,
+puis confirmation de cette intégration. Il ne déclenche aucune promotion.
 
 ### Préparation de la seconde mesure, sans exécution
 

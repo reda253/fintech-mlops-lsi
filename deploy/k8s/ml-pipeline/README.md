@@ -66,7 +66,26 @@ kubectl -n ml get cronjob ml-pipeline-cron
 
 ## Running on Real Dataset (Volume Mount)
 
-To run the pipeline against the real Sparkov CSV dataset:
+The committed Job/CronJob run with `--test-mode` (synthetic data). For a real
+training run:
+
 1. Ensure the dataset is present on the worker node at `/data/sparkov/fraudTrain.csv`.
 2. Add a `hostPath` volume mount in `job.yaml` targeting `/data/sparkov`.
-3. Update `configmap.yaml` with `--data-path=/data/sparkov/fraudTrain.csv` and set `PIPELINE_TEST_MODE: "false"`.
+3. In `job.yaml`, remove `--test-mode`, add `--data-path=/data/sparkov/fraudTrain.csv`
+   and `--no-register`. Real training never reads `fraudTest.csv`; it cannot
+   register without the verified D48 evaluation.
+
+For the D48 evaluation, run a separate Job (do **not** mount `fraudTest.csv`):
+
+```yaml
+args:
+  - --mode=evaluate
+  - --evaluation-dir=/data/d48-results
+  - --candidate-sha256=aa1565caf7fed3af833a5613fd76416b6489c9a9f31ee8c523d65e5d9113da33
+  - --model-uri=models:/fraud-detector/1
+  - --baseline-pr-auc=<reference-pr-auc>
+```
+
+The artifact directory is produced once by `evaluate_final_candidate.py` and
+mounted read-only. `step_evaluate` verifies every hash and refuses a missing or
+inconsistent directory; no final-test source is mounted in this Job.
