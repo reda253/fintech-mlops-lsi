@@ -106,6 +106,16 @@ PYTHONPATH=. python -m ml.scripts.verify_handoff \
 
 The script verifies the ZIP and joblib SHA-256, checks raw/rounded probabilities, sets and decisions, and covers `[0, 1]` with a fake-threshold model (the frozen D44 thresholds cannot produce it).
 
+Models imported from the hand-off have no `viz/` artifacts, so `/api/v1/ml/viz/{method}` falls back to demo points. Attach the 15 projections to the version's existing run:
+
+```bash
+PYTHONPATH=. python -m ml.scripts.attach_viz \
+  --model-name fraud-detector --version 1 \
+  --tracking-uri http://localhost:5000 --samples 500
+```
+
+The script scores a development extract (`--data-path`) or synthetic rows, logs `viz/<method>_<view>.json` on the version's run, and refuses `fraudTest.csv`: the official final test stays reserved for the D47 measurement. It never registers a new version and never moves an alias.
+
 ## Serving against the registry
 
 `ml-service` loads `models:/<name>/<version>` (or an alias) with `mlflow.pyfunc.load_model`; it never loads a raw `.joblib`. Set:
