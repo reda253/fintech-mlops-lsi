@@ -29,7 +29,13 @@ def verify_saved(output: Path) -> dict:
     for name in ARTIFACTS[:-1]:
         if manifest["artifacts"][name] != _sha(output / name):
             raise ValueError(f"Empreinte différente pour {name}")
-    return json.loads((output / "final_metrics.json").read_text(encoding="utf-8"))
+    expected = manifest["artifacts"].get("predictions.csv")
+    if not expected or expected != _sha(output / "predictions.csv"):
+        raise ValueError("Empreinte différente ou absente pour predictions.csv")
+    result = json.loads((output / "final_metrics.json").read_text(encoding="utf-8"))
+    if result.get("predictions_sha256") != expected:
+        raise ValueError("Empreinte predictions.csv incohérente avec les métriques")
+    return result
 
 
 def publish_saved(output: Path, tracking_uri: str | None = None) -> dict:
@@ -67,6 +73,15 @@ def publish_saved(output: Path, tracking_uri: str | None = None) -> dict:
             mlflow.set_tags(
                 {
                     "model_status": "provisional",
+                    "decision_id": result.get("decision_id") or "synthetic_or_legacy",
+                    "protocol_revision": result.get("protocol_revision")
+                    or "synthetic_or_legacy",
+                    "point_metrics_role": result.get(
+                        "point_metrics_role", "secondary_at_threshold_0.5"
+                    ),
+                    "fairness_metrics_role": result.get(
+                        "fairness_metrics_role", "legacy_point_threshold_0.5"
+                    ),
                     "model_sha256": result["model_sha256"],
                     "source_sha256": result.get("source_sha256") or "synthetic",
                     "reference_sha256": result["reference_sha256"],
@@ -118,6 +133,9 @@ def publish_saved(output: Path, tracking_uri: str | None = None) -> dict:
                     "n",
                     "frauds",
                     "legitimate",
+                    "auto_block_fraud_rate",
+                    "fraud_interception_rate",
+                    "auto_block_legitimate_rate",
                     "recall_point_prediction",
                     "false_positive_rate_point_prediction",
                     "review_rate",

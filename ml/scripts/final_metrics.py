@@ -8,6 +8,56 @@ N_BOOTSTRAP = 10_000
 BOOTSTRAP_SEED = 42
 
 
+METRIC_NAMES = (
+    "pr_auc",
+    "roc_auc",
+    "mcc_point_prediction",
+    "precision_point_prediction",
+    "recall_point_prediction",
+    "f1_point_prediction",
+    "accuracy_point_prediction",
+    "brier_score",
+    "log_loss",
+    "ece",
+    "review_rate",
+    "automation_rate",
+    "automatic_error_rate",
+    "coverage_legitimate",
+    "coverage_fraud",
+    "auto_block_fraud_rate",
+    "fraud_interception_rate",
+    "auto_block_legitimate_rate",
+)
+
+
+def decision_metrics(y, members, weights):
+    """Taux conformes : [1] bloque, []/[0,1] en revue ; dénominateur nul = None."""
+    y = np.asarray(y, dtype=int)
+    members = np.asarray(members, dtype=bool)
+    weights = np.asarray(weights, dtype=float)
+    blocked = ~members[:, 0] & members[:, 1]
+    review = members.sum(axis=1) != 1
+    positives = weights[y == 1].sum()
+    negatives = weights[y == 0].sum()
+    count = weights.sum()
+    return {
+        "auto_block_fraud_rate": float(weights[(y == 1) & blocked].sum() / positives)
+        if positives
+        else None,
+        "fraud_interception_rate": float(
+            weights[(y == 1) & (blocked | review)].sum() / positives
+        )
+        if positives
+        else None,
+        "auto_block_legitimate_rate": float(
+            weights[(y == 0) & blocked].sum() / negatives
+        )
+        if negatives
+        else None,
+        "review_rate": float(weights[review].sum() / count) if count else None,
+    }
+
+
 def weighted_metrics(y, p, members, weights, *, ranking=None):
     """Mesures agrégées avec poids de fréquence ; valeurs indéfinies = None."""
     y = np.asarray(y, dtype=int)
@@ -15,7 +65,7 @@ def weighted_metrics(y, p, members, weights, *, ranking=None):
     weights = np.asarray(weights, dtype=float)
     n = float(weights.sum())
     if n <= 0:
-        raise ValueError("Bootstrap vide")
+        return dict.fromkeys(METRIC_NAMES)
     point = p >= 0.5
     pos = y == 1
     neg = ~pos
@@ -25,11 +75,11 @@ def weighted_metrics(y, p, members, weights, *, ranking=None):
     tn = float(weights[neg & ~point].sum())
     total_pos = tp + fn
     total_neg = tn + fp
-    precision = tp / (tp + fp) if tp + fp else 0.0
+    precision = tp / (tp + fp) if tp + fp else None
     recall = tp / total_pos if total_pos else None
-    f1 = 2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else 0.0
+    f1 = 2 * tp / (2 * tp + fp + fn) if 2 * tp + fp + fn else None
     denominator = ((tp + fp) * (tp + fn) * (tn + fp) * (tn + fn)) ** 0.5
-    mcc = (tp * tn - fp * fn) / denominator if denominator else 0.0
+    mcc = (tp * tn - fp * fn) / denominator if denominator else None
     # Tri unique par appel : les égalités de scores sont regroupées avant AP/AUC.
     if ranking is None:
         order = np.argsort(-p, kind="stable")
@@ -75,11 +125,11 @@ def weighted_metrics(y, p, members, weights, *, ranking=None):
     return {
         "pr_auc": ap,
         "roc_auc": roc,
-        "mcc": float(mcc),
-        "precision": precision,
-        "recall": recall,
-        "f1": f1,
-        "accuracy": (tp + tn) / n,
+        "mcc_point_prediction": float(mcc) if mcc is not None else None,
+        "precision_point_prediction": precision,
+        "recall_point_prediction": recall,
+        "f1_point_prediction": f1,
+        "accuracy_point_prediction": (tp + tn) / n,
         "brier_score": brier,
         "log_loss": loss,
         "ece": ece,
@@ -90,6 +140,7 @@ def weighted_metrics(y, p, members, weights, *, ranking=None):
         else None,
         "coverage_legitimate": coverage0,
         "coverage_fraud": coverage1,
+        **decision_metrics(y, members, weights),
     }
 
 
@@ -107,6 +158,8 @@ def bootstrap_intervals(
     p = np.asarray(p, dtype=float)
     members = np.asarray(members, dtype=bool)
     n = len(y)
+    if n == 0:
+        raise ValueError("Bootstrap : observations requises")
     rng = np.random.default_rng(seed)
     point = p >= 0.5
     review = members.sum(axis=1) != 1
@@ -114,7 +167,17 @@ def bootstrap_intervals(
     ranking = (order, np.r_[0, np.flatnonzero(np.diff(p[order])) + 1])
     values = {}
     groups = {
-        key: {"recall": [], "false_positive_rate": [], "review_rate": []}
+        key: {
+            name: []
+            for name in (
+                "recall_point_prediction",
+                "false_positive_rate_point_prediction",
+                "review_rate",
+                "auto_block_fraud_rate",
+                "fraud_interception_rate",
+                "auto_block_legitimate_rate",
+            )
+        }
         for key in group_masks
     }
     for _ in range(resamples):
@@ -127,16 +190,23 @@ def bootstrap_intervals(
             positives = weights[mask & (y == 1)].sum()
             negatives = weights[mask & (y == 0)].sum()
             count = weights[mask].sum()
-            groups[key]["recall"].append(
+            groups[key]["recall_point_prediction"].append(
                 float(weights[mask & (y == 1) & point].sum() / positives)
                 if positives
                 else None
             )
-            groups[key]["false_positive_rate"].append(
+            groups[key]["false_positive_rate_point_prediction"].append(
                 float(weights[mask & (y == 0) & point].sum() / negatives)
                 if negatives
                 else None
             )
+            decisions = decision_metrics(y, members, weights * mask)
+            for name in (
+                "auto_block_fraud_rate",
+                "fraud_interception_rate",
+                "auto_block_legitimate_rate",
+            ):
+                groups[key][name].append(decisions[name])
             groups[key]["review_rate"].append(
                 float(weights[mask & review].sum() / count) if count else None
             )

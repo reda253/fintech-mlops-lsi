@@ -30,10 +30,13 @@ from ml.scripts.final_metrics import (
     BOOTSTRAP_SEED,
     N_BOOTSTRAP,
     bootstrap_intervals,
+    decision_metrics,
     weighted_metrics,
 )
 from ml.scripts.final_tracking import publish_saved
+from ml.src.data.load_data import split_chronologically
 from ml.src.final.train_final import evaluate_sets, prediction_membership
+from ml.src.validation.fold_data import guard_training_source
 
 AGE_BINS = [0, 25, 35, 45, 55, 65, 120]
 AGE_LABELS = ["0-25", "26-35", "36-45", "46-55", "56-65", "66-120"]
@@ -64,10 +67,18 @@ def reserve_source(
     source_sha256: str,
     model_sha256: str,
     reason: str | None,
+    *,
+    decision_id: str,
+    protocol_revision: str,
 ) -> str:
     """Réserve une empreinte déclarée avant toute ouverture de la source."""
     if not re.fullmatch(r"[0-9a-fA-F]{64}", source_sha256 or ""):
         raise ValueError("Fournir un SHA-256 de source valide")
+    if not re.fullmatch(r"D[0-9]+", decision_id or ""):
+        raise ValueError("Identifiant de décision explicite requis, par exemple D47")
+    if not protocol_revision or not protocol_revision.strip():
+        raise ValueError("Révision de protocole explicite requise")
+    revision = protocol_revision.strip()
     digest = source_sha256.lower()
     journal.parent.mkdir(parents=True, exist_ok=True)
     lock = journal.with_name(journal.name + ".lock")
@@ -80,7 +91,31 @@ def reserve_source(
                     entries.append(json.loads(line))
         else:
             entries = []
-        previous = any(e.get("source_sha256", "").lower() == digest for e in entries)
+        matching = [
+            e for e in entries if str(e.get("source_sha256") or "").lower() == digest
+        ]
+        previous = bool(matching)
+        if any(
+            e.get("status") == "completed" and e.get("protocol_revision") == revision
+            for e in matching
+        ):
+            raise ValueError(
+                "Exécution déjà complétée : nouvelle révision de protocole obligatoire"
+            )
+        terminal_ids = {
+            e.get("launch_id")
+            for e in matching
+            if e.get("status") in {"completed", "failed"}
+        }
+        if any(
+            e.get("status") == "reserved"
+            and e.get("protocol_revision") == revision
+            and e.get("launch_id") not in terminal_ids
+            for e in matching
+        ):
+            raise ValueError(
+                "Révision déjà réservée : vérifier le journal avant toute reprise"
+            )
         if previous and not (reason and reason.strip()):
             raise ValueError("Source déjà évaluée : --reason explicite obligatoire")
         launch_id = uuid.uuid4().hex
@@ -92,6 +127,8 @@ def reserve_source(
             "source_sha256": digest,
             "model_sha256": model_sha256,
             "reason": reason.strip() if reason else None,
+            "decision_id": decision_id,
+            "protocol_revision": revision,
         }
         with journal.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(entry, ensure_ascii=False) + "\n")
@@ -104,15 +141,17 @@ def reserve_source(
 
 
 def validate_candidate(model, reference: dict) -> None:
-    if reference.get("selected_alpha") != 0.02 or model.alpha != 0.02:
+    if not np.isclose(
+        reference.get("selected_alpha", np.nan), 0.02, rtol=0, atol=1e-12
+    ) or not np.isclose(model.alpha, 0.02, rtol=0, atol=1e-12):
         raise ValueError("Le candidat ou la référence ne correspond pas à alpha=0.02")
     row = next((x for x in reference["alpha_results"] if x["alpha"] == 0.02), None)
     if row is None or row.get("status") != "eligible":
         raise ValueError("Seuils du candidat absents de la référence D44")
     q = row["quantiles"]
     if (
-        model.threshold_legit != q["0"]
-        or model.threshold_fraud != q["1"]
+        not np.isclose(model.threshold_legit, q["0"], rtol=1e-12, atol=1e-15)
+        or not np.isclose(model.threshold_fraud, q["1"], rtol=1e-12, atol=1e-15)
         or model.preprocessor is None
         or model.classifier is None
     ):
@@ -214,6 +253,7 @@ def evaluate(model, frame: pd.DataFrame, *, return_details: bool = False):
                     "attribute": attribute,
                     "group": name,
                     "n": n,
+                    **decision_metrics(labels, members, mask.astype(float)),
                     "frauds": positives,
                     "legitimate": negatives,
                     "recall_point_prediction": float(
@@ -243,20 +283,66 @@ def evaluate(model, frame: pd.DataFrame, *, return_details: bool = False):
     return result
 
 
-def measure_latency(model) -> dict:
-    """1 000 appels unitaires du modèle complet sur une transaction synthétique."""
+def load_latency_sample(source: Path, *, sample_size=100, seed=42) -> pd.DataFrame:
+    """Dates seules hors development ; aucune étiquette chargée."""
+    source = guard_training_source(source)
+    date_column = "trans_date_trans_time"
+    dates = pd.read_csv(source, usecols=[date_column])
+    dates[date_column] = pd.to_datetime(
+        dates[date_column], format="%Y-%m-%d %H:%M:%S", errors="raise"
+    )
+    splits = split_chronologically(dates, sort_if_needed=True)
+    dev = splits["development"]
+    if dev.empty or sample_size < 1:
+        raise ValueError("Échantillon development vide ou taille invalide")
+    if dev[date_column].max() >= splits["probability_calibration"][date_column].min():
+        raise ValueError("Frontière development non strictement chronologique")
+    chosen = np.random.default_rng(seed).choice(
+        dev.index.to_numpy(), size=min(sample_size, len(dev)), replace=False
+    )
+    positions = {int(i) for i in chosen}
+    frame = pd.read_csv(
+        source,
+        usecols=[c for c in REQUIRED if c != "is_fraud"],
+        skiprows=lambda row: row > 0 and row - 1 not in positions,
+    )
+    if len(frame) != len(positions):
+        raise ValueError("Effectif d'échantillon development incorrect")
+    frame.attrs.update(zone="development", sample_seed=seed)
+    return frame
+
+
+def measure_latency(model, records=None, *, sample_size=100, seed=42) -> dict:
+    """1 000 appels unitaires sur un échantillon déterministe ; aucun fit."""
     if not hasattr(model, "predict_one"):
         return {"status": "UNVERIFIED", "reason": "predict_one indisponible"}
     from threadpoolctl import threadpool_limits
 
-    record = synthetic_data().drop(columns="is_fraud").iloc[0].to_dict()
+    if sample_size < 1:
+        raise ValueError("sample_size doit être positif")
+    if records is None:
+        records = synthetic_data().drop(columns="is_fraud").to_dict(orient="records")
+    if not isinstance(records, pd.DataFrame):
+        records = list(records)
+    if len(records) == 0:
+        raise ValueError("Échantillon de latence vide")
+    indices = np.random.default_rng(seed).choice(
+        len(records), min(sample_size, len(records)), replace=False
+    )
+    sample_records = (
+        records.iloc[indices]
+        .drop(columns="is_fraud", errors="ignore")
+        .to_dict(orient="records")
+        if isinstance(records, pd.DataFrame)
+        else [records[int(i)] for i in indices]
+    )
     samples = []
     with threadpool_limits(limits=1):
-        for _ in range(20):
-            model.predict_one(record)
-        for _ in range(1000):
+        for i in range(20):
+            model.predict_one(sample_records[i % len(sample_records)])
+        for i in range(1000):
             start = time.perf_counter_ns()
-            model.predict_one(record)
+            model.predict_one(sample_records[i % len(sample_records)])
             samples.append((time.perf_counter_ns() - start) / 1_000_000)
     values = np.asarray(samples)
     rng = np.random.default_rng(BOOTSTRAP_SEED)
@@ -269,6 +355,8 @@ def measure_latency(model) -> dict:
         "status": "measured",
         "warmups": 20,
         "calls": 1000,
+        "sample_rows": len(sample_records),
+        "sample_seed": seed,
         "threads": 1,
         "p50_ms": float(np.percentile(values, 50)),
         "p95_ms": float(np.percentile(values, 95)),
@@ -340,6 +428,17 @@ def quality_gates(overall, latency, comparison_kind, comparison_pr_auc):
     return gates
 
 
+def resolve_journal(value: Path | None) -> Path | None:
+    """Choix explicite prioritaire ; aucun chemin implicite propre à un poste."""
+    configured = value or os.environ.get("FINAL_EVALUATION_JOURNAL")
+    if not configured:
+        return None
+    path = Path(configured).expanduser().resolve()
+    if path.is_relative_to(ROOT.resolve()):
+        raise ValueError("Le journal central doit être hors dépôt")
+    return path
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--model", type=Path)
@@ -352,7 +451,14 @@ def main(argv=None) -> int:
     parser.add_argument("--model-sha256")
     parser.add_argument("--source-sha256")
     parser.add_argument("--reason")
-    parser.add_argument("--journal", type=Path)
+    parser.add_argument("--decision-id")
+    parser.add_argument("--protocol-revision")
+    parser.add_argument("--latency-source", type=Path)
+    parser.add_argument(
+        "--journal",
+        type=Path,
+        help="Journal central persistant hors dépôt ; sinon FINAL_EVALUATION_JOURNAL",
+    )
     parser.add_argument("--confirm-final-test", action="store_true")
     parser.add_argument("--tracking-uri")
     parser.add_argument(
@@ -374,6 +480,9 @@ def main(argv=None) -> int:
                 args.journal,
                 args.no_mlflow,
                 args.confirm_final_test,
+                args.decision_id,
+                args.protocol_revision,
+                args.latency_source,
             )
         ):
             parser.error(
@@ -397,23 +506,19 @@ def main(argv=None) -> int:
     ):
         parser.error("Le dossier de sortie doit être neuf et hors dépôt")
     if args.source is not None:
+        args.journal = resolve_journal(args.journal)
         if (
             args.source.name.lower() != "fraudtest.csv"
             or not args.confirm_final_test
             or not args.journal
             or not args.model_sha256
             or not args.source_sha256
+            or not args.decision_id
+            or not args.protocol_revision
+            or not args.latency_source
         ):
             parser.error(
                 "Test final : source autorisée, empreinte modèle, journal et confirmation explicite requis"
-            )
-        central_journal = Path.home() / "Documents" / "final-evaluation-journal.jsonl"
-        if (
-            args.journal.resolve() != central_journal.resolve()
-            or central_journal.resolve().is_relative_to(ROOT.resolve())
-        ):
-            parser.error(
-                "Le journal central imposé est ~/Documents/final-evaluation-journal.jsonl, hors dépôt"
             )
     model_hash = sha256(args.model)
     if args.model_sha256 and model_hash.lower() != args.model_sha256.lower():
@@ -421,13 +526,18 @@ def main(argv=None) -> int:
     model = joblib.load(args.model)
     reference = json.loads(args.reference.read_text(encoding="utf-8"))
     validate_candidate(model, reference)
-    latency = measure_latency(model)
     if args.synthetic:
         frame = synthetic_data()
         source_hash = None
     else:
         launch_id = reserve_source(
-            args.journal, args.source.name, args.source_sha256, model_hash, args.reason
+            args.journal,
+            args.source.name,
+            args.source_sha256,
+            model_hash,
+            args.reason,
+            decision_id=args.decision_id,
+            protocol_revision=args.protocol_revision,
         )
         with args.source.open("rb") as stream:
             raw = stream.read()
@@ -438,7 +548,11 @@ def main(argv=None) -> int:
             )
         frame = pd.read_csv(io.BytesIO(raw), usecols=REQUIRED)
         del raw
-    latency = measure_latency(model)
+    latency_frame = (
+        frame if args.synthetic else load_latency_sample(args.latency_source)
+    )
+    latency = measure_latency(model, latency_frame)
+    latency["sample_source"] = "synthetic" if args.synthetic else "development"
     overall, groups, details = evaluate(model, frame, return_details=True)
     bootstrap = bootstrap_intervals(
         details["labels"],
@@ -452,6 +566,8 @@ def main(argv=None) -> int:
     result = {
         "scope": "synthetic_only" if args.synthetic else "final_test",
         "model_status": "provisional",
+        "decision_id": args.decision_id,
+        "protocol_revision": args.protocol_revision,
         "model_sha256": model_hash,
         "source_sha256": source_hash,
         "reference_sha256": sha256(args.reference),
@@ -474,12 +590,14 @@ def main(argv=None) -> int:
         "threshold_legit": model.threshold_legit,
         "threshold_fraud": model.threshold_fraud,
         "overall": overall,
+        "point_metrics_role": "secondary_at_threshold_0.5",
+        "fairness_metrics_role": "conformal_operational_decisions",
         "fairness": groups.replace({np.nan: None}).to_dict(orient="records"),
         "limitations": [
             "Les intervalles bootstrap percentile supposent des transactions indépendantes ; la dépendance entre transactions d'une carte et la dérive ne sont pas corrigées.",
             "Le seuil ponctuel 0.5 est celui de FraudDetectorModel ; le seuil F1 ajusté pour le modèle final n'est pas fourni et reste à clarifier.",
             "La latence locale n'inclut ni réseau ni conteneur ; la porte registry reste non vérifiée.",
-            "Les métriques par groupe utilisent la prédiction ponctuelle à 0.5 ; la revue utilise les ensembles conformes.",
+            "Les métriques principales par groupe suivent les décisions conformes ; les métriques ponctuelles à 0.5 sont secondaires.",
             "La garde dépend du journal central et du hash déclaré ; elle ne protège pas contre la suppression du journal ou une empreinte fausse.",
         ],
     }
@@ -530,18 +648,23 @@ def main(argv=None) -> int:
     )
     for name, interval in bootstrap["overall"].items():
         value = overall.get(name)
+        display_name = (
+            f"{name} (secondaire, seuil 0,5)"
+            if name.endswith("_point_prediction")
+            else name
+        )
         lines.append(
-            f"| {name} | {value} | {interval['ci95']} | {interval['valid_resamples']}/{N_BOOTSTRAP} |"
+            f"| {display_name} | {value} | {interval['ci95']} | {interval['valid_resamples']}/{N_BOOTSTRAP} |"
         )
     lines.extend(
         [
             "",
             "## Équité : intervalles bootstrap",
             "",
-            "Les rappels et faux positifs utilisent la prédiction ponctuelle à 0,5 ; les taux de revue utilisent les ensembles conformes.",
+            "Décisions réelles : [1] bloque, [0] approuve, [] et [0,1] partent en revue. Les fraudes interceptées incluent blocage et revue.",
             "",
-            "| Groupe | Effectif | Fraudes | Rappel et IC 95 % | Faux positifs et IC 95 % | Revue et IC 95 % |",
-            "|---|---:|---:|---|---|---|",
+            "| Groupe | Effectif | Fraudes | Fraudes bloquées et IC | Fraudes interceptées et IC | Légitimes bloqués et IC | Revue et IC |",
+            "|---|---:|---:|---|---|---|---|",
         ]
     )
 
@@ -554,8 +677,35 @@ def main(argv=None) -> int:
 
     for _, group in groups.iterrows():
         intervals = bootstrap["groups"][f"{group['attribute']}:{group['group']}"]
+        cells = [
+            f"{show(group[name])} ; {show(intervals[name]['ci95'])}"
+            for name in (
+                "auto_block_fraud_rate",
+                "fraud_interception_rate",
+                "auto_block_legitimate_rate",
+                "review_rate",
+            )
+        ]
         lines.append(
-            f"| {group['attribute']}:{group['group']} | {group['n']} | {group['frauds']} | {show(group['recall_point_prediction'])} ; {show(intervals['recall']['ci95'])} | {show(group['false_positive_rate_point_prediction'])} ; {show(intervals['false_positive_rate']['ci95'])} | {show(group['review_rate'])} ; {show(intervals['review_rate']['ci95'])} |"
+            f"| {group['attribute']}:{group['group']} | {group['n']} | {group['frauds']} | "
+            + " | ".join(cells)
+            + " |"
+        )
+    lines.extend(
+        [
+            "",
+            "### Mesures secondaires au seuil ponctuel 0,5",
+            "",
+            "Ces mesures ne décrivent pas la politique de décision de la plateforme.",
+            "",
+            "| Groupe | Rappel et IC | Faux positifs et IC |",
+            "|---|---|---|",
+        ]
+    )
+    for _, group in groups.iterrows():
+        intervals = bootstrap["groups"][f"{group['attribute']}:{group['group']}"]
+        lines.append(
+            f"| {group['attribute']}:{group['group']} | {show(group['recall_point_prediction'])} ; {show(intervals['recall_point_prediction']['ci95'])} | {show(group['false_positive_rate_point_prediction'])} ; {show(intervals['false_positive_rate_point_prediction']['ci95'])} |"
         )
     lines.extend(["", f"Latence locale et intervalles : {latency}."])
     (args.output_dir / "final_report.md").write_text(
@@ -566,6 +716,7 @@ def main(argv=None) -> int:
         "final_report.md",
         "fairness_groups.csv",
         "bootstrap_intervals.json",
+        "predictions.csv",
     )
     manifest = {
         "artifacts": {name: sha256(args.output_dir / name) for name in artifacts}
@@ -581,6 +732,11 @@ def main(argv=None) -> int:
                     {
                         "status": "completed",
                         "launch_id": launch_id,
+                        "source_name": args.source.name,
+                        "model_sha256": model_hash,
+                        "utc": datetime.now(UTC).isoformat(),
+                        "decision_id": args.decision_id,
+                        "protocol_revision": args.protocol_revision,
                         "source_sha256": source_hash,
                         "output": str(args.output_dir),
                     }
