@@ -7,9 +7,9 @@ from pathlib import Path
 import secrets
 import subprocess
 from urllib.parse import urlsplit
-from uuid import uuid4
+from uuid import UUID, uuid4
 
-from auth_upgrade_smoke import HISTORY, ME, release_images, request
+from auth_upgrade_smoke import HISTORY, ME, image_revision, release_images, request
 from check_kubernetes_data import validate_data
 from check_kubernetes_manifests import kubectl, render, require, validate
 from kubernetes_data_smoke import PortForward, secret
@@ -19,6 +19,8 @@ from kubernetes_kind_smoke import OWNER_LABEL, PREFIX, can_cleanup
 CONTEXT = "kind-fintech-gitops-lab"
 NODE = "fintech-gitops-lab-control-plane"
 SIGNING_SECRET = "auth-signing-test"
+TEAM_SOURCE_COMMIT = "b39e628bab300537a163e08d4bc6ce09e25c7ff1"
+TEAM_AUTH_IMAGE = "fintech-auth-service:" + TEAM_SOURCE_COMMIT
 
 
 def signing_env():
@@ -26,8 +28,8 @@ def signing_env():
             "valueFrom": {"secretKeyRef": {"name": SIGNING_SECRET, "key": "private-key"}}}
 
 
-def workload_resources(apps, data, namespace, images):
-    validate(apps, allow_placeholder=True)
+def workload_resources(apps, data, namespace, images, team=False):
+    validate(apps, allow_placeholder=True, team_auth=team)
     validate_data(data, allow_placeholder=True)
     apps = copy.deepcopy([item for item in apps
                           if item["metadata"]["name"] in {"auth-service", "api-gateway"}
@@ -47,7 +49,11 @@ def workload_resources(apps, data, namespace, images):
             container.update(image=images[name], imagePullPolicy="Always")
             if name == "auth-service":
                 container["env"] = [entry for entry in container["env"]
-                                    if not entry["name"].startswith("RABBITMQ_")] + [signing_env()]
+                                    if not entry["name"].startswith("RABBITMQ_")]
+                if team:
+                    container["imagePullPolicy"] = "Never"
+                else:
+                    container["env"].append(signing_env())
         elif item["kind"] == "ConfigMap":
             config = item["data"]
             config["JWKS_URI"] = auth_url + "/.well-known/jwks.json"
@@ -58,6 +64,8 @@ def workload_resources(apps, data, namespace, images):
                 config.update({key: "http://127.0.0.1:9" for key in config if key.endswith("_URI")
                                and key not in {"AUTH_URI", "JWKS_URI"}})
                 config["AUTH_URI"] = auth_url
+                if team:
+                    config["LOGIN_RATE_LIMIT_CAPACITY"] = "12"
     postgres["spec"].pop("volumeClaimTemplates")
     postgres["spec"].pop("persistentVolumeClaimRetentionPolicy")
     pod = postgres["spec"]["template"]["spec"]
@@ -80,18 +88,60 @@ def install(namespace, objects):
     print(result.stdout.strip(), flush=True)
 
 
-def seal_key(namespace, key, kubeseal):
+def seal_secret(namespace, name, values, kubeseal):
     result = subprocess.run(
         [kubeseal, "--context", CONTEXT, "--scope", "strict", "--format", "json"],
-        input=json.dumps(secret(namespace, SIGNING_SECRET, {"private-key": key})),
+        input=json.dumps(secret(namespace, name, values)),
         capture_output=True, text=True, check=True, timeout=60,
     )
     sealed = json.loads(result.stdout)
     require(sealed.get("kind") == "SealedSecret"
-            and sealed["metadata"]["name"] == SIGNING_SECRET
+            and sealed["metadata"]["name"] == name
             and sealed["metadata"]["namespace"] == namespace
-            and set(sealed["spec"]["encryptedData"]) == {"private-key"}, "Unexpected sealing output")
+            and set(sealed["spec"]["encryptedData"]) == set(values), "Unexpected sealing output")
     return sealed
+
+
+def seal_key(namespace, key, kubeseal):
+    return seal_secret(namespace, SIGNING_SECRET, {"private-key": key}, kubeseal)
+
+
+def login_request(port, username, password):
+    return request(port, "/api/v1/auth/login", {"username": username, "password": password})
+
+
+def team_profile(port, username, password):
+    code, login = login_request(port, username, password)
+    require(code == 200 and isinstance(login, dict) and isinstance(login.get("accessToken"), str),
+            f"Team fixture login failed (HTTP {code})")
+    token = login["accessToken"]
+    code, profile = request(port, ME, token=token)
+    require(code == 200 and isinstance(profile, dict) and profile.get("username") == username
+            and profile.get("roles") == ["ADMIN"], "Expected signed JWT for the new ADMIN")
+    return token, profile
+
+
+def verify_team_accounts(namespace, username, initial, rotated):
+    with PortForward(CONTEXT, namespace, "service/api-gateway", 8080) as url:
+        port = urlsplit(url).port
+        require(request(port, ME)[0] == 401, "Expected anonymous HTTP 401")
+        for account, prefix in (("admin", "admin"), ("analyste1", "analyste"), ("simulateur1", "simulateur")):
+            require(login_request(port, account, prefix + "-demo-2026")[0] == 401,
+                    f"Demo account {account} was not refused")
+        token, profile = team_profile(port, username, initial)
+        user_id = str(profile["id"])
+        require(str(UUID(user_id)) == user_id, "Expected canonical account UUID")
+        code, _ = request(port, "/api/v1/auth/users/" + user_id, {"password": rotated},
+                          token=token, method="PUT")
+        require(code == 200, f"Password update failed (HTTP {code})")
+    kubectl(CONTEXT, "-n", namespace, "rollout", "restart", "deployment/auth-service")
+    kubectl(CONTEXT, "-n", namespace, "rollout", "status", "deployment/auth-service",
+            "--timeout=240s", timeout=250)
+    with PortForward(CONTEXT, namespace, "service/api-gateway", 8080) as url:
+        port = urlsplit(url).port
+        require(login_request(port, username, initial)[0] == 401, "Restart restored the bootstrap password")
+        _, profile = team_profile(port, username, rotated)
+        require(profile["id"] == user_id, "Restart changed the admin identity")
 
 
 def verify_login(port):
@@ -105,13 +155,20 @@ def verify_login(port):
             f"Signed JWT was not accepted (HTTP {code})")
 
 
-def run(inventory, openssl, kubeseal):
+def run(inventory, openssl, kubeseal, team=False):
     images = release_images(inventory)
     nodes = json.loads(kubectl(CONTEXT, "get", "nodes", "-o", "json", capture_output=True).stdout)
     require([item["metadata"]["name"] for item in nodes["items"]] == [NODE],
             "Expected exactly the disposable GitOps lab node")
     namespace, owner = PREFIX + uuid4().hex[:12], uuid4().hex
-    apps, data = workload_resources(render(CONTEXT), render(CONTEXT, "deploy/k8s/data"), namespace, images)
+    overlay = "deploy/overlays/team" if team else "deploy/overlays/demo"
+    if team:
+        require(image_revision(TEAM_AUTH_IMAGE) == TEAM_SOURCE_COMMIT, "Expected local D47 Auth image")
+        subprocess.run(["kind", "load", "docker-image", "--name", "fintech-gitops-lab", TEAM_AUTH_IMAGE],
+                       check=True, timeout=240)
+        images["auth-service"] = TEAM_AUTH_IMAGE
+    apps, data = workload_resources(render(CONTEXT, overlay), render(CONTEXT, "deploy/k8s/data"),
+                                    namespace, images, team=team)
     key = subprocess.run([openssl, "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048"],
                          capture_output=True, text=True, check=True, timeout=60).stdout
     db_password = secrets.token_hex(24)
@@ -121,14 +178,20 @@ def run(inventory, openssl, kubeseal):
     }))
     uid = json.loads(result.stdout)["metadata"]["uid"]
     try:
+        username, initial = "lab-admin-" + secrets.token_hex(5), secrets.token_hex(24)
+        sealed = ([seal_secret(namespace, "auth-signing", {"private-key": key}, kubeseal),
+                   seal_secret(namespace, "auth-bootstrap-admin",
+                               {"username": username, "password": initial}, kubeseal)] if team
+                  else [seal_key(namespace, key, kubeseal)])
         install(namespace, [
-            seal_key(namespace, key, kubeseal),
+            *sealed,
             secret(namespace, "postgres-admin", {"password": secrets.token_hex(24)}),
             secret(namespace, "auth-service-db", {"username": "auth_user", "password": db_password}),
             *data,
         ])
-        kubectl(CONTEXT, "-n", namespace, "wait", "--for=condition=Synced",
-                "sealedsecret/" + SIGNING_SECRET, "--timeout=90s")
+        for item in sealed:
+            kubectl(CONTEXT, "-n", namespace, "wait", "--for=condition=Synced",
+                    "sealedsecret/" + item["metadata"]["name"], "--timeout=90s")
         kubectl(CONTEXT, "-n", namespace, "rollout", "status", "statefulset/postgres",
                 "--timeout=240s", timeout=250)
 
@@ -143,9 +206,14 @@ def run(inventory, openssl, kubeseal):
             kubectl(CONTEXT, "-n", namespace, "rollout", "status", "deployment/" + name,
                     "--timeout=240s", timeout=250)
         require(sql(HISTORY).splitlines() == ["1", "2"], "Expected Flyway V1 and V2 on the fixture database")
-        with PortForward(CONTEXT, namespace, "service/api-gateway", 8080) as url:
-            verify_login(urlsplit(url).port)
-        print("PASS: sealed signing key, Flyway V1/V2 and Gateway JWT verified in the lab.")
+        if team:
+            verify_team_accounts(namespace, username, initial, secrets.token_hex(24))
+            print("PASS: D47 demo logins rejected, sealed admin works, and rotated password survives restart.",
+                  flush=True)
+        else:
+            with PortForward(CONTEXT, namespace, "service/api-gateway", 8080) as url:
+                verify_login(urlsplit(url).port)
+            print("PASS: sealed signing key, Flyway V1/V2 and Gateway JWT verified in the lab.", flush=True)
     finally:
         result = kubectl(CONTEXT, "get", "namespace", namespace, "-o", "json", capture_output=True)
         metadata = json.loads(result.stdout)["metadata"]
@@ -159,5 +227,6 @@ if __name__ == "__main__":
     parser.add_argument("--inventory", required=True, type=Path)
     parser.add_argument("--openssl", default="openssl")
     parser.add_argument("--kubeseal", default="kubeseal")
+    parser.add_argument("--team", action="store_true", help="Test D47 with the locally built b39e628 Auth image")
     args = parser.parse_args()
-    run(json.loads(args.inventory.read_text(encoding="utf-8")), args.openssl, args.kubeseal)
+    run(json.loads(args.inventory.read_text(encoding="utf-8")), args.openssl, args.kubeseal, team=args.team)

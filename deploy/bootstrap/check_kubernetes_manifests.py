@@ -46,7 +46,7 @@ def decode_objects(output):
     return items
 
 
-def validate(items, allow_placeholder=False):
+def validate(items, allow_placeholder=False, team_auth=False):
     keys = [(item["kind"], item["metadata"]["name"]) for item in items]
     require(len(keys) == len(set(keys)), "Duplicate resource identity")
     require(all(item["metadata"].get("namespace") == "fintech" for item in items), "Unexpected namespace")
@@ -119,6 +119,11 @@ def validate(items, allow_placeholder=False):
             require(config["GATEWAY_UPSTREAM"] == "http://api-gateway.fintech.svc.cluster.local:8080",
                     "Frontend must resolve the Gateway by its Kubernetes FQDN")
         expected_secrets = {}
+        if team_auth and name == "auth-service":
+            require(config.get("AUTH_DEMO_ACCOUNTS") == "false", "Team Auth must disable demo accounts")
+            expected_secrets.update(JWT_PRIVATE_KEY=("auth-signing", "private-key"),
+                                    AUTH_BOOTSTRAP_ADMIN_USERNAME=("auth-bootstrap-admin", "username"),
+                                    AUTH_BOOTSTRAP_ADMIN_PASSWORD=("auth-bootstrap-admin", "password"))
         if name not in ("frontend", "api-gateway"):
             expected_secrets |= {"DB_USER": (name + "-db", "username"), "DB_PASSWORD": (name + "-db", "password")}
             if name != "customer-service":
