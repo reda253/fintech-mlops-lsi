@@ -132,18 +132,29 @@ def check_authorization(
     protocol_sha256: str,
     reason: str | None,
 ) -> tuple[bytes, list[dict]]:
+    if decision_id == "D47":
+        raise ValueError(
+            "D47 est réservée à Auth ; décision D48 requise pour cette évaluation"
+        )
     raw, entries = read_journal(journal)
+    if decision_id == "D48" and any(
+        entry.get("status") == "reserved" and entry.get("decision_id") == "D47"
+        for entry in entries
+    ):
+        raise ValueError(
+            "Réservation D47 présente dans le journal : examen manuel requis avant D48"
+        )
     if not re.fullmatch(r"D[0-9]+", decision_id or ""):
         raise ValueError("Identifiant de décision explicite requis")
     for value in (source_sha256, model_sha256, protocol_sha256):
         if not re.fullmatch(r"[0-9a-f]{64}", value or ""):
             raise ValueError("SHA-256 valide requis pour source, modèle et protocole")
-    if decision_id == "D47" and (
+    if decision_id == "D48" and (
         source_sha256 != LEGACY_SOURCE or model_sha256 != LEGACY_MODEL
     ):
-        raise ValueError("D47 : source et modèle doivent rester ceux du 10 novembre")
-    if decision_id == "D47" and not _legacy_anchor(entries):
-        raise ValueError("D47 : entrée attendue du 10 novembre absente ou modifiée")
+        raise ValueError("D48 : source et modèle doivent rester ceux du 10 novembre")
+    if decision_id == "D48" and not _legacy_anchor(entries):
+        raise ValueError("D48 : entrée attendue du 10 novembre absente ou modifiée")
     if any(
         e.get("status") == "completed" and e.get("decision_id") == decision_id
         for e in entries

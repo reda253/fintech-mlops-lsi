@@ -109,7 +109,7 @@ différence moyenne=0.02592986057170187, rang-bisérial=+1, IC bootstrap 95 %
 le seuil d’effet 0,01 : XGBoost est retenu provisoirement, sans départage
 Brier/latence ni promotion champion. Le test final a ensuite été consommé le
 10 novembre ; voir la revue #24. Aucune sélection ou modification du candidat
-ne doit s’appuyer sur ce jeu. D47 est ensuite autorisée conditionnellement par Omar, le 12 novembre 2026 ;
+ne doit s’appuyer sur ce jeu. Omar donne ensuite un accord conditionnel pour D48, dont l’exécution reste interdite avant vérification des préconditions, le 12 novembre 2026 ;
 voir `decisions.md`. Aucune exécution n’est autorisée avant merge, CI verte et
 vérification de l’intégration B. La seconde mesure est post hoc, non indépendante.
 
@@ -160,5 +160,5 @@ La [PR #102](https://github.com/reda253/fintech-mlops-lsi/pull/102) concerne le
 pipeline et le serving. Ce lien ne présume pas du contenu déployé. Omar et Reda
 ont reçu la décision d’Omar pour l’option B : le Job appelle la CLI, puis
 `step_evaluate` consomme ses artefacts vérifiés sans lire le test final.
-D47 est une autorisation conditionnelle, pas une relance effectuée ; ses
+D48 bénéficie d’un accord conditionnel ; son exécution reste interdite avant vérification des préconditions ; ses
 préconditions de merge, de CI et d’intégration restent à vérifier.

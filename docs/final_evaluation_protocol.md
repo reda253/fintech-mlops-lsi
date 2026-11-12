@@ -89,7 +89,7 @@ manuelle ; ne pas changer le chemin du journal pour relancer automatiquement.
 
 ## Autorisation et précontrôles avant toute nouvelle lecture
 
-**D47 est autorisée conditionnellement par Omar**, accord transmis par Basma
+**D48 ne peut pas encore être exécutée ; Omar a donné un accord conditionnel**, accord transmis par Basma
 le 12 novembre 2026 et consigné dans `docs/decisions.md`. Option **B** retenue :
 la CLI est le seul lecteur final ; le pipeline consomme les artefacts vérifiés.
 Cette seconde mesure est **post hoc, non indépendante**. Le code corrigé doit
@@ -117,7 +117,7 @@ ouverture de la source finale. La réserve disque est conservatrice (au moins
 La vérification de taille utilise les métadonnées du fichier, pas ses lignes.
 
 Le journal est obligatoire, non vide, JSONL complet terminé par un saut de ligne.
-D47 exige aussi la paire historique du 10 novembre : entrée `started` avec
+D48 exige aussi la paire historique du 10 novembre : entrée `started` avec
 le modèle `aa1565caf7fed3af833a5613fd76416b6489c9a9f31ee8c523d65e5d9113da33`,
 suivie de `completed` avec la source
 `7e50d0ce13f08b45ed1740127fe56f9c90c8eeec37a11288a372afcc61efe3b3`.
@@ -155,9 +155,9 @@ pour cette mesure. Les métriques sont partagées via `final_metrics.py`.
 Le journal doit être monté de façon persistante et être accessible à l’utilisateur
 du Job. Les prédictions doivent figurer dans le manifeste vérifié.
 
-L’adaptation est à réaliser par Omar puis à tester avant D47 : artefact absent,
+L’adaptation est à réaliser par Omar puis à tester avant D48 : artefact absent,
 empreinte du candidat incorrecte, manifeste altéré et prédictions modifiées
-font échouer le pipeline, sans lecture de la source finale. Le lancement D47
+font échouer le pipeline, sans lecture de la source finale. Le lancement D48
 attend le merge, les tests et la CI verts, puis la confirmation de cette intégration.
 Il ne déclenche aucune promotion.
 
@@ -176,11 +176,11 @@ passer une garde. Utiliser le journal original et un dossier de sortie neuf.
 Aucune lecture du jeu final n’est nécessaire pour préparer ces éléments.
 
 
-### Conservation du premier résultat dans D47
+### Conservation du premier résultat dans D48
 
 `--previous-evaluation` désigne le dossier hors dépôt contenant
 `final_metrics.json` et `final_report.md` du 10 novembre. Il est obligatoire
-pour D47. Le contrôle intervient avant la réservation et toute lecture du jeu
+pour D48. Le contrôle intervient avant la réservation et toute lecture du jeu
 final : scope, empreintes du modèle/de la source et alpha doivent correspondre.
 Un fichier absent, incohérent ou illisible fait échouer le lancement.
 Les effectifs doivent être des entiers JSON (ni booléens, chaînes ou fractions) :
@@ -203,10 +203,10 @@ Les copies historiques et leurs SHA-256 entrent dans le manifeste. Elles sont
 vérifiées avant publication et jointes dans MLflow sous `previous_evaluation/`,
 avec les tags de seconde mesure. `--republish` utilise exclusivement les copies
 du nouveau dossier : ni les originaux ni le jeu final ne sont nécessaires.
-La CLI refuse une publication D47 sans historique. Les changements ne lancent
+La CLI refuse une publication D48 sans historique. Les changements ne lancent
 aucune mesure et ne lèvent pas les préconditions de merge/CI/intégration B.
 
-Argument supplémentaire à ajouter à la commande D47 **après** confirmation de
+Argument supplémentaire à ajouter à la commande D48 **après** confirmation de
 ces préconditions (exemple Windows, chemin à adapter au volume du Job) :
 
 ```bat
@@ -222,7 +222,7 @@ est obligatoirement terminé par `data/raw/fraudTrain.csv` (comparaison insensib
 La première passe lit seulement les dates ; les features de latence proviennent
 des lignes development, sans labels de calibration. Vérifier le montage avant
 l’exécution réelle. La CLI manuelle suit les mêmes règles ; l’intégration du Job
-et le choix des volumes restent à vérifier par Omar avant D47.
+et le choix des volumes restent à vérifier par Omar avant D48.
 
 Les probabilités utilisent `batch_probabilities` si disponible : la correction
 beta et la calibration de premier niveau sont ainsi appliquées par le wrapper.
@@ -230,3 +230,11 @@ Les anciens candidats avec calibration déjà imbriquée conservent leur chemin.
 Sans méthode batch, un wrapper avec correction/calibrateur externes est refusé.
 Le manifeste final porte `status: complete` ; métriques, équité, bootstrap et
 rapport sont écrits atomiquement avant publication.
+
+Le code final refuse explicitement D47, identifiant réservé à Auth. Toute ancienne
+entrée d’autorisation D47 pour l’évaluation est caduque : D48 exige une nouvelle
+autorisation liée au texte de protocole et au journal courants. Une réservation
+D47 existante dans ce journal bloque D48 et nécessite une revue humaine ; aucune
+entrée historique ne doit être supprimée pour contourner ce contrôle. La nouvelle
+autorisation doit rester non approuvée tant que les préconditions de merge, CI,
+intégration B et validation de l’équipe ne sont pas satisfaites.

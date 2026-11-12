@@ -44,6 +44,7 @@ from ml.src.data.load_data import split_chronologically
 from ml.src.final.train_final import evaluate_sets, prediction_membership
 from ml.src.validation.fold_data import guard_training_source
 
+FINAL_DECISION_ID = "D48"
 AGE_BINS = [0, 25, 35, 45, 55, 65, 120]
 AGE_LABELS = ["0-25", "26-35", "36-45", "46-55", "56-65", "66-120"]
 REQUIRED = [
@@ -447,7 +448,7 @@ def main(argv=None) -> int:
     parser.add_argument(
         "--previous-evaluation",
         type=Path,
-        help="Dossier des métriques et du rapport du 10 novembre ; obligatoire pour D47",
+        help="Dossier des métriques et du rapport du 10 novembre ; obligatoire pour D48",
     )
     parser.add_argument("--output-dir", type=Path)
     mode = parser.add_mutually_exclusive_group(required=True)
@@ -528,6 +529,10 @@ def main(argv=None) -> int:
     ):
         parser.error("Le dossier de sortie doit être neuf et hors dépôt")
     if args.source is not None:
+        if args.decision_id and args.decision_id != FINAL_DECISION_ID:
+            parser.error(
+                f"Décision {args.decision_id} refusée : {FINAL_DECISION_ID} requise pour cette évaluation"
+            )
         args.journal = resolve_journal(args.journal)
         required = {
             "--confirm-final-test": args.confirm_final_test,
@@ -541,7 +546,7 @@ def main(argv=None) -> int:
             "--reason": args.reason,
             "--latency-source": args.latency_source,
         }
-        if args.decision_id == "D47":
+        if args.decision_id == "D48":
             required["--previous-evaluation"] = args.previous_evaluation
         missing = [key for key, value in required.items() if not value]
         if missing:
@@ -551,8 +556,8 @@ def main(argv=None) -> int:
         args.source_sha256 = args.source_sha256.lower()
         if args.authorization.resolve().is_relative_to(ROOT.resolve()):
             parser.error("L'autorisation doit être hors dépôt")
-    if args.decision_id == "D47" and args.previous_evaluation is None:
-        parser.error("D47 : --previous-evaluation est obligatoire avant lecture")
+    if args.decision_id == "D48" and args.previous_evaluation is None:
+        parser.error("D48 : --previous-evaluation est obligatoire avant lecture")
     model_hash = sha256(args.model)
     if args.model_sha256 and model_hash.lower() != args.model_sha256.lower():
         raise ValueError("SHA-256 du modèle différent de celui demandé")

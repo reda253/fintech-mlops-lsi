@@ -120,7 +120,7 @@ def load_previous_evaluation(
             raise ValueError("Métrique précédente non finie ou hors bornes")
     metadata = {
         "date": "2026-11-10",
-        "date_basis": "Historique du protocole D47 ; date non déduite du fichier de métriques",
+        "date_basis": "Historique du protocole D48 ; date non déduite du fichier de métriques",
         "model_sha256": previous["model_sha256"],
         "source_sha256": previous.get("source_sha256"),
         "alpha": previous["alpha"],
@@ -180,8 +180,8 @@ def history_report_lines(history: dict, current: dict) -> list[str]:
 def verify_previous_evaluation(output: Path, result: dict, manifest: dict) -> None:
     history = result.get("previous_evaluation")
     if history is None:
-        if result.get("decision_id") == "D47":
-            raise ValueError("D47 : historique de première mesure absent")
+        if result.get("decision_id") == "D48":
+            raise ValueError("D48 : historique de première mesure absent")
         return
     expected_names = {f"{HISTORY_DIR}/{name}" for name in HISTORY_FILES}
     if set(history.get("artifacts", {})) != expected_names:

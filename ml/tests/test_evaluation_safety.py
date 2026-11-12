@@ -65,6 +65,8 @@ def reserve(path, authorization, revision="one", name="source.csv"):
 
 @pytest.fixture
 def synthetic_launch(tmp_path, monkeypatch):
+    # Toutes les sources de cette fixture sont synthétiques : D99 reste interne aux tests.
+    monkeypatch.setattr(evaluation, "FINAL_DECISION_ID", "D99")
     source = tmp_path / "fraudTest.csv"  # Uniquement un fichier synthétique temporaire.
     evaluation.synthetic_data().to_csv(source, index=False)
     model = tmp_path / "model.joblib"
@@ -357,11 +359,11 @@ def test_authorization_binds_every_field(tmp_path, key):
     assert len(journal_api.read_journal(path)[1]) == 1
 
 
-def test_d47_requires_legacy_anchor_and_cannot_be_reused(tmp_path):
+def test_d48_requires_legacy_anchor_and_cannot_be_reused(tmp_path):
     path = tmp_path / "journal.jsonl"
     write_history(path)
     with pytest.raises(ValueError, match="10 novembre"):
-        reserve(path, approved(path, "D47"))
+        reserve(path, approved(path, "D48"))
     legacy = [
         {
             "status": "started",
@@ -371,13 +373,13 @@ def test_d47_requires_legacy_anchor_and_cannot_be_reused(tmp_path):
         {"status": "completed", "source_sha256": journal_api.LEGACY_SOURCE},
     ]
     path.write_text("".join(json.dumps(e) + "\n" for e in legacy), encoding="utf-8")
-    auth = approved(path, "D47", journal_api.LEGACY_SOURCE, journal_api.LEGACY_MODEL)
+    auth = approved(path, "D48", journal_api.LEGACY_SOURCE, journal_api.LEGACY_MODEL)
     launch = reserve(path, auth)
     journal_api.record_event(
         path, launch, "predictions_saved", predictions_sha256="d" * 64
     )
     journal_api.record_event(path, launch, "completed")
-    auth = approved(path, "D47", journal_api.LEGACY_SOURCE, journal_api.LEGACY_MODEL)
+    auth = approved(path, "D48", journal_api.LEGACY_SOURCE, journal_api.LEGACY_MODEL)
     with pytest.raises(ValueError, match="consommée"):
         reserve(path, auth, revision="different", name="renamed.csv")
 
@@ -644,7 +646,7 @@ def test_missing_previous_artifact_fails_before_final_read(
     assert not opened and not output.exists()
 
 
-def test_d47_requires_previous_evaluation_before_any_model_or_source_read(
+def test_d48_requires_previous_evaluation_before_any_model_or_source_read(
     tmp_path, monkeypatch, capsys
 ):
     model = tmp_path / "unread.joblib"
@@ -656,7 +658,7 @@ def test_d47_requires_previous_evaluation_before_any_model_or_source_read(
             [
                 "--synthetic",
                 "--decision-id",
-                "D47",
+                "D48",
                 "--model",
                 str(model),
                 "--reference",
@@ -680,12 +682,12 @@ def test_tampered_historical_copy_rejected_by_republish(synthetic_launch, tmp_pa
         verify_saved(output)
 
 
-def test_d47_saved_result_without_history_is_not_publishable(synthetic_launch):
+def test_d48_saved_result_without_history_is_not_publishable(synthetic_launch):
     args, _, _, output = synthetic_launch
     assert evaluation.main(args) == 0
     path = output / "final_metrics.json"
     data = json.loads(path.read_text(encoding="utf-8"))
-    data["decision_id"] = "D47"
+    data["decision_id"] = "D48"
     path.write_text(json.dumps(data), encoding="utf-8")
     manifest_path = output / "artifact_manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -976,3 +978,102 @@ def test_complete_manifest_and_outputs_are_atomic(synthetic_launch, monkeypatch)
     )
     assert manifest["status"] == "complete"
     assert verify_saved(output)["model_status"] == "provisional"
+
+
+def test_final_cli_refuses_auth_decision_before_opening_source(
+    synthetic_launch, monkeypatch, capsys
+):
+    args, source, journal, output = synthetic_launch
+    monkeypatch.setattr(evaluation, "FINAL_DECISION_ID", "D48")
+    args[args.index("--decision-id") + 1] = "D47"
+    original_journal = journal.read_bytes()
+    opened = deny_source(monkeypatch, source)
+    with pytest.raises(SystemExit):
+        evaluation.main(args)
+    assert "D47" in capsys.readouterr().err and not opened
+    assert journal.read_bytes() == original_journal and not output.exists()
+
+
+def test_legacy_auth_decision_is_refused_before_journal_read(tmp_path):
+    with pytest.raises(ValueError, match="D47.*Auth"):
+        journal_api.check_authorization(
+            tmp_path / "not-created.jsonl",
+            {},
+            source_sha256="a" * 64,
+            model_sha256="b" * 64,
+            decision_id="D47",
+            protocol_sha256="c" * 64,
+            reason="synthetic",
+        )
+
+
+def test_final_synthetic_d48_with_history_and_single_use(
+    synthetic_launch, tmp_path, monkeypatch
+):
+    args, source, journal, output = synthetic_launch
+    monkeypatch.setattr(evaluation, "FINAL_DECISION_ID", "D48")
+    source_hash = evaluation.sha256(source)
+    model_hash = args[args.index("--model-sha256") + 1]
+    protocol_hash = evaluation.sha256(Path(args[args.index("--protocol-file") + 1]))
+    monkeypatch.setattr(journal_api, "LEGACY_SOURCE", source_hash)
+    monkeypatch.setattr(journal_api, "LEGACY_MODEL", model_hash)
+    legacy = [
+        {
+            "status": "started",
+            "utc": "2026-11-10T18:00:00+00:00",
+            "model_sha256": model_hash,
+        },
+        {"status": "completed", "source_sha256": source_hash},
+    ]
+    journal.write_text("".join(json.dumps(e) + "\n" for e in legacy), encoding="utf-8")
+    authorization = Path(args[args.index("--authorization") + 1])
+    authorization.write_text(
+        json.dumps(approved(journal, "D48", source_hash, model_hash, protocol_hash)),
+        encoding="utf-8",
+    )
+    args[args.index("--decision-id") + 1] = "D48"
+    history = tmp_path / "historical"
+    write_previous_evaluation(args, history)
+    args += ["--previous-evaluation", str(history)]
+    assert evaluation.main(args) == 0
+    result = verify_saved(output)
+    assert result["decision_id"] == "D48"
+    assert result["measurement"]["independent"] is False
+    assert result["promotion_ready"] is False
+    args[args.index("--output-dir") + 1] = str(tmp_path / "second")
+    opened = deny_source(monkeypatch, source)
+    with pytest.raises(ValueError, match="consommée"):
+        evaluation.main(args)
+    assert not opened
+
+
+def test_d48_refuses_any_previous_d47_reservation(tmp_path):
+    journal = tmp_path / "journal.jsonl"
+    legacy = [
+        {
+            "status": "started",
+            "utc": "2026-11-10T18:00:00+00:00",
+            "model_sha256": journal_api.LEGACY_MODEL,
+        },
+        {"status": "completed", "source_sha256": journal_api.LEGACY_SOURCE},
+    ]
+    journal.write_text("".join(json.dumps(e) + "\n" for e in legacy), encoding="utf-8")
+    raw, _ = journal_api.read_journal(journal)
+    journal_api._append(
+        journal,
+        raw,
+        {
+            "status": "reserved",
+            "utc": "2026-11-12T10:00:00+00:00",
+            "launch_id": "old-synthetic",
+            "decision_id": "D47",
+            "model_sha256": "d" * 64,
+            "source_sha256": "e" * 64,
+            "protocol_sha256": "f" * 64,
+        },
+    )
+    auth = approved(journal, "D48", journal_api.LEGACY_SOURCE, journal_api.LEGACY_MODEL)
+    before = journal.read_bytes()
+    with pytest.raises(ValueError, match="Réservation D47"):
+        reserve(journal, auth, revision="different", name="copy.csv")
+    assert journal.read_bytes() == before
