@@ -16,4 +16,7 @@ public interface UserRepository extends JpaRepository<User, UUID> {
     // String, not Role: Hibernate binds an enum parameter inside array_contains as its ordinal (smallint).
     @Query("select u from User u where array_contains(u.roles, :role)")
     Page<User> findByRole(String role, Pageable pageable);
+
+    @Query("select count(u) from User u where u.enabled = true and array_contains(u.roles, :role)")
+    long countEnabledWithRole(String role);
 }
