@@ -10,3 +10,5 @@ Separate PostgreSQL/RabbitMQ base and persistence tests: [Kubernetes data](../do
 Protected local release and explicit first-install stages: [Shared deployment](../docs/kubernetes-shared-deployment.md).
 
 Manual scanned GHCR publication and complete digest inventory (prerequisite for #40): [Registry publication](../docs/registry-publication.md).
+
+Isolated Argo CD and Sealed Secrets pilot: [GitOps pilot](../docs/gitops-pilot.md).

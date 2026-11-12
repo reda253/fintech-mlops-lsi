@@ -8,6 +8,7 @@ from abc import ABC, abstractmethod
 from datetime import UTC, datetime
 from typing import Any, Literal
 
+import pandas as pd
 from fastapi import HTTPException, status
 
 from app.metrics import (
@@ -74,7 +75,7 @@ class MockPredictor(BasePredictor):
         self.name = name
         self.version = version
         self.algorithm = "heuristic-mock"
-        self.alpha = 0.05
+        self.alpha = 0.02
         self.loaded_at: datetime | None = None
         self._ready = False
 
@@ -160,17 +161,75 @@ class RealPredictor(BasePredictor):
         model_uri: str = "",
         cache_dir: str = "/tmp/model-cache",
         name: str = "fraud-detector",
-        version: str = "1",
+        version: str | None = None,
         model_instance: Any = None,
     ):
         self.model_uri = model_uri
         self.cache_dir = cache_dir
         self.name = name
-        self.version = version
+        self.version = version or "unknown"
         self.model = model_instance
-        self.alpha = 0.05
+        self.alpha = 0.02
+        self.algorithm = "xgboost-calibrated"
+        self.git_commit = "unknown"
+        self.trained_at: datetime | None = None
         self.loaded_at: datetime | None = None
         self._ready = False
+        self._identity_from_uri()
+
+    def _identity_from_uri(self) -> None:
+        """Derive model name/version from ``models:/<name>/<ref>`` or ``<name>@<alias>``."""
+
+        prefix = "models:/"
+        if not self.model_uri.startswith(prefix):
+            return
+        reference = self.model_uri[len(prefix):]
+        if "@" in reference:
+            name, reference = reference.split("@", 1)
+        else:
+            parts = reference.split("/")
+            if len(parts) < 2:
+                return
+            name, reference = parts[0], parts[1]
+        if not name or not reference:
+            return
+        self.name = name
+        if self.version != "unknown":
+            return
+        if reference.isdigit():
+            self.version = reference
+            return
+        try:
+            from mlflow.tracking import MlflowClient
+
+            version = MlflowClient().get_model_version_by_alias(self.name, reference)
+            self.version = str(version.version)
+        except Exception:  # noqa: BLE001 - alias resolution is best effort
+            self.version = reference
+
+    def _apply_model_metadata(self) -> None:
+        """Read alpha/algorithm/git_commit from the logged pyfunc metadata."""
+
+        metadata = getattr(self.model, "metadata", None)
+        payload = getattr(metadata, "metadata", None) or {}
+        if isinstance(payload, str):
+            try:
+                import json
+
+                payload = json.loads(payload)
+            except ValueError:
+                payload = {}
+        if not isinstance(payload, dict):
+            return
+        try:
+            self.alpha = float(payload.get("alpha", self.alpha))
+            self.algorithm = str(payload.get("algorithm", self.algorithm))
+            self.git_commit = str(payload.get("git_commit", self.git_commit))
+            trained_at = payload.get("trained_at")
+            if trained_at and str(trained_at) != "unknown":
+                self.trained_at = datetime.fromisoformat(str(trained_at))
+        except (TypeError, ValueError) as exc:
+            logger.warning("Invalid model metadata (%s); keeping defaults.", exc)
 
     def warmup(self) -> None:
         """Load model weights and run warm-up inference."""
@@ -190,8 +249,12 @@ class RealPredictor(BasePredictor):
             self._ready = False
             return
 
-        # Run warm-up inference
+        self._apply_model_metadata()
+
+        # Run warm-up inference. Every schema-required field must be present,
+        # otherwise MLflow rejects the sample before it reaches the wrapper.
         sample_record = {
+            "transaction_id": "00000000-0000-0000-0000-000000000000",
             "trans_datetime": "2026-10-24 12:00:00",
             "amount": 100.0,
             "category": "shopping_net",
@@ -210,9 +273,11 @@ class RealPredictor(BasePredictor):
             if hasattr(self.model, "predict_one"):
                 self.model.predict_one(sample_record)
             elif hasattr(self.model, "predict"):
-                self.model.predict([sample_record])
+                self.model.predict(pd.DataFrame([sample_record]))
             logger.info("Warm-up prediction completed successfully.")
-        except (OSError, RuntimeError, ValueError, KeyError, TypeError) as exc:
+        except Exception as exc:  # noqa: BLE001 - a failed warm-up must never crash the pod
+            # Fail-safe: keep the process alive so /health/ready returns 503
+            # instead of putting the container into CrashLoopBackOff.
             logger.error("Warm-up inference failed: %s; real predictor is NOT ready.", exc)
             self._ready = False
             return
@@ -230,10 +295,10 @@ class RealPredictor(BasePredictor):
         return ModelInfo(
             name=self.name,
             version=self.version,
-            algorithm="xgboost-calibrated",
+            algorithm=self.algorithm,
             alpha=self.alpha,
-            trained_at=self.loaded_at,
-            git_commit="prod",
+            trained_at=self.trained_at or self.loaded_at,
+            git_commit=self.git_commit,
             mode="real",
         )
 
@@ -262,30 +327,42 @@ class RealPredictor(BasePredictor):
             "category": request.category,
             "merch_lat": request.merch_lat,
             "merch_long": request.merch_long,
-            "customer": request.customer.model_dump(),
+            "customer": {
+                "dob": request.customer.dob.isoformat(),
+                "gender": request.customer.gender,
+                "city_pop": request.customer.city_pop,
+                "lat": request.customer.lat,
+                "long": request.customer.long,
+                "state": request.customer.state,
+            },
         }
 
         try:
             if hasattr(self.model, "predict_one"):
                 out = self.model.predict_one(record)
             else:
-                out = self.model.predict([record])[0]
+                output = self.model.predict(pd.DataFrame([record]))
+                out = output.iloc[0].to_dict()
 
             prediction = int(out.get("prediction", 0))
             fraud_proba = float(out.get("fraud_probability", 0.5))
 
             raw_set = out.get("prediction_set")
-            # Fail-safe invariant: NEVER default to [0] on missing or malformed prediction sets!
-            if raw_set is None or not raw_set:
-                logger.warning("Missing or empty prediction_set in model output; defaulting to [0, 1] (REVUE).")
+            if hasattr(raw_set, "tolist"):
+                raw_set = raw_set.tolist()
+
+            if raw_set is None or isinstance(raw_set, (str, bytes)) or not hasattr(raw_set, "__iter__"):
+                # Fail-safe invariant: missing/malformed set -> safe REVUE.
+                logger.warning("Missing or malformed prediction_set in model output; defaulting to [0, 1] (REVUE).")
                 pred_set = [0, 1]
                 uncertainty = 1.0
                 uncertainty_level = "ELEVEE"
             else:
-                pred_set = [int(v) for v in raw_set]
+                # An empty set is a valid conformal outcome: preserve it as-is.
+                pred_set = [int(value) for value in raw_set]
                 uncertainty = float(out.get("uncertainty", 1.0))
                 uncertainty_level = str(out.get("uncertainty_level", "ELEVEE"))
-        except (KeyError, ValueError, TypeError, AttributeError, IndexError) as exc:
+        except Exception as exc:  # noqa: BLE001 - never auto-approve on an inference failure
             logger.error("Model prediction failed: %s; falling back to safe REVUE evaluation.", exc)
             prediction = 0
             fraud_proba = 0.5

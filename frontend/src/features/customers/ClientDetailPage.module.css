@@ -1,0 +1,506 @@
+/* ============================================================
+   Clients — détail (maquette 05_ADMIN_detail_client)
+   Fidélité totale : halo d'ambiance + dégradé noir #1a1a1a → #121212
+   ============================================================ */
+
+.page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  color: #f5f5f5;
+  font-family: 'Inter Variable', 'Inter', -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* Halo lumineux d'ambiance en haut de la page */
+.page::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 236px;
+  right: 0;
+  height: 360px;
+  background: radial-gradient(
+    760px 280px at 48% 0%,
+    rgba(255, 255, 255, 0.085) 0%,
+    rgba(255, 255, 255, 0.025) 50%,
+    transparent 78%
+  );
+  pointer-events: none;
+  z-index: 0;
+}
+
+.loading {
+  color: #8c8c8c;
+  font-size: 14px;
+  padding: 40px 0;
+}
+
+/* ── En-tête ──────────────────────────────────────────────── */
+.header {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 24px;
+  flex-wrap: wrap;
+  padding: 4px 2px;
+}
+
+.identity {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+}
+
+.bigAvatar {
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #252525 0%, #181818 100%);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  color: #f0f0f0;
+  font-size: 17px;
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+}
+
+.title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  color: #ffffff;
+}
+
+.meta {
+  margin: 6px 0 0;
+  font-size: 14px;
+  color: #9a9a9a;
+}
+
+.dots {
+  color: #7d7d7d;
+  letter-spacing: 1px;
+  font-size: 12px;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.outlineBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 18px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #222222 0%, #151515 100%);
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05) inset;
+  color: #f0f0f0;
+  font-size: 14px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.outlineBtn:hover {
+  background: linear-gradient(180deg, #2a2a2a 0%, #1b1b1b 100%);
+  border-color: rgba(255, 255, 255, 0.18);
+}
+
+.primaryBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #f4552d 0%, #eb431b 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  color: #0d0d0d;
+  font-size: 14px;
+  font-weight: 700;
+  text-decoration: none;
+  box-shadow: 0 8px 22px rgba(240, 75, 35, 0.25);
+  transition: filter 0.15s ease;
+}
+
+.primaryBtn:hover {
+  filter: brightness(1.06);
+}
+
+/* ── KPI avec sparklines + grille de points en dégradé ────── */
+.statsRow {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.statCard {
+  position: relative;
+  background: linear-gradient(180deg, #1b1b1b 0%, #121212 100%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  padding: 16px 18px 14px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.05) inset,
+    0 14px 32px rgba(0, 0, 0, 0.42);
+  overflow: hidden;
+}
+
+/* Texture pointillée dans le coin supérieur droit comme la maquette */
+.statCard::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 65%;
+  height: 75%;
+  background-image: radial-gradient(rgba(255, 255, 255, 0.18) 1px, transparent 1.2px);
+  background-size: 8px 8px;
+  opacity: 0.55;
+  -webkit-mask-image: radial-gradient(circle at 85% 20%, #000 0%, transparent 72%);
+  mask-image: radial-gradient(circle at 85% 20%, #000 0%, transparent 72%);
+  pointer-events: none;
+}
+
+.statHead {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #e5e5e5;
+}
+
+.statIcon {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #262626 0%, #191919 100%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: #d4d4d4;
+}
+
+.statLabel {
+  font-size: 14px;
+  font-weight: 500;
+  color: #ebebeb;
+}
+
+.statBody {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.statValue {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1;
+  color: #ffffff;
+  letter-spacing: -0.02em;
+}
+
+.spark {
+  width: 150px;
+  height: 46px;
+  opacity: 0.95;
+}
+
+.statHint {
+  position: relative;
+  margin: 14px 0 0;
+  font-size: 12px;
+  color: #7d7d7d;
+}
+
+/* ── Grilles principales ──────────────────────────────────── */
+.mainGrid,
+.bottomGrid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1.72fr) minmax(0, 1fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.card {
+  background: linear-gradient(180deg, #1a1a1a 0%, #121212 100%);
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 16px;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.04) inset,
+    0 16px 36px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+}
+
+.cardHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.cardTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: #f5f5f5;
+}
+
+.cardHint {
+  font-size: 12px;
+  color: #7d7d7d;
+}
+
+/* ── Tableau transactions ─────────────────────────────────── */
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.th {
+  padding: 10px 14px;
+  text-align: left;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: #8c8c8c;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+  white-space: nowrap;
+}
+
+.th:first-child {
+  padding-left: 18px;
+}
+
+.row:last-child .td {
+  border-bottom: none;
+}
+
+.td {
+  padding: 11px 14px;
+  font-size: 13px;
+  color: #c2c2c2;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+  white-space: nowrap;
+}
+
+.td:first-child {
+  padding-left: 18px;
+  color: #a3a3a3;
+}
+
+.ref {
+  color: #f5f5f5;
+  font-weight: 600;
+  font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  font-size: 12.5px;
+}
+
+/* ── Badges de statut ─────────────────────────────────────── */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.pillSuccess {
+  background: rgba(74, 222, 128, 0.12);
+  color: #4ade80;
+  border: 1px solid rgba(74, 222, 128, 0.28);
+}
+
+.pillDanger {
+  background: rgba(239, 68, 68, 0.14);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.32);
+}
+
+.pillWarning {
+  background: rgba(245, 158, 11, 0.14);
+  color: #fbbf24;
+  border: 1px solid rgba(245, 158, 11, 0.32);
+}
+
+/* ── Probabilité ──────────────────────────────────────────── */
+.proba {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.probaValue {
+  color: #f0f0f0;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 30px;
+}
+
+.probaTrack {
+  position: relative;
+  width: 46px;
+  height: 3.5px;
+  border-radius: 2px;
+  background: #292929;
+  overflow: hidden;
+}
+
+.probaFill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+}
+
+/* ── Profil ───────────────────────────────────────────────── */
+.profile {
+  margin: 0;
+  padding: 0 18px 8px;
+}
+
+.profileRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 10px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.055);
+}
+
+.profileRow:last-child {
+  border-bottom: none;
+}
+
+.profileRow dt {
+  font-size: 13px;
+  color: #8c8c8c;
+}
+
+.profileRow dd {
+  margin: 0;
+  font-size: 13px;
+  color: #f0f0f0;
+  font-weight: 500;
+  text-align: right;
+}
+
+.cardNb {
+  font-family: ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ── Graphique ────────────────────────────────────────────── */
+.chartWrap {
+  padding: 4px 18px 18px;
+}
+
+.areaChart {
+  width: 100%;
+  height: 190px;
+  display: block;
+}
+
+/* ── Timeline ─────────────────────────────────────────────── */
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0 18px 20px;
+}
+
+.timelineItem {
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 0 0 20px 4px;
+}
+
+.timelineItem:not(:last-child)::before {
+  content: '';
+  position: absolute;
+  left: 8px;
+  top: 14px;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.timelineItem:last-child {
+  padding-bottom: 0;
+}
+
+.timelineDot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: #525252;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.04);
+}
+
+.dotDanger {
+  background: #ef4444;
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.16);
+}
+
+.timelineTitle {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #f0f0f0;
+}
+
+.timelineDate {
+  margin: 4px 0 0;
+  font-size: 12px;
+  color: #8c8c8c;
+}
+
+@media (max-width: 1240px) {
+  .statsRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .mainGrid,
+  .bottomGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 640px) {
+  .statsRow {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}
