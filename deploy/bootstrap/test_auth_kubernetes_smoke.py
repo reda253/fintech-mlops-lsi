@@ -4,12 +4,25 @@ import unittest
 from unittest.mock import patch
 from uuid import uuid4
 
+from auth_upgrade_smoke import MODULES, NEW, REPO
 from auth_kubernetes_smoke import (
-    CONTEXT, SIGNING_SECRET, seal_key, signing_env, verify_login, verify_team_accounts,
+    CONTEXT, SIGNING_SECRET, TEAM_SOURCE_COMMIT, seal_key, signing_env, smoke_images,
+    verify_login, verify_team_accounts,
 )
 
 
 class AuthKubernetesSmokeTests(unittest.TestCase):
+    def test_team_requires_d47_inventory_without_local_image_fallback(self):
+        images = {module: f"ghcr.io/{REPO}/{module}@sha256:" + "a" * 64 for module in MODULES}
+        inventory = {"schema": 1, "repository": REPO, "platform": "linux/amd64",
+                     "commit": TEAM_SOURCE_COMMIT, "images": images}
+        self.assertEqual(images, smoke_images(inventory, team=True))
+        with self.assertRaisesRegex(RuntimeError, "reviewed"):
+            smoke_images(inventory | {"commit": NEW}, team=True)
+        with self.assertRaisesRegex(RuntimeError, "auth-service"):
+            smoke_images(inventory | {"images": images | {"auth-service": "fintech-auth-service:local"}}, team=True)
+        self.assertEqual(images, smoke_images(inventory | {"commit": NEW}, team=False))
+
     def test_auth_references_secret_not_literal(self):
         self.assertEqual({"name": "JWT_PRIVATE_KEY", "valueFrom": {
             "secretKeyRef": {"name": SIGNING_SECRET, "key": "private-key"}}}, signing_env())
