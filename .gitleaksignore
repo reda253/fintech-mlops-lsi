@@ -6,3 +6,5 @@ d12e0220192e8c1a632b6308e683760fb56396a8:services/common/src/test/java/ma/fintec
 # inline gitleaks:allow, which survives squashes. These entries only cover the commits made before it.
 4ce7fc05257a6679767bea6b13e54d5803cc61fc:services/auth-service/src/test/java/ma/fintech/auth/TestcontainersConfig.java:private-key:26
 f70aab2de258fab1525a40233929db091a7aa791:services/auth-service/src/test/java/ma/fintech/auth/TestcontainersConfig.java:private-key:26
+# False positive: synthetic row UUID in the original Auth upgrade test commit.
+ac98a525bb07ec0f516aca42e6ed9d64fbb34a92:deploy/bootstrap/auth_upgrade_smoke.py:generic-api-key:162
