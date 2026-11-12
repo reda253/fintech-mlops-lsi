@@ -36,6 +36,15 @@ jwt:
   # Dev: openssl genpkey -algorithm RSA -pkeyopt rsa_keygen_bits:2048 -out secrets/jwt-private.pem
   private-key: ${JWT_PRIVATE_KEY:file:secrets/jwt-private.pem}
 
+auth:
+  accounts:
+    # D47. false on every shared environment: the V2 demo passwords are public (README).
+    demo-enabled: ${AUTH_DEMO_ACCOUNTS:true}
+    bootstrap-admin:
+      # From a Sealed Secret. Created once if absent, never overwritten. Both blank = none.
+      username: ${AUTH_BOOTSTRAP_ADMIN_USERNAME:}
+      password: ${AUTH_BOOTSTRAP_ADMIN_PASSWORD:}
+
 server:
   port: 8081
   shutdown: graceful            # finish in-flight requests on SIGTERM (§6.8)
