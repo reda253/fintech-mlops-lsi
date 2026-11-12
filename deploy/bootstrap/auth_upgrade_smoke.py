@@ -27,10 +27,10 @@ def require(condition, message):
         raise RuntimeError(message)
 
 
-def release_images(inventory):
-    require(inventory.get("repository") == REPO and inventory.get("commit") == NEW
+def release_images(inventory, expected_commit=NEW):
+    require(inventory.get("repository") == REPO and inventory.get("commit") == expected_commit
             and inventory.get("schema") == 1 and inventory.get("platform") == "linux/amd64",
-            "Expected the reviewed e17a493 GHCR inventory")
+            f"Expected the reviewed {expected_commit[:7]} GHCR inventory")
     images = {}
     for module in MODULES:
         image = inventory.get("images", {}).get(module, "")

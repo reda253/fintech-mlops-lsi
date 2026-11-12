@@ -9,7 +9,7 @@ import subprocess
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
-from auth_upgrade_smoke import HISTORY, ME, image_revision, release_images, request
+from auth_upgrade_smoke import HISTORY, ME, NEW, release_images, request
 from check_kubernetes_data import validate_data
 from check_kubernetes_manifests import kubectl, render, require, validate
 from kubernetes_data_smoke import PortForward, secret
@@ -19,8 +19,11 @@ from kubernetes_kind_smoke import OWNER_LABEL, PREFIX, can_cleanup
 CONTEXT = "kind-fintech-gitops-lab"
 NODE = "fintech-gitops-lab-control-plane"
 SIGNING_SECRET = "auth-signing-test"
-TEAM_SOURCE_COMMIT = "b39e628bab300537a163e08d4bc6ce09e25c7ff1"
-TEAM_AUTH_IMAGE = "fintech-auth-service:" + TEAM_SOURCE_COMMIT
+TEAM_SOURCE_COMMIT = "64b1d7d2161b1d6a271b5a5c0b798df95f74c2cb"
+
+
+def smoke_images(inventory, team):
+    return release_images(inventory, expected_commit=TEAM_SOURCE_COMMIT if team else NEW)
 
 
 def signing_env():
@@ -50,9 +53,7 @@ def workload_resources(apps, data, namespace, images, team=False):
             if name == "auth-service":
                 container["env"] = [entry for entry in container["env"]
                                     if not entry["name"].startswith("RABBITMQ_")]
-                if team:
-                    container["imagePullPolicy"] = "Never"
-                else:
+                if not team:
                     container["env"].append(signing_env())
         elif item["kind"] == "ConfigMap":
             config = item["data"]
@@ -156,17 +157,12 @@ def verify_login(port):
 
 
 def run(inventory, openssl, kubeseal, team=False):
-    images = release_images(inventory)
+    images = smoke_images(inventory, team)
     nodes = json.loads(kubectl(CONTEXT, "get", "nodes", "-o", "json", capture_output=True).stdout)
     require([item["metadata"]["name"] for item in nodes["items"]] == [NODE],
             "Expected exactly the disposable GitOps lab node")
     namespace, owner = PREFIX + uuid4().hex[:12], uuid4().hex
     overlay = "deploy/overlays/team" if team else "deploy/overlays/demo"
-    if team:
-        require(image_revision(TEAM_AUTH_IMAGE) == TEAM_SOURCE_COMMIT, "Expected local D47 Auth image")
-        subprocess.run(["kind", "load", "docker-image", "--name", "fintech-gitops-lab", TEAM_AUTH_IMAGE],
-                       check=True, timeout=240)
-        images["auth-service"] = TEAM_AUTH_IMAGE
     apps, data = workload_resources(render(CONTEXT, overlay), render(CONTEXT, "deploy/k8s/data"),
                                     namespace, images, team=team)
     key = subprocess.run([openssl, "genpkey", "-algorithm", "RSA", "-pkeyopt", "rsa_keygen_bits:2048"],
@@ -227,6 +223,6 @@ if __name__ == "__main__":
     parser.add_argument("--inventory", required=True, type=Path)
     parser.add_argument("--openssl", default="openssl")
     parser.add_argument("--kubeseal", default="kubeseal")
-    parser.add_argument("--team", action="store_true", help="Test D47 with the locally built b39e628 Auth image")
+    parser.add_argument("--team", action="store_true", help="Test D47 with the reviewed 64b1d7d GHCR inventory")
     args = parser.parse_args()
     run(json.loads(args.inventory.read_text(encoding="utf-8")), args.openssl, args.kubeseal, team=args.team)
