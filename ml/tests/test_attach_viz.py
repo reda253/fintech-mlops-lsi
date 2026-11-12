@@ -74,7 +74,7 @@ def test_projection_keys_cover_every_method_and_view():
 
 
 def test_final_test_set_is_refused():
-    with pytest.raises(ValueError, match="D47"):
+    with pytest.raises(ValueError, match="D48"):
         ensure_development_source(Path("data/raw/fraudTest.csv"))
     ensure_development_source(Path("data/raw/fraudTrain.csv"))
 
@@ -86,7 +86,7 @@ def test_final_test_set_is_refused_before_any_read(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr("ml.scripts.attach_viz.load_development_block", forbidden)
     monkeypatch.setattr(pd, "read_csv", forbidden)
 
-    with pytest.raises(ValueError, match="D47"):
+    with pytest.raises(ValueError, match="D48"):
         build_sample(Path("data/raw/fraudTest.csv"), samples=10)
 
 

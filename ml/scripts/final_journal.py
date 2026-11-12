@@ -138,11 +138,10 @@ def check_authorization(
         )
     raw, entries = read_journal(journal)
     if decision_id == "D48" and any(
-        entry.get("status") == "reserved" and entry.get("decision_id") == "D47"
-        for entry in entries
+        entry.get("decision_id") == "D47" for entry in entries
     ):
         raise ValueError(
-            "Réservation D47 présente dans le journal : examen manuel requis avant D48"
+            "Entrée D47 présente dans le journal : examen manuel requis avant D48"
         )
     if not re.fullmatch(r"D[0-9]+", decision_id or ""):
         raise ValueError("Identifiant de décision explicite requis")

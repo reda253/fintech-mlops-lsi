@@ -233,7 +233,7 @@ rapport sont écrits atomiquement avant publication.
 
 Le code final refuse explicitement D47, identifiant réservé à Auth. Toute ancienne
 entrée d’autorisation D47 pour l’évaluation est caduque : D48 exige une nouvelle
-autorisation liée au texte de protocole et au journal courants. Une réservation
+autorisation liée au texte de protocole et au journal courants. Toute entrée
 D47 existante dans ce journal bloque D48 et nécessite une revue humaine ; aucune
 entrée historique ne doit être supprimée pour contourner ce contrôle. La nouvelle
 autorisation doit rester non approuvée tant que les préconditions de merge, CI,

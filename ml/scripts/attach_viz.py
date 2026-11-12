@@ -6,7 +6,7 @@ to demo points. This script rebuilds the 15 projections (3 methods x 5 views)
 from the served version and logs them under ``viz/`` on that version's run.
 
 It never reads ``fraudTest.csv``: the official final test stays reserved for the
-D47 measurement. Use synthetic rows, or pass the **full** source with
+D48 measurement. Use synthetic rows, or pass the **full** source with
 ``--data-path``: only its development zone (earliest 70 % by transaction date) is
 loaded, and the calibration rows are never parsed. A pre-filtered extract cannot
 prove its provenance, so ``--development-extract`` is refused.
@@ -69,7 +69,7 @@ def ensure_development_source(path: Path) -> None:
     """Refuse the final test and any source whose development provenance is unverifiable."""
     if FINAL_TEST_NAME in path.name.lower():
         raise ValueError(
-            "fraudTest.csv is reserved for the official evaluation (D47); "
+            "fraudTest.csv is reserved for the official evaluation (D48); "
             "use the full source (only its development zone is read) or synthetic rows."
         )
     if path.name != DEVELOPMENT_SOURCE_NAME:

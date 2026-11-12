@@ -1047,7 +1047,8 @@ def test_final_synthetic_d48_with_history_and_single_use(
     assert not opened
 
 
-def test_d48_refuses_any_previous_d47_reservation(tmp_path):
+@pytest.mark.parametrize("status", ["reserved", "completed"])
+def test_d48_refuses_any_previous_d47_entry(tmp_path, status):
     journal = tmp_path / "journal.jsonl"
     legacy = [
         {
@@ -1063,7 +1064,7 @@ def test_d48_refuses_any_previous_d47_reservation(tmp_path):
         journal,
         raw,
         {
-            "status": "reserved",
+            "status": status,
             "utc": "2026-11-12T10:00:00+00:00",
             "launch_id": "old-synthetic",
             "decision_id": "D47",
@@ -1074,6 +1075,6 @@ def test_d48_refuses_any_previous_d47_reservation(tmp_path):
     )
     auth = approved(journal, "D48", journal_api.LEGACY_SOURCE, journal_api.LEGACY_MODEL)
     before = journal.read_bytes()
-    with pytest.raises(ValueError, match="Réservation D47"):
+    with pytest.raises(ValueError, match="Entrée D47"):
         reserve(journal, auth, revision="different", name="copy.csv")
     assert journal.read_bytes() == before
