@@ -1,0 +1,15 @@
+{
+  "apiVersion": "argoproj.io/v1alpha1",
+  "kind": "Application",
+  "metadata": {"name": "fintech-team", "namespace": "argocd"},
+  "spec": {
+    "project": "fintech-team",
+    "source": {
+      "repoURL": "https://github.com/reda253/fintech-mlops-lsi.git",
+      "targetRevision": "main",
+      "path": "deploy/overlays/team-release"
+    },
+    "destination": {"server": "https://kubernetes.default.svc", "namespace": "fintech"},
+    "syncPolicy": {"syncOptions": ["Prune=false", "FailOnSharedResource=true"]}
+  }
+}
