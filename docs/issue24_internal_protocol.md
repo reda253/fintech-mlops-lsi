@@ -16,7 +16,8 @@ d'implémentation, non une règle préenregistrée avant le benchmark.
    calibrateur choisi n'est pas réajusté sur la moitié de comparaison.
 3. `conformal_calibration` (15 %) : première moitié chronologique pour les
    quantiles Mondrian par classe ; quart suivant pour sélectionner le plus
-   petit alpha parmi 0,01, 0,02, 0,03, 0,05, 0,10 avec revue <= 2 % ; dernier quart pour
+   petit alpha parmi 0,01, 0,02, 0,03, 0,05, 0,10 avec revue <= 2 % ; dernier quart
+   déjà consulté, désormais exploratoire après les précisions post hoc, pour
    rapporter couverture par classe, revue, automatisation et erreur automatique.
    Aucun quantile n'est ajusté sur les deux derniers quarts. Les frontières
    temporelles égales sont déplacées à droite pour garder les mêmes dates ensemble.
@@ -29,11 +30,13 @@ couverture doivent figurer dans le rapport.
 
 La sélection d'alpha utilise uniquement le taux de revue sur le quart de
 sélection, sans étiquette ; les couvertures de ce quart ne fondent aucune
-garantie. Le dernier quart est indépendant de l'ajustement des quantiles et
-du choix d'alpha, mais reste une évaluation interne, pas le test final. Si
+garantie. Le dernier quart n'ajuste ni les quantiles ni alpha, mais il a déjà
+été consulté : ses mesures après les changements post hoc sont exploratoires.
+Il ne constitue donc pas une nouvelle confirmation indépendante ni le test final. Si
 aucun alpha ne respecte la capacité, aucun modèle n'est empaqueté pour le
-service. XGBoost reste provisoire tant que la décision de l'issue #23 n'est
-pas validée. Aucune lecture du jeu de test final dans ce workflow.
+service. XGBoost reste le candidat provisoire retenu après application du
+seuil d’effet post hoc de l’issue #23, sans promotion champion. Aucune lecture
+du jeu de test final dans ce workflow.
 
 ## Exécution et lecture des résultats
 
@@ -98,13 +101,17 @@ valeur impossible est signalée, sans fusionner les sous-zones ni changer les
 fractions après observation. Une classe absente du bloc d'évaluation entraîne
 une erreur explicite, plutôt qu'une couverture inventée.
 
-Le résultat enregistré de #23 est `effect_threshold_required` : Friedman
+Le seuil d’effet de 0,01 PR-AUC a été décidé par Basma le 9 novembre 2026,
+**post hoc**, puis appliqué dans #23 : le statut est `provisional`. Friedman
 p=4.328422607120966e-08, W=1 ; comparaison XGBoost moins RF : p Holm=0.01953125,
 différence moyenne=0.02592986057170187, rang-bisérial=+1, IC bootstrap 95 %
-[0.023695277277932792 ; 0.028121637315621423]. La condition numérique d'effet
-non négligeable de §4.9 reste indéfinie. Ni une sélection définitive de XGBoost,
-ni un départage Brier/latence ne sont prononcés. La preuve sur le test final
-exigée par §4.10 reste hors de ce flux et n'est pas encore produite.
+[0.023695277277932792 ; 0.028121637315621423]. La borne inférieure dépasse
+le seuil d’effet 0,01 : XGBoost est retenu provisoirement, sans départage
+Brier/latence ni promotion champion. Le test final a ensuite été consommé le
+10 novembre ; voir la revue #24. Aucune sélection ou modification du candidat
+ne doit s’appuyer sur ce jeu. D47 est ensuite autorisée conditionnellement par Omar, le 12 novembre 2026 ;
+voir `decisions.md`. Aucune exécution n’est autorisée avant merge, CI verte et
+vérification de l’intégration B. La seconde mesure est post hoc, non indépendante.
 
 ## Journal obligatoire des lancements
 
@@ -146,3 +153,12 @@ bloc de choix, sans labels. Le bloc d'évaluation a déjà été observé : ses
 nouveaux résultats sont exploratoires. Le rapport compare la couverture fraude
 au plancher `(1-alpha)-0.02` et donne l'erreur automatique pour chaque alpha.
 Les tests binomiaux utilisent une famille Bonferroni de cinq comparaisons.
+
+## Intégration de la mesure finale
+
+La [PR #102](https://github.com/reda253/fintech-mlops-lsi/pull/102) concerne le
+pipeline et le serving. Ce lien ne présume pas du contenu déployé. Omar et Reda
+ont reçu la décision d’Omar pour l’option B : le Job appelle la CLI, puis
+`step_evaluate` consomme ses artefacts vérifiés sans lire le test final.
+D47 est une autorisation conditionnelle, pas une relance effectuée ; ses
+préconditions de merge, de CI et d’intégration restent à vérifier.

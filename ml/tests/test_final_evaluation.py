@@ -6,6 +6,32 @@ import numpy as np
 import pytest
 
 from ml.scripts import evaluate_final_candidate as evaluation
+from ml.scripts.final_journal import record_event
+
+
+def authorization(journal, decision="D99"):
+    return {
+        "approved": True,
+        "decision_id": decision,
+        "source_sha256": "a" * 64,
+        "model_sha256": "b" * 64,
+        "protocol_sha256": "c" * 64,
+        "journal_sha256": evaluation.sha256(journal),
+    }
+
+
+def reserve(journal, name, digest, model_hash, reason, decision="D99"):
+    return evaluation.reserve_source(
+        journal,
+        name,
+        digest,
+        model_hash,
+        reason,
+        decision_id=decision,
+        protocol_revision="synthetic",
+        protocol_sha256="c" * 64,
+        authorization=authorization(journal, decision),
+    )
 
 
 class FakePreprocessor:
@@ -71,7 +97,7 @@ def test_rejects_changed_candidate_threshold():
         evaluation.validate_candidate(FakeCandidate(), bad)
 
 
-def test_synthetic_cli_writes_only_aggregate_outputs(tmp_path, monkeypatch):
+def test_synthetic_cli_saves_predictions_without_identifiers(tmp_path, monkeypatch):
     model = tmp_path / "model.joblib"
     model.write_bytes(b"synthetic")
     ref = tmp_path / "reference.json"
@@ -109,6 +135,8 @@ def test_synthetic_cli_writes_only_aggregate_outputs(tmp_path, monkeypatch):
         "fraud_probability",
         "include_0",
         "include_1",
+        "gender",
+        "age_group",
     ]
     assert predictions["label"].tolist() == [0, 0, 1, 1]
     assert predictions["fraud_probability"].tolist() == pytest.approx(
@@ -151,20 +179,26 @@ def test_journal_reservation_tracks_hash_and_reason(tmp_path):
     journal = tmp_path / "central.jsonl"
     digest = "a" * 64
     model_hash = "b" * 64
-    first = evaluation.reserve_source(journal, "first.csv", digest, model_hash, None)
-    with pytest.raises(ValueError, match="déjà évaluée"):
-        evaluation.reserve_source(journal, "copy.csv", digest, model_hash, None)
-    second = evaluation.reserve_source(
-        journal, "copy.csv", digest, model_hash, "motif synthétique"
+    journal.write_text(
+        json.dumps({"status": "completed", "source_sha256": digest}) + "\n",
+        encoding="utf-8",
+    )
+    first = reserve(journal, "first.csv", digest, model_hash, "première autorisation")
+    with pytest.raises(ValueError, match="réservée|reason"):
+        reserve(journal, "copy.csv", digest, model_hash, None)
+    record_event(journal, first, "predictions_saved", predictions_sha256="d" * 64)
+    record_event(journal, first, "completed")
+    second = reserve(
+        journal, "copy.csv", digest, model_hash, "motif synthétique", "D100"
     )
     entries = [
         json.loads(line) for line in journal.read_text(encoding="utf-8").splitlines()
     ]
-    assert first != second and len(entries) == 2
-    assert entries[1]["reason"] == "motif synthétique"
-    assert entries[1]["source_sha256"] == digest
-    assert entries[1]["source_name"] == "copy.csv"
-    assert entries[1]["model_sha256"] == model_hash
+    assert first != second and len(entries) == 5
+    assert entries[-1]["reason"] == "motif synthétique"
+    assert entries[-1]["source_sha256"] == digest
+    assert entries[-1]["source_name"] == "copy.csv"
+    assert entries[-1]["model_sha256"] == model_hash
 
 
 def test_previous_journal_format_is_recognized(tmp_path):
@@ -173,8 +207,8 @@ def test_previous_journal_format_is_recognized(tmp_path):
         json.dumps({"status": "completed", "source_sha256": "a" * 64}) + "\n",
         encoding="utf-8",
     )
-    with pytest.raises(ValueError, match="déjà évaluée"):
-        evaluation.reserve_source(journal, "renamed.csv", "a" * 64, "b" * 64, None)
+    with pytest.raises(ValueError, match="réservée|reason"):
+        reserve(journal, "renamed.csv", "a" * 64, "b" * 64, None)
 
 
 def test_age_groups_use_exact_eda_boundaries():
@@ -219,17 +253,19 @@ def test_weighted_metrics_match_sklearn_with_ties_and_weights():
     )
 
     pred = p >= 0.5
-    assert result["accuracy"] == pytest.approx(
+    assert result["accuracy_point_prediction"] == pytest.approx(
         accuracy_score(y, pred, sample_weight=weights)
     )
-    assert result["precision"] == pytest.approx(
+    assert result["precision_point_prediction"] == pytest.approx(
         precision_score(y, pred, sample_weight=weights)
     )
-    assert result["recall"] == pytest.approx(
+    assert result["recall_point_prediction"] == pytest.approx(
         recall_score(y, pred, sample_weight=weights)
     )
-    assert result["f1"] == pytest.approx(f1_score(y, pred, sample_weight=weights))
-    assert result["mcc"] == pytest.approx(
+    assert result["f1_point_prediction"] == pytest.approx(
+        f1_score(y, pred, sample_weight=weights)
+    )
+    assert result["mcc_point_prediction"] == pytest.approx(
         matthews_corrcoef(y, pred, sample_weight=weights)
     )
     assert result["log_loss"] == pytest.approx(
@@ -247,8 +283,8 @@ def test_bootstrap_reproducible_and_group_without_fraud():
     a = bootstrap_intervals(y, p, members, masks, resamples=100, seed=42)
     b = bootstrap_intervals(y, p, members, masks, resamples=100, seed=42)
     assert a == b
-    assert a["groups"]["no_fraud"]["recall"]["ci95"] is None
-    assert a["groups"]["no_fraud"]["recall"]["valid_resamples"] == 0
+    assert a["groups"]["no_fraud"]["recall_point_prediction"]["ci95"] is None
+    assert a["groups"]["no_fraud"]["recall_point_prediction"]["valid_resamples"] == 0
     assert a["parameters"]["resamples"] == 100
 
 

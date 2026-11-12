@@ -6,6 +6,11 @@ import hashlib
 import json
 from pathlib import Path
 
+from ml.scripts.final_history import (
+    HISTORY_DIR,
+    HISTORY_FILES,
+    verify_previous_evaluation,
+)
 from ml.tracking_smoke import _private_client_calls, get_tracking_uri
 
 ARTIFACTS = (
@@ -35,6 +40,7 @@ def verify_saved(output: Path) -> dict:
     result = json.loads((output / "final_metrics.json").read_text(encoding="utf-8"))
     if result.get("predictions_sha256") != expected:
         raise ValueError("Empreinte predictions.csv incohérente avec les métriques")
+    verify_previous_evaluation(output, result, manifest)
     return result
 
 
@@ -73,6 +79,16 @@ def publish_saved(output: Path, tracking_uri: str | None = None) -> dict:
             mlflow.set_tags(
                 {
                     "model_status": "provisional",
+                    **(
+                        {
+                            "measurement_number": "2",
+                            "measurement_post_hoc": "true",
+                            "measurement_independent": "false",
+                            "previous_measurement_date": "2026-11-10",
+                        }
+                        if result.get("previous_evaluation") is not None
+                        else {}
+                    ),
                     "decision_id": result.get("decision_id") or "synthetic_or_legacy",
                     "protocol_revision": result.get("protocol_revision")
                     or "synthetic_or_legacy",
@@ -146,6 +162,11 @@ def publish_saved(output: Path, tracking_uri: str | None = None) -> dict:
             mlflow.log_metrics(metrics)
             for name in ARTIFACTS:
                 mlflow.log_artifact(str(output / name))
+            if result.get("previous_evaluation") is not None:
+                for name in HISTORY_FILES:
+                    mlflow.log_artifact(
+                        str(output / HISTORY_DIR / name), artifact_path=HISTORY_DIR
+                    )
         state["status"] = "published"
         state.pop("error_type", None)
     except Exception as exc:  # noqa: BLE001 - preserve saved results for any MLflow failure
