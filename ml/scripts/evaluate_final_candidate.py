@@ -186,10 +186,22 @@ def evaluate(
     bins = pd.cut(ages, bins=AGE_BINS, labels=AGE_LABELS, include_lowest=True)
     if bins.isna().any() or frame["gender"].isna().any():
         raise ValueError("Genre ou tranche d’âge manquant")
-    features = model.preprocessor.transform(frame.drop(columns="is_fraud"))
-    probabilities = np.asarray(
-        model.classifier.predict_proba(features)[:, 1], dtype=float
-    )
+    features_frame = frame.drop(columns="is_fraud")
+    batch = getattr(model, "batch_probabilities", None)
+    if callable(batch):
+        probabilities = np.asarray(batch(features_frame), dtype=float)
+    else:
+        if (
+            getattr(model, "beta", None) is not None
+            or getattr(model, "calibrator", None) is not None
+        ):
+            raise ValueError(
+                "Correction ou calibrateur externe sans batch_probabilities : évaluation refusée"
+            )
+        features = model.preprocessor.transform(features_frame)
+        probabilities = np.asarray(
+            model.classifier.predict_proba(features)[:, 1], dtype=float
+        )
     if (
         len(probabilities) != len(labels)
         or not np.isfinite(probabilities).all()
@@ -683,14 +695,21 @@ def main(argv=None) -> int:
             "purpose": "missing_bootstrap_and_operational_fairness_no_selection",
         }
     result["predictions_sha256"] = saved["sha256"]
-    (args.output_dir / "final_metrics.json").write_text(
-        json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
-        encoding="utf-8",
+    atomic_write(
+        args.output_dir / "final_metrics.json",
+        (
+            json.dumps(result, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
+        ).encode("utf-8"),
     )
-    groups.to_csv(args.output_dir / "fairness_groups.csv", index=False)
-    (args.output_dir / "bootstrap_intervals.json").write_text(
-        json.dumps(bootstrap, ensure_ascii=False, indent=2, allow_nan=False) + "\n",
-        encoding="utf-8",
+    atomic_write(
+        args.output_dir / "fairness_groups.csv",
+        groups.to_csv(index=False).encode("utf-8"),
+    )
+    atomic_write(
+        args.output_dir / "bootstrap_intervals.json",
+        (
+            json.dumps(bootstrap, ensure_ascii=False, indent=2, allow_nan=False) + "\n"
+        ).encode("utf-8"),
     )
     lines = [
         "# Évaluation du candidat",
@@ -781,8 +800,8 @@ def main(argv=None) -> int:
             f"| {group['attribute']}:{group['group']} | {show(group['recall_point_prediction'])} ; {show(intervals['recall_point_prediction']['ci95'])} | {show(group['false_positive_rate_point_prediction'])} ; {show(intervals['false_positive_rate_point_prediction']['ci95'])} |"
         )
     lines.extend(["", f"Latence locale et intervalles : {latency}."])
-    (args.output_dir / "final_report.md").write_text(
-        "\n".join(lines) + "\n", encoding="utf-8"
+    atomic_write(
+        args.output_dir / "final_report.md", ("\n".join(lines) + "\n").encode("utf-8")
     )
     artifacts = (
         "final_metrics.json",
@@ -792,7 +811,8 @@ def main(argv=None) -> int:
         "predictions.csv",
     )
     manifest = {
-        "artifacts": {name: sha256(args.output_dir / name) for name in artifacts}
+        "status": "complete",
+        "artifacts": {name: sha256(args.output_dir / name) for name in artifacts},
     }
     if previous is not None:
         manifest["artifacts"].update(previous["artifacts"])

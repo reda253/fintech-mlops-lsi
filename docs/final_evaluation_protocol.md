@@ -212,3 +212,21 @@ ces préconditions (exemple Windows, chemin à adapter au volume du Job) :
 ```bat
 --previous-evaluation "CHEMIN_VERS_LE_PREMIER_DOSSIER_DE_RESULTATS"
 ```
+
+### Latence : chemin de montage du Job
+
+`--latency-source` est contrôlé par `guard_training_source` : le chemin résolu
+est obligatoirement terminé par `data/raw/fraudTrain.csv` (comparaison insensible
+à la casse). Dans le Job, monter le fichier de développement complet à
+`/data/raw/fraudTrain.csv` et passer ce chemin. `/data/fraudTrain.csv` est refusé.
+La première passe lit seulement les dates ; les features de latence proviennent
+des lignes development, sans labels de calibration. Vérifier le montage avant
+l’exécution réelle. La CLI manuelle suit les mêmes règles ; l’intégration du Job
+et le choix des volumes restent à vérifier par Omar avant D47.
+
+Les probabilités utilisent `batch_probabilities` si disponible : la correction
+beta et la calibration de premier niveau sont ainsi appliquées par le wrapper.
+Les anciens candidats avec calibration déjà imbriquée conservent leur chemin.
+Sans méthode batch, un wrapper avec correction/calibrateur externes est refusé.
+Le manifeste final porte `status: complete` ; métriques, équité, bootstrap et
+rapport sont écrits atomiquement avant publication.
