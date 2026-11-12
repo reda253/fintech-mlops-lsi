@@ -870,3 +870,109 @@ def test_historical_count_boundaries_and_undefined_metrics_are_preserved(
     assert history["overall"]["automatic_error_rate"] is None
     assert payloads["final_metrics.json"] == original
     json.dumps(history, allow_nan=False)
+
+
+class ParityPreprocessor:
+    def transform(self, frame):
+        return frame[["amt"]].to_numpy(dtype=float)
+
+
+class ParityClassifier:
+    def predict_proba(self, features):
+        p = 0.1 + np.asarray(features, dtype=float)[:, 0] / 2000
+        return np.column_stack((1 - p, p))
+
+
+class ParityCalibrator:
+    def predict(self, probabilities):
+        return np.asarray(probabilities) * 0.8 + 0.05
+
+
+@pytest.mark.parametrize("nested", [False, True])
+def test_evaluation_matches_serving_with_prior_and_calibration(nested):
+    from validation.fold_data import correct_proba
+
+    from ml.src.model.fraud_detector import FraudDetectorModel
+
+    class NestedClassifier:
+        def predict_proba(self, features):
+            raw = ParityClassifier().predict_proba(features)[:, 1]
+            p = ParityCalibrator().predict(correct_proba(raw, 0.5))
+            return np.column_stack((1 - p, p))
+
+    model = FraudDetectorModel(
+        preprocessor=ParityPreprocessor(),
+        classifier=NestedClassifier() if nested else ParityClassifier(),
+        beta=None if nested else 0.5,
+        calibrator=None if nested else ParityCalibrator(),
+        threshold_legit=0.5,
+        threshold_fraud=0.6,
+        alpha=0.02,
+    )
+    frame = evaluation.synthetic_data()
+    _, _, details = evaluation.evaluate(model, frame, return_details=True)
+    records = frame.drop(columns="is_fraud").to_dict(orient="records")
+    expected = np.array([model.calibrated_probability(record) for record in records])
+    assert np.allclose(details["probabilities"], expected, rtol=0, atol=1e-12)
+    for index, record in enumerate(records):
+        serving = model.predict_one(record)
+        assert serving["fraud_probability"] == pytest.approx(round(expected[index], 4))
+        assert (
+            serving["prediction_set"]
+            == np.flatnonzero(details["members"][index]).tolist()
+        )
+    if not nested:
+        uncorrected = ParityClassifier().predict_proba(
+            ParityPreprocessor().transform(frame)
+        )[:, 1]
+        assert not np.allclose(details["probabilities"], uncorrected)
+
+
+def test_no_batch_with_external_calibration_fails_closed():
+    model = Candidate()
+    model.beta = 0.5
+    with pytest.raises(ValueError, match="batch_probabilities"):
+        evaluation.evaluate(model, evaluation.synthetic_data())
+
+
+def test_latency_mount_contract_without_reading_data(tmp_path):
+    from validation.fold_data import guard_training_source
+
+    assert (
+        guard_training_source(tmp_path / "data/raw/fraudTrain.csv").name
+        == "fraudTrain.csv"
+    )
+    assert (
+        guard_training_source(tmp_path / "data/raw/FRAUDTRAIN.CSV").name
+        == "FRAUDTRAIN.CSV"
+    )
+    with pytest.raises(ValueError, match="Source interdite"):
+        guard_training_source(tmp_path / "data/fraudTrain.csv")
+    with pytest.raises(ValueError, match="Source interdite"):
+        guard_training_source(tmp_path / "data/raw/fraudTest.csv")
+
+
+def test_complete_manifest_and_outputs_are_atomic(synthetic_launch, monkeypatch):
+    args, _, _, output = synthetic_launch
+    written = []
+    original = evaluation.atomic_write
+
+    def recorded(path, content):
+        written.append(path.name)
+        return original(path, content)
+
+    monkeypatch.setattr(evaluation, "atomic_write", recorded)
+    assert evaluation.main(args) == 0
+    assert {
+        "predictions.csv",
+        "final_metrics.json",
+        "fairness_groups.csv",
+        "bootstrap_intervals.json",
+        "final_report.md",
+        "artifact_manifest.json",
+    }.issubset(written)
+    manifest = json.loads(
+        (output / "artifact_manifest.json").read_text(encoding="utf-8")
+    )
+    assert manifest["status"] == "complete"
+    assert verify_saved(output)["model_status"] == "provisional"
