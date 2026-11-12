@@ -2,8 +2,11 @@ import json
 from types import SimpleNamespace
 import unittest
 from unittest.mock import patch
+from uuid import uuid4
 
-from auth_kubernetes_smoke import CONTEXT, SIGNING_SECRET, seal_key, signing_env, verify_login
+from auth_kubernetes_smoke import (
+    CONTEXT, SIGNING_SECRET, seal_key, signing_env, verify_login, verify_team_accounts,
+)
 
 
 class AuthKubernetesSmokeTests(unittest.TestCase):
@@ -43,3 +46,20 @@ class AuthKubernetesSmokeTests(unittest.TestCase):
         with patch("auth_kubernetes_smoke.request", side_effect=[(401, None), (200, {})]):
             with self.assertRaisesRegex(ValueError, "invalid JWT"):
                 verify_login(1234)
+
+    def test_team_password_rotation_restarts_only_lab_auth_and_rechecks_identity(self):
+        username = "lab-admin"
+        profile = {"id": str(uuid4()), "username": username, "roles": ["ADMIN"]}
+        with patch("auth_kubernetes_smoke.PortForward") as forwarding, patch(
+            "auth_kubernetes_smoke.kubectl"
+        ) as kubectl, patch("auth_kubernetes_smoke.request", side_effect=[
+            (401, None), (401, None), (401, None), (401, None),
+            (200, {"accessToken": "synthetic"}), (200, profile), (200, profile),
+            (401, None), (200, {"accessToken": "synthetic"}), (200, profile),
+        ]) as send:
+            forwarding.return_value.__enter__.return_value = "http://127.0.0.1:1234"
+            verify_team_accounts("fintech-smoke-fixture", username, "initial", "rotated")
+        self.assertEqual(10, send.call_count)
+        self.assertEqual("PUT", send.call_args_list[6].kwargs["method"])
+        self.assertEqual((CONTEXT, "-n", "fintech-smoke-fixture", "rollout", "restart", "deployment/auth-service"),
+                         kubectl.call_args_list[0].args)

@@ -49,13 +49,13 @@ class NoRedirect(HTTPRedirectHandler):
 HTTP = build_opener(ProxyHandler({}), NoRedirect())
 
 
-def request(port, path, payload=None, token=None):
+def request(port, path, payload=None, token=None, method=None):
     headers = {}
     if token is not None:
         headers["Authorization"] = "Bearer " + token
     if payload is not None:
         headers["Content-Type"] = "application/json"
-    req = Request(f"http://127.0.0.1:{port}{path}", headers=headers,
+    req = Request(f"http://127.0.0.1:{port}{path}", headers=headers, method=method,
                   data=None if payload is None else json.dumps(payload).encode())
     try:
         with HTTP.open(req, timeout=5) as response:
