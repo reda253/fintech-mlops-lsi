@@ -114,7 +114,7 @@ PYTHONPATH=. python -m ml.scripts.attach_viz \
   --tracking-uri http://localhost:5000 --samples 500
 ```
 
-The script scores synthetic rows by default. With `--data-path` it expects the **full** `fraudTrain.csv` (any other filename is refused as unverifiable) and loads only its development zone (earliest 70 % by transaction date): the date pass identifies the development rows, then a second read parses only those lines, so calibration labels and features are never loaded. A pre-filtered extract cannot prove its provenance, so `--development-extract` is refused. The script also refuses `fraudTest.csv` before any read: the official final test stays reserved for the D47 measurement. It logs `viz/<method>_<view>.json` on the version's run, never registers a new version and never moves an alias.
+The script scores synthetic rows by default. With `--data-path` it expects the **full** `fraudTrain.csv` (any other filename is refused as unverifiable) and loads only its development zone (earliest 70 % by transaction date): the date pass identifies the development rows, then a second read parses only those lines, so calibration labels and features are never loaded. A pre-filtered extract cannot prove its provenance, so `--development-extract` is refused. The script also refuses `fraudTest.csv` before any read: the official final test stays reserved for the D48 measurement. It logs `viz/<method>_<view>.json` on the version's run, never registers a new version and never moves an alias.
 
 ## Serving against the registry
 

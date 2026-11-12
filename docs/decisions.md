@@ -55,4 +55,50 @@ Rule (§10.7): **every new architecture decision is added here**, in the PR that
 | D44 | 2026-11-10 | **Post hoc**, Basma accepts alpha grid {0.01, 0.02, 0.03, 0.05, 0.10} and review capacity <= 2%; select the smallest eligible alpha using choice-block review rate only, without labels. The review rate is not monotonic because empty and ambiguous sets both require review. The previously observed evaluation block gives exploratory results after this change | Retain the previous grid; increase review capacity | Investigate the review-rate minimum while keeping the capacity gate; log the protocol-change reason before rerunning |
 | D45 | 2026-11-09 | **Post hoc**, Basma sets the non-negligible PR-AUC effect threshold to 0.01; selection remains provisional and no champion is promoted automatically | Leave the threshold unspecified | Transparently record the decision made after benchmark results were observed |
 | D46 | 2026-11-05 | **Post hoc** internal chronological splits: 50/50 for calibrator fit/comparison; 50/25/25 for conformal quantile fit/alpha choice/evaluation | Reuse the same observations for fitting and evaluation | Keep the comparisons and evaluations distinct; this precision was made after observing the benchmark |
+| D47 | 2026-11-12 | Shared environments run with `AUTH_DEMO_ACCOUNTS=false`: at startup auth-service disables the three V2 demo accounts (sessions revoked) and creates a bootstrap ADMIN from a Sealed Secret (`AUTH_BOOTSTRAP_ADMIN_USERNAME`/`_PASSWORD`, created only if absent, never overwritten). It refuses to start if demo accounts are off and no enabled ADMIN exists. Then one personal account per member: ADMIN for Reda, Assil and Hakima, ANALYSTE for all five; one SIMULATEUR service account for the simulator and a separate one for k6. Local dev keeps the demo accounts | Edit `V2__seed_users.sql`; a V3 migration that disables them everywhere; keep the demo accounts with changed passwords | The V2 passwords are public in the README, including an ADMIN. Editing V2 breaks the Flyway checksum on databases that already ran it, and a V3 would also break local dev and the e2e tests. Creating users needs an ADMIN, so the first one must come from config. Separate service accounts keep simulator and load-test traffic apart in the audit log |
+| D48 | 2026-11-12 | **Post hoc**, accord écrit d’Omar transmis par Basma : accord conditionnel pour une seule seconde mesure du candidat D44 figé : aucune exécution avant merge des correctifs, CI verte et intégration de l’option B. Seule la CLI `evaluate_final_candidate.py` lit la source finale ; le Job consomme ses artefacts vérifiés | Réévaluer avec réglage du modèle ; deux lecteurs officiels du jeu final ; relances par simple changement de motif | Compléter les IC bootstrap et l’audit d’équité absents le 10 novembre, sans nouvelle sélection ni promotion. Seconde mesure post hoc, non indépendante ; conditions détaillées ci-dessous |
 
+## D48 — autorisation conditionnelle de seconde mesure
+
+Accord d’Omar communiqué par Basma le **12 novembre 2026**. Cette entrée
+consigne l’accord ; elle ne certifie ni le merge, ni la CI distante, ni
+l’intégration ou le déploiement de l’option B. Aucun lancement n’est effectué
+par cette décision documentaire.
+
+- Modèle figé : SHA-256
+  `aa1565caf7fed3af833a5613fd76416b6489c9a9f31ee8c523d65e5d9113da33`.
+- Source finale : même SHA-256 que le 10 novembre,
+  `7e50d0ce13f08b45ed1740127fe56f9c90c8eeec37a11288a372afcc61efe3b3`.
+- Alpha = **0,02**, beta, calibrateur, preprocessing et quantiles inchangés :
+  aucun entraînement, aucune calibration, sélection d’alpha ou modification de seuils.
+- Objet : IC bootstrap et audit d’équité manquants lors de la mesure du
+  10 novembre. D48 est une **seconde mesure post hoc, non indépendante**.
+  Les résultats du 10 novembre sont conservés et identifiés dans le rapport ;
+  ils ne sont ni écrasés ni présentés comme une confirmation indépendante.
+- Définitions gelées par genre et tranche d’âge : fraude bloquée automatiquement
+  = ensemble `[1]` ; fraude interceptée = blocage ou revue ; faux positif réel
+  = légitime dans `[1]` ; revue = ensemble `[]` ou `[0,1]`. Les effectifs,
+  dénominateurs et mesures indéfinies doivent être explicites. Les indicateurs
+  au seuil ponctuel 0,5 sont secondaires.
+- Bootstrap : 10 000 tirages, seed 42, IC percentile à 95 %, unité transaction,
+  mêmes tirages pour les métriques et groupes ; hypothèse d’indépendance des
+  transactions signalée comme limite.
+- Préconditions : code corrigé mergé, tests et CI verts, option B intégrée et
+  vérifiée, protocole exact approuvé et empreinte enregistrée, sauvegarde du
+  premier résultat et du journal. Ces préconditions restent à confirmer avant exécution.
+- Journal central configurable sur un volume monté, hors dépôt, réservé avant
+  lecture ; liaison décision/source/modèle/texte du protocole. Une exécution
+  complétée consomme D48, indépendamment du motif et du nom de révision. Toute
+  autre exécution exige une nouvelle décision explicite.
+- Prédictions sauvegardées immédiatement et atomiquement, SHA-256 dans le
+  manifeste vérifié ; métriques, IC, équité, rapports et empreintes publiés dans
+  MLflow. Les prédictions locales sensibles restent protégées ; leur publication
+  éventuelle requiert un emplacement et des droits explicitement convenus.
+- Option **B**, décidée par Omar : la CLI est le seul lecteur final ;
+  `step_evaluate` consomme `final_metrics.json`, les portes et le hash du candidat,
+  et refuse une absence ou incohérence. `run.py` ne charge plus `--test-path`
+  pour l’évaluation finale. `final_metrics.py` demeure partagé. L’adaptation
+  du pipeline revient à Omar ; cette décision ne prétend pas qu’elle est déjà intégrée.
+- Tout problème d’équité est publié tel quel : aucun réglage des seuils ou
+  changement post hoc des définitions après observation. XGBoost reste
+  **provisional** ; aucune promotion n’est autorisée dans cette mesure.
