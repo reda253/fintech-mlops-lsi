@@ -186,6 +186,45 @@ def split_chronologically(
     }
 
 
+def load_development_block(
+    path: str | Path,
+    columns: list[str] | None = None,
+) -> pd.DataFrame:
+    """Charge uniquement la zone development d'un fichier source complet.
+
+    Deux passes : la premiere ne lit que la date de transaction pour identifier
+    les lignes development (70 % les plus anciennes), la seconde ne parse que ces
+    lignes. Les labels et features des zones de calibration ne sont donc jamais
+    lus, meme si le fichier source les contient.
+    """
+
+    csv_path = Path(path)
+    if not csv_path.is_file():
+        raise FileNotFoundError(f"Fichier introuvable : {csv_path}")
+
+    try:
+        dates = pd.read_csv(csv_path, usecols=[DATE_COLUMN])
+    except ValueError as error:
+        raise ValueError(
+            f"Le fichier source doit contenir la colonne '{DATE_COLUMN}' "
+            "pour identifier la zone development."
+        ) from error
+
+    splits = split_chronologically(dates, sort_if_needed=True)
+    development_rows = {int(index) for index in splits["development"].index}
+
+    selected_columns = list(columns) if columns is not None else None
+    if selected_columns is not None and DATE_COLUMN not in selected_columns:
+        selected_columns = [DATE_COLUMN, *selected_columns]
+    data = pd.read_csv(
+        csv_path,
+        usecols=selected_columns,
+        skiprows=lambda line: line > 0 and (line - 1) not in development_rows,
+    )
+    order = parse_transaction_dates(data).argsort(kind="mergesort")
+    return data.iloc[order].reset_index(drop=True)
+
+
 def summarize_split(name: str, data: pd.DataFrame) -> SplitSummary:
     """Calcule les bornes temporelles, effectifs et taux de fraude d'une zone."""
 

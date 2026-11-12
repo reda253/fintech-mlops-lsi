@@ -6,7 +6,10 @@ to demo points. This script rebuilds the 15 projections (3 methods x 5 views)
 from the served version and logs them under ``viz/`` on that version's run.
 
 It never reads ``fraudTest.csv``: the official final test stays reserved for the
-D47 measurement. Use a development extract or synthetic rows instead.
+D47 measurement. Use synthetic rows, or pass the **full** source with
+``--data-path``: only its development zone (earliest 70 % by transaction date) is
+loaded, and the calibration rows are never parsed. A pre-filtered extract cannot
+prove its provenance, so ``--development-extract`` is refused.
 
 ``umap-learn`` is not part of the locked environment, so UMAP uses the existing
 PCA fallback in ``ml.src.visualization.projections``; PCA and UMAP therefore
@@ -39,6 +42,7 @@ for _path in (ROOT_DIR, SRC_DIR):
     if str(_path) not in sys.path:
         sys.path.insert(0, str(_path))
 
+from ml.src.data.load_data import load_development_block
 from ml.src.visualization.projections import (
     export_projections_to_cache,
     generate_all_projections,
@@ -49,6 +53,11 @@ FEATURES = ["amt", "city_pop", "lat", "long", "merch_lat", "merch_long"]
 METHODS = ("pca", "tsne", "umap")
 VIEWS = ("class", "cluster", "outlier", "error", "uncertainty")
 FINAL_TEST_NAME = "fraudtest"
+DEVELOPMENT_SOURCE_NAME = "fraudTrain.csv"
+ERROR_VIEW_WARNING = (
+    "error view = point classification at p >= 0.50; service decisions follow "
+    "the conformal set ([1] block, [0] approve, [] or [0, 1] review)"
+)
 
 
 def projection_keys() -> list[str]:
@@ -57,12 +66,27 @@ def projection_keys() -> list[str]:
 
 
 def ensure_development_source(path: Path) -> None:
-    """Refuse the official final test set; D47 has not been granted yet."""
+    """Refuse the final test and any source whose development provenance is unverifiable."""
     if FINAL_TEST_NAME in path.name.lower():
         raise ValueError(
             "fraudTest.csv is reserved for the official evaluation (D47); "
-            "use a development extract or synthetic rows."
+            "use the full source (only its development zone is read) or synthetic rows."
         )
+    if path.name != DEVELOPMENT_SOURCE_NAME:
+        raise ValueError(
+            f"Unverifiable development source '{path.name}': pass the full "
+            f"{DEVELOPMENT_SOURCE_NAME} (only its development zone is read); "
+            "pre-filtered extracts are refused."
+        )
+
+
+def refuse_development_extract(path: Path) -> None:
+    """Refuse a pre-filtered extract whose development provenance cannot be verified."""
+    raise ValueError(
+        f"{path} is a pre-filtered extract; its development provenance cannot be "
+        "verified. Pass the full source with --data-path instead: only its "
+        "development zone (earliest 70 % by transaction date) is read."
+    )
 
 
 def build_sample(
@@ -70,7 +94,7 @@ def build_sample(
     samples: int,
     seed: int = 42,
 ) -> pd.DataFrame:
-    """Load a development extract or generate a Sparkov-shaped synthetic sample."""
+    """Load the development zone of a full source, or generate a synthetic sample."""
     if samples < 1:
         raise ValueError("--samples must be positive")
     if data_path is None:
@@ -79,7 +103,7 @@ def build_sample(
         return generate_synthetic_data(n_samples=samples, random_state=seed)
 
     ensure_development_source(data_path)
-    return pd.read_csv(data_path)
+    return load_development_block(data_path)
 
 
 def generate_projections(
@@ -92,7 +116,7 @@ def generate_projections(
     sample = prepare_visualization_sample(frame, max_samples=max_samples)
     probabilities = np.asarray(model.batch_probabilities(sample), dtype=float)
     y_pred = (probabilities >= 0.50).astype(np.int64)
-    return generate_all_projections(
+    projections = generate_all_projections(
         df=sample,
         features=FEATURES,
         y_pred=y_pred,
@@ -100,6 +124,10 @@ def generate_projections(
         model_version=model_version,
         max_samples=max_samples,
     )
+    for key, payload in projections.items():
+        if key.endswith("_error"):
+            payload["warning"] = ERROR_VIEW_WARNING
+    return projections
 
 
 def resolve_run_id(client: Any, model_name: str, version: str | None, alias: str | None) -> str:
@@ -182,10 +210,24 @@ def main(argv: list[str] | None = None) -> int:
         "--data-path",
         type=Path,
         default=None,
-        help="Development CSV extract; defaults to synthetic rows.",
+        help=(
+            "Full development source (fraudTrain.csv); only its development zone "
+            "is read. Defaults to synthetic rows."
+        ),
+    )
+    parser.add_argument(
+        "--development-extract",
+        type=Path,
+        default=None,
+        help="Pre-filtered extract: always refused (provenance not verifiable).",
     )
     parser.add_argument("--dry-run", action="store_true")
     args = parser.parse_args(argv)
+
+    if args.data_path is not None and args.development_extract is not None:
+        parser.error("--data-path and --development-extract are mutually exclusive")
+    if args.development_extract is not None:
+        refuse_development_extract(args.development_extract)
 
     import mlflow
     from mlflow.tracking import MlflowClient
