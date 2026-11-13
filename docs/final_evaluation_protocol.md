@@ -156,25 +156,31 @@ Le journal doit être monté de façon persistante et être accessible à l’ut
 du Job. Les prédictions doivent figurer dans le manifeste vérifié.
 
 L’adaptation est réalisée dans `ml/src/pipeline` : `run.py --mode evaluate`
-charge le modèle gelé du registry et `step_evaluate` vérifie puis consomme le
-répertoire D48 (`artifact_manifest.json`, `predictions.csv`, historique et
-empreintes du modèle). Artefact absent, empreinte du candidat incorrecte,
-manifeste altéré, prédictions modifiées, décision différente de D48 ou
-alpha/seuils incohérents font échouer le pipeline avant toute lecture de la
-source finale et avant l’ouverture du run MLflow. Le mode évaluation ne
-entraîne, n’enregistre et ne promeut rien.
+charge le joblib gelé (`--candidate-model`), vérifie son empreinte contre le
+candidat D44 approuvé, charge le modèle du registry MLflow et exige des
+probabilités identiques sur une sonde fixe. Un modèle différent possédant les
+mêmes alpha et seuils est donc refusé. `step_evaluate` vérifie ensuite le
+répertoire D48 : manifeste, `predictions.csv`, historique, bornes des métriques,
+`source_sha256` approuvée pour D48 et empreintes. Artefact absent, empreinte du
+candidat incorrecte, source différente, manifeste altéré, prédictions modifiées,
+décision différente de D48, métrique hors bornes ou alpha/seuils incohérents
+font échouer le pipeline avant toute lecture de la source finale et avant
+l’ouverture du run MLflow. Le mode évaluation n’entraîne, n’enregistre et ne
+promeut rien.
 
 ```bash
 PYTHONPATH=. python -m ml.src.pipeline.run --mode evaluate \
   --evaluation-dir /outside/repo/d48-results \
-  --candidate-sha256 aa1565caf7fed3af833a5613fd76416b6489c9a9f31ee8c523d65e5d9113da33 \
+  --candidate-model /outside/repo/d44/candidate.joblib \
   --model-uri models:/fraud-detector/1 \
   --baseline-pr-auc <reference-pr-auc> \
   --tracking-uri http://localhost:5000
 ```
 
-Le lancement D48 reste conditionnel : merge des correctifs, tests et CI verts,
-puis confirmation de cette intégration. Il ne déclenche aucune promotion.
+Le joblib gelé et le répertoire D48 sont montés en lecture seule ; aucun
+`fraudTest.csv` n’est monté dans ce Job. Le lancement D48 reste conditionnel :
+merge des correctifs, tests et CI verts, puis confirmation de cette intégration.
+Il ne déclenche aucune promotion.
 
 ### Préparation de la seconde mesure, sans exécution
 

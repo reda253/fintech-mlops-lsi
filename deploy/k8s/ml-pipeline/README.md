@@ -75,17 +75,29 @@ training run:
    and `--no-register`. Real training never reads `fraudTest.csv`; it cannot
    register without the verified D48 evaluation.
 
-For the D48 evaluation, run a separate Job (do **not** mount `fraudTest.csv`):
+For the D48 evaluation, run a separate Job (do **not** mount `fraudTest.csv`).
+Mount the frozen D44 joblib and the D48 output directory read-only:
 
 ```yaml
+volumeMounts:
+  - name: d44-candidate
+    mountPath: /data/d44
+    readOnly: true
+  - name: d48-results
+    mountPath: /data/d48-results
+    readOnly: true
 args:
   - --mode=evaluate
   - --evaluation-dir=/data/d48-results
-  - --candidate-sha256=aa1565caf7fed3af833a5613fd76416b6489c9a9f31ee8c523d65e5d9113da33
+  - --candidate-model=/data/d44/candidate.joblib
   - --model-uri=models:/fraud-detector/1
   - --baseline-pr-auc=<reference-pr-auc>
 ```
 
-The artifact directory is produced once by `evaluate_final_candidate.py` and
-mounted read-only. `step_evaluate` verifies every hash and refuses a missing or
-inconsistent directory; no final-test source is mounted in this Job.
+The pipeline hashes `/data/d44/candidate.joblib`, requires the approved
+`aa1565ca…` digest, and binds the MLflow-served model to it through a fixed
+probe; a different model with the same alpha/thresholds is refused before any
+run is opened. The artifact directory is produced once by
+`evaluate_final_candidate.py`; `step_evaluate` verifies every hash, the approved
+source (`7e50d0ce…`), metric bounds and consistency, and refuses a missing or
+inconsistent directory. No final-test source is mounted in this Job.

@@ -14,6 +14,8 @@ import pandas as pd
 import pytest
 
 from ml.src.evaluation.final_artifacts import (
+    APPROVED_D48_MODEL_SHA256,
+    APPROVED_D48_SOURCE_SHA256,
     HISTORY_ARTIFACTS,
     REQUIRED_ARTIFACTS,
     FinalEvaluationError,
@@ -22,11 +24,13 @@ from ml.src.evaluation.final_artifacts import (
 from ml.src.pipeline.smoke import dispose_sqlite_tracking_engine
 from ml.src.pipeline.steps import step_evaluate
 
-MODEL_SHA = "a" * 64
-SOURCE_SHA = "b" * 64
+MODEL_SHA = APPROVED_D48_MODEL_SHA256
+SOURCE_SHA = APPROVED_D48_SOURCE_SHA256
 PROTOCOL_SHA = "c" * 64
 REFERENCE_SHA = "d" * 64
 SCRIPT_SHA = "e" * 64
+LEGIT_COVERED = 89
+FRAUD_COVERED = 10
 
 
 def _sha(path: Path) -> str:
@@ -42,20 +46,26 @@ def _write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def _overall(rows: int = 100, frauds: int = 10) -> dict[str, Any]:
+    legit = rows - frauds
+    coverage_legit = LEGIT_COVERED / legit
+    coverage_fraud = FRAUD_COVERED / frauds
     return {
         "pr_auc": 0.81,
         "roc_auc": 0.92,
         "brier_score": 0.08,
-        "coverage_legitimate": 0.99,
-        "coverage_fraud": 0.995,
+        "coverage_legitimate": coverage_legit,
+        "coverage_fraud": coverage_fraud,
         "review_rate": 0.01,
         "automation_rate": 0.99,
         "automatic_error_rate": 0.02,
         "n_transactions": rows,
         "fraud_count": frauds,
-        "class_counts": {"0": rows - frauds, "1": frauds},
-        "covered_counts": {"0": rows - frauds, "1": frauds},
-        "coverage_by_class": {"0": 0.99, "1": 0.995},
+        "class_counts": {"0": legit, "1": frauds},
+        "covered_counts": {"0": LEGIT_COVERED, "1": FRAUD_COVERED},
+        "coverage_by_class": {
+            "0": coverage_legit,
+            "1": coverage_fraud,
+        },
     }
 
 
@@ -80,18 +90,25 @@ def build_artifact(
     *,
     rows: int = 100,
     predictions_rows: int | None = None,
+    predictions: pd.DataFrame | None = None,
     decision_id: str = "D48",
     scope: str = "final_test",
     promotion_ready: bool = False,
     alpha: float = 0.02,
     threshold_legit: float = 0.5,
     threshold_fraud: float = 0.6,
+    source_sha256: str = SOURCE_SHA,
     overall_overrides: dict[str, Any] | None = None,
+    latency: dict[str, Any] | None = None,
 ) -> Path:
     output = tmp_path / "d48"
     output.mkdir()
-    predictions = _predictions(rows if predictions_rows is None else predictions_rows)
-    predictions.to_csv(output / "predictions.csv", index=False)
+    frame = (
+        predictions
+        if predictions is not None
+        else _predictions(rows if predictions_rows is None else predictions_rows)
+    )
+    frame.to_csv(output / "predictions.csv", index=False)
     predictions_sha = _sha(output / "predictions.csv")
 
     history_dir = output / "previous_evaluation"
@@ -112,7 +129,7 @@ def build_artifact(
         "decision_id": decision_id,
         "protocol_revision": "d48-test",
         "model_sha256": MODEL_SHA,
-        "source_sha256": SOURCE_SHA,
+        "source_sha256": source_sha256,
         "reference_sha256": REFERENCE_SHA,
         "protocol_sha256": PROTOCOL_SHA,
         "evaluation_script_sha256": SCRIPT_SHA,
@@ -124,7 +141,9 @@ def build_artifact(
         "promotion_ready": promotion_ready,
         "predictions_sha256": predictions_sha,
         "overall": overall,
-        "latency": {"status": "measured", "p95_ms": 12.0, "calls": 1000},
+        "latency": latency
+        if latency is not None
+        else {"status": "measured", "p95_ms": 12.0, "calls": 1000},
         "previous_evaluation": {"artifacts": history_artifacts},
         "measurement": {"number": 2, "post_hoc": True, "independent": False},
         "fairness": [],
@@ -169,21 +188,23 @@ def test_valid_artifact_maps_metrics(tmp_path: Path):
 
     evaluation = load_verified_final_evaluation(
         directory,
-        expected_model_sha256=MODEL_SHA,
         expected_alpha=0.02,
         expected_threshold_legit=0.5,
         expected_threshold_fraud=0.6,
     )
 
     assert evaluation.metrics["pr_auc"] == pytest.approx(0.81)
-    assert evaluation.metrics["conformal_coverage"] == pytest.approx(1.0)
-    assert evaluation.metrics["conformal_coverage_legit"] == pytest.approx(0.99)
-    assert evaluation.metrics["conformal_coverage_fraud"] == pytest.approx(0.995)
+    assert evaluation.metrics["conformal_coverage"] == pytest.approx(0.99)
+    assert evaluation.metrics["conformal_coverage_legit"] == pytest.approx(
+        LEGIT_COVERED / 90
+    )
+    assert evaluation.metrics["conformal_coverage_fraud"] == pytest.approx(1.0)
     assert evaluation.metrics["latency_p95_sec"] == pytest.approx(0.012)
     assert evaluation.metrics["n_test"] == 100.0
     assert evaluation.metrics["n_test_fraud"] == 10.0
     assert evaluation.provenance["decision_id"] == "D48"
     assert evaluation.provenance["model_sha256"] == MODEL_SHA
+    assert evaluation.provenance["source_sha256"] == SOURCE_SHA
 
 
 def test_tampered_artifact_is_refused(tmp_path: Path):
@@ -226,6 +247,13 @@ def test_wrong_model_hash_is_refused(tmp_path: Path):
         load_verified_final_evaluation(directory, expected_model_sha256="9" * 64)
 
 
+def test_source_hash_must_match_the_approved_d48_source(tmp_path: Path):
+    directory = build_artifact(tmp_path, source_sha256="9" * 64)
+
+    with pytest.raises(FinalEvaluationError, match="source approuvee"):
+        load_verified_final_evaluation(directory)
+
+
 def test_alpha_and_threshold_mismatch_are_refused(tmp_path: Path):
     directory = build_artifact(tmp_path)
     with pytest.raises(FinalEvaluationError, match="alpha"):
@@ -261,6 +289,108 @@ def test_prediction_row_count_mismatch_is_refused(tmp_path: Path):
     directory = build_artifact(tmp_path, rows=100, predictions_rows=99)
 
     with pytest.raises(FinalEvaluationError, match="nombre de lignes"):
+        load_verified_final_evaluation(directory)
+
+
+@pytest.mark.parametrize(
+    ("override", "message"),
+    [
+        ({"pr_auc": 1.2}, "pr_auc"),
+        ({"roc_auc": -0.1}, "roc_auc"),
+        ({"brier_score": 1.5}, "brier_score"),
+        ({"review_rate": -0.01}, "review_rate"),
+        ({"review_rate": 0.02}, "review_rate \\+ automation_rate"),
+        ({"coverage_legitimate": 1.5}, "coverage_legitimate"),
+        ({"coverage_fraud": -0.2}, "coverage_fraud"),
+        ({"automation_rate": 1.5}, "automation_rate"),
+        ({"automatic_error_rate": 2.0}, "automatic_error_rate"),
+        ({"covered_counts": {"0": 200, "1": 10}}, "covered_counts"),
+        ({"class_counts": {"0": 90, "1": 20}}, "class_counts"),
+        ({"fraud_count": 0}, "aucune fraude"),
+    ],
+)
+def test_out_of_bounds_metrics_are_refused(
+    tmp_path: Path, override: dict[str, Any], message: str
+):
+    directory = build_artifact(tmp_path, overall_overrides=override)
+
+    with pytest.raises(FinalEvaluationError, match=message):
+        load_verified_final_evaluation(directory)
+
+
+@pytest.mark.parametrize(
+    ("alpha", "threshold_legit", "threshold_fraud", "message"),
+    [
+        (0.0, 0.5, 0.6, "alpha"),
+        (1.0, 0.5, 0.6, "alpha"),
+        (0.02, -0.1, 0.6, "threshold_legit"),
+        (0.02, 0.5, 1.1, "threshold_fraud"),
+    ],
+)
+def test_out_of_bounds_alpha_and_thresholds_are_refused(
+    tmp_path: Path,
+    alpha: float,
+    threshold_legit: float,
+    threshold_fraud: float,
+    message: str,
+):
+    directory = build_artifact(
+        tmp_path,
+        alpha=alpha,
+        threshold_legit=threshold_legit,
+        threshold_fraud=threshold_fraud,
+    )
+
+    with pytest.raises(FinalEvaluationError, match=message):
+        load_verified_final_evaluation(directory)
+
+
+@pytest.mark.parametrize(
+    ("column", "value", "message"),
+    [
+        ("fraud_probability", 1.5, "fraud_probability"),
+        ("fraud_probability", -0.1, "fraud_probability"),
+        ("label", 2, "label"),
+        ("include_0", 2, "include_0"),
+        ("include_1", -1, "include_0/include_1"),
+        ("label", np.nan, "non numeriques"),
+    ],
+)
+def test_out_of_bounds_predictions_are_refused(
+    tmp_path: Path, column: str, value: Any, message: str
+):
+    predictions = _predictions()
+    predictions.loc[0, column] = value
+    directory = build_artifact(tmp_path, predictions=predictions)
+
+    with pytest.raises(FinalEvaluationError, match=message):
+        load_verified_final_evaluation(directory)
+
+
+def test_prediction_fraud_count_must_match(tmp_path: Path):
+    predictions = _predictions()
+    predictions.loc[0, "label"] = 0
+    directory = build_artifact(tmp_path, predictions=predictions)
+
+    with pytest.raises(FinalEvaluationError, match="nombre de fraudes"):
+        load_verified_final_evaluation(directory)
+
+
+@pytest.mark.parametrize(
+    ("latency", "message"),
+    [
+        ({"status": "measured", "p95_ms": 0.0, "calls": 1000}, "strictement positif"),
+        ({"status": "measured", "p95_ms": 12.0, "calls": 0}, "latency.calls"),
+        ({"status": "measured", "p95_ms": 12.0, "calls": -5}, "latency.calls"),
+        ({"status": "measured", "p95_ms": 12.0}, "latency.calls"),
+    ],
+)
+def test_invalid_latency_is_refused(
+    tmp_path: Path, latency: dict[str, Any], message: str
+):
+    directory = build_artifact(tmp_path, latency=latency)
+
+    with pytest.raises(FinalEvaluationError, match=message):
         load_verified_final_evaluation(directory)
 
 

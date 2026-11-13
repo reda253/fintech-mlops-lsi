@@ -67,19 +67,19 @@ PYTHONPATH=. python -m ml.src.pipeline.run \
 
 ## Final evaluation (D48, option B)
 
-`ml/scripts/evaluate_final_candidate.py` is the only reader of `fraudTest.csv`. It writes a new directory outside the repository (`final_metrics.json`, `predictions.csv`, `artifact_manifest.json`, etc.). The pipeline then consumes it:
+`ml/scripts/evaluate_final_candidate.py` is the only reader of `fraudTest.csv`. It writes a new directory outside the repository (`final_metrics.json`, `predictions.csv`, `artifact_manifest.json`, etc.). The pipeline then consumes it and binds it to the frozen candidate:
 
 ```bash
 PYTHONPATH=. python -m ml.src.pipeline.run \
   --mode evaluate \
   --evaluation-dir /outside/repo/d48-results \
-  --candidate-sha256 <frozen-model-sha256> \
+  --candidate-model /outside/repo/d44/candidate.joblib \
   --model-uri models:/fraud-detector/1 \
   --baseline-pr-auc <reference-pr-auc> \
   --tracking-uri http://localhost:5000
 ```
 
-`step_evaluate` verifies the complete manifest, every SHA-256 (including `predictions.csv`), the D48 decision, the previous-measurement history, and the alpha/thresholds of the served model. A missing, partial or tampered artifact is refused before any evaluation metric is logged; the pipeline never reads the source. The evaluation mode never trains, registers or promotes; it only logs the verified metrics and gates.
+`--candidate-model` is the frozen D44 joblib. The pipeline hashes it, requires the approved `aa1565ca…` digest, loads the MLflow-served model and requires identical calibrated probabilities on a fixed probe — a different model with the same alpha/thresholds is refused. `step_evaluate` then verifies the complete manifest, every SHA-256 (including `predictions.csv`), the D48 decision, the approved `source_sha256` (`7e50d0ce…`), the previous-measurement history, metric bounds/count consistency, and the alpha/thresholds of the served model. Any mismatch is refused before any evaluation metric is logged; the pipeline never reads the source. The evaluation mode never trains, registers or promotes; it only logs the verified metrics and gates.
 
 ## Model registry and P2 hand-off
 

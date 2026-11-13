@@ -9,7 +9,7 @@ Usage:
     # Official D48 evaluation (consumes verified artifacts)
     python -m ml.src.pipeline.run --mode evaluate \
         --evaluation-dir /outside/repo/d48-results \
-        --candidate-sha256 <frozen-model-sha256> \
+        --candidate-model /outside/repo/d44/candidate.joblib \
         --model-uri models:/fraud-detector/1 \
         --tracking-uri http://localhost:5000
 """
@@ -26,6 +26,10 @@ from pathlib import Path
 
 import mlflow
 
+from ml.src.evaluation.model_binding import (
+    assert_model_binding,
+    load_frozen_candidate,
+)
 from ml.src.model.registry import build_input_example
 from ml.src.pipeline.promote import promote as open_promotion_pr
 from ml.src.pipeline.steps import (
@@ -69,7 +73,7 @@ def _run_evaluation(
     tracking_uri: str,
     experiment: str,
     evaluation_dir: Path,
-    candidate_sha256: str,
+    candidate_model: Path,
     model_uri: str | None,
     model_name: str,
     model_version: str | None,
@@ -79,6 +83,10 @@ def _run_evaluation(
     """Log a verified D48 artifact for the frozen candidate; never trains."""
 
     uri = model_uri or f"models:/{model_name}/{model_version or '1'}"
+    frozen = load_frozen_candidate(candidate_model)
+    model = _load_python_model(uri)
+    assert_model_binding(frozen, model)
+
     mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment)
     with mlflow.start_run(run_name="pipeline-evaluate"):
@@ -87,13 +95,15 @@ def _run_evaluation(
         mlflow.set_tag("decision_id", "D48")
         mlflow.set_tag("evaluation_source", "final_evaluation_artifacts")
         mlflow.set_tag("model_uri", uri)
+        mlflow.set_tag("candidate_sha256", frozen.sha256)
+        mlflow.set_tag("model_binding", "frozen_joblib_verified")
         mlflow.log_param("evaluation_dir", str(Path(evaluation_dir)))
+        mlflow.log_param("candidate_model", str(frozen.path))
 
-        model = _load_python_model(uri)
         metrics = step_evaluate(
             pyfunc_model=model,
             evaluation_dir=Path(evaluation_dir),
-            expected_model_sha256=candidate_sha256,
+            expected_model_sha256=frozen.sha256,
             parent_run=True,
         )
         gates = step_quality_gates(
@@ -121,7 +131,7 @@ def run_pipeline(
     champion_pr_auc: float | None = None,
     baseline_pr_auc: float | None = None,
     evaluation_dir: Path | None = None,
-    candidate_sha256: str | None = None,
+    candidate_model: Path | None = None,
     model_uri: str | None = None,
     model_version: str | None = None,
     alpha: float | None = None,
@@ -141,8 +151,8 @@ def run_pipeline(
     if mode == "evaluate":
         if evaluation_dir is None:
             raise ValueError("--evaluation-dir est requis avec --mode evaluate.")
-        if not candidate_sha256:
-            raise ValueError("--candidate-sha256 est requis avec --mode evaluate.")
+        if candidate_model is None:
+            raise ValueError("--candidate-model est requis avec --mode evaluate.")
         if data_path is not None:
             raise ValueError("--data-path n'est pas utilise avec --mode evaluate.")
         if test_mode:
@@ -151,6 +161,8 @@ def run_pipeline(
     else:
         if evaluation_dir is not None:
             raise ValueError("--evaluation-dir est reserve a --mode evaluate.")
+        if candidate_model is not None:
+            raise ValueError("--candidate-model est reserve a --mode evaluate.")
         if real_mode and register:
             raise ValueError(
                 "Un run reel ne peut pas s'enregistrer sans l'evaluation D48 verifiee; "
@@ -168,7 +180,7 @@ def run_pipeline(
             tracking_uri=tracking_uri,
             experiment=experiment,
             evaluation_dir=Path(evaluation_dir),
-            candidate_sha256=candidate_sha256,
+            candidate_model=Path(candidate_model),
             model_uri=model_uri,
             model_name=model_name,
             model_version=model_version,
@@ -395,9 +407,10 @@ def main() -> None:
         help="Verified D48 output directory; only valid with --mode evaluate.",
     )
     parser.add_argument(
-        "--candidate-sha256",
+        "--candidate-model",
+        type=Path,
         default=None,
-        help="Expected frozen candidate SHA-256; required with --mode evaluate.",
+        help="Frozen D44 joblib; required with --mode evaluate to bind the served model.",
     )
     parser.add_argument("--model-uri", default=None)
     parser.add_argument("--test-mode", action="store_true")
@@ -425,7 +438,7 @@ def main() -> None:
         champion_pr_auc=args.champion_pr_auc,
         baseline_pr_auc=args.baseline_pr_auc,
         evaluation_dir=args.evaluation_dir,
-        candidate_sha256=args.candidate_sha256,
+        candidate_model=args.candidate_model,
         model_uri=args.model_uri,
         model_version=args.model_version,
         alpha=args.alpha,
