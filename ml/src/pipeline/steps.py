@@ -30,6 +30,7 @@ import numpy as np
 import pandas as pd
 from sklearn.metrics import average_precision_score, brier_score_loss, roc_auc_score
 
+from ml.src.evaluation.final_artifacts import load_verified_final_evaluation
 from ml.src.model.calibration import (
     correct_proba,
     fit_calibrator,
@@ -89,11 +90,56 @@ CATEGORIES = [
     "travel",
 ]
 STATES = [
-    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "FL", "GA", "HI", "ID",
-    "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS",
-    "MO", "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK",
-    "OR", "PA", "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV",
-    "WI", "WY",
+    "AL",
+    "AK",
+    "AZ",
+    "AR",
+    "CA",
+    "CO",
+    "CT",
+    "DE",
+    "FL",
+    "GA",
+    "HI",
+    "ID",
+    "IL",
+    "IN",
+    "IA",
+    "KS",
+    "KY",
+    "LA",
+    "ME",
+    "MD",
+    "MA",
+    "MI",
+    "MN",
+    "MS",
+    "MO",
+    "MT",
+    "NE",
+    "NV",
+    "NH",
+    "NJ",
+    "NM",
+    "NY",
+    "NC",
+    "ND",
+    "OH",
+    "OK",
+    "OR",
+    "PA",
+    "RI",
+    "SC",
+    "SD",
+    "TN",
+    "TX",
+    "UT",
+    "VT",
+    "VA",
+    "WA",
+    "WV",
+    "WI",
+    "WY",
 ]
 
 DEFAULT_XGB_PARAMS = {
@@ -173,10 +219,9 @@ def generate_synthetic_data(
         # learnable signal independent of the amount.
         night_offsets = rng.integers(0, 4 * 60, size=fraud_mask.sum())
         timestamps = pd.Series(timestamps)
-        timestamps.loc[fraud_mask] = (
-            timestamps.loc[fraud_mask].dt.normalize()
-            + pd.to_timedelta(60 + night_offsets, unit="m")
-        )
+        timestamps.loc[fraud_mask] = timestamps.loc[
+            fraud_mask
+        ].dt.normalize() + pd.to_timedelta(60 + night_offsets, unit="m")
         timestamps = pd.DatetimeIndex(timestamps)
 
     frame = pd.DataFrame(
@@ -194,7 +239,9 @@ def generate_synthetic_data(
             "merch_lat": np.round(merch_lat, 6),
             "merch_long": np.round(merch_long, 6),
             TARGET_COLUMN: is_fraud,
-            "trans_num": [f"synth-{random_state}-{index:06d}" for index in range(n_samples)],
+            "trans_num": [
+                f"synth-{random_state}-{index:06d}" for index in range(n_samples)
+            ],
         }
     )
     return frame.sort_values(DATE_COLUMN).reset_index(drop=True)
@@ -214,7 +261,9 @@ def _read_sparkov_csv(path: Path) -> pd.DataFrame:
     return frame.loc[order].reset_index(drop=True)
 
 
-def _chronological_blocks(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+def _chronological_blocks(
+    frame: pd.DataFrame,
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     n_rows = len(frame)
     if n_rows < 30:
         raise ValueError("Le jeu de donnees doit contenir au moins 30 lignes.")
@@ -226,17 +275,22 @@ def _chronological_blocks(frame: pd.DataFrame) -> tuple[pd.DataFrame, pd.DataFra
     conformal_calib = frame.iloc[calibration_end:].copy()
     for block in (prob_calib, conformal_calib):
         if block[TARGET_COLUMN].nunique() < 2:
-            raise ValueError("Chaque bloc de calibration doit contenir les deux classes.")
+            raise ValueError(
+                "Chaque bloc de calibration doit contenir les deux classes."
+            )
     return development, prob_calib, conformal_calib
 
 
 def step_prepare(
     data_path: Path | None = None,
-    test_path: Path | None = None,
     test_mode: bool = False,
     parent_run: bool = True,
 ) -> dict[str, Any]:
-    """Phase 1: validate the dataset and split it chronologically (§4.2)."""
+    """Phase 1: validate the dataset and split it chronologically (§4.2).
+
+    Real mode reads only ``fraudTrain.csv``. The final test set is never opened
+    here: its single reader is ``ml/scripts/evaluate_final_candidate.py`` (D48).
+    """
 
     with mlflow.start_run(run_name="1_prepare", nested=parent_run):
         if test_mode or data_path is None:
@@ -252,29 +306,24 @@ def step_prepare(
             data_path = Path(data_path)
             if not data_path.is_file():
                 raise FileNotFoundError(f"fraudTrain introuvable: {data_path}")
-            if test_path is None:
-                test_path = data_path.parent / "fraudTest.csv"
-            test_path = Path(test_path)
-            if not test_path.is_file():
-                raise FileNotFoundError(
-                    f"fraudTest introuvable: {test_path}. Utilisez --test-mode pour le smoke test."
-                )
             frame = _read_sparkov_csv(data_path)
-            test_frame = _read_sparkov_csv(test_path)
+            test_frame = None
+            test_data_hash = None
             data_hash = sha256_file(data_path)
-            test_data_hash = sha256_file(test_path)
             source = "sparkov"
 
         development, prob_calib, conformal_calib = _chronological_blocks(frame)
 
         mlflow.log_param("data_source", source)
         mlflow.log_param("data_hash", data_hash)
-        mlflow.log_param("test_data_hash", test_data_hash)
+        if test_data_hash is not None:
+            mlflow.log_param("test_data_hash", test_data_hash)
         mlflow.log_metric("total_samples", len(frame))
         mlflow.log_metric("development_samples", len(development))
         mlflow.log_metric("prob_calib_samples", len(prob_calib))
         mlflow.log_metric("conformal_samples", len(conformal_calib))
-        mlflow.log_metric("test_samples", len(test_frame))
+        if test_frame is not None:
+            mlflow.log_metric("test_samples", len(test_frame))
 
         return {
             "development": development,
@@ -367,7 +416,11 @@ def step_train(
         mlflow.log_param("beta", beta)
         mlflow.log_param("undersampling_ratio", UNDERSAMPLING_RATIO)
         mlflow.log_params(
-            {f"xgb_{key}": value for key, value in model_params.items() if np.isscalar(value)}
+            {
+                f"xgb_{key}": value
+                for key, value in model_params.items()
+                if np.isscalar(value)
+            }
         )
         mlflow.log_metric("preprocess_duration_seconds", preprocess_duration)
         mlflow.log_metric("train_duration_seconds", train_duration)
@@ -447,7 +500,9 @@ def step_calibrate(
         fit_df, choice_df = _chronological_parts(prob_calib_df, (1, 1))
         for block in (fit_df, choice_df):
             if block[TARGET_COLUMN].nunique() < 2:
-                raise ValueError("Chaque moitie de calibration doit contenir les deux classes.")
+                raise ValueError(
+                    "Chaque moitie de calibration doit contenir les deux classes."
+                )
 
         fit_probabilities = _raw_probabilities(train_result, fit_df)
         fit_target = fit_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
@@ -524,7 +579,9 @@ def step_conformal(
         rows: list[dict[str, Any]] = []
         for candidate in candidates:
             try:
-                thresholds = mondrian_thresholds(fit_probabilities, fit_target, candidate)
+                thresholds = mondrian_thresholds(
+                    fit_probabilities, fit_target, candidate
+                )
             except ValueError as exc:
                 rows.append(
                     {"alpha": candidate, "status": "inapplicable", "reason": str(exc)}
@@ -676,13 +733,17 @@ def _measure_latency(pyfunc_model: FraudDetectorModel, sample: pd.DataFrame) -> 
     return float(np.percentile(durations, 95))
 
 
-def step_evaluate(
+def step_evaluate_synthetic(
     pyfunc_model: FraudDetectorModel,
     test_df: pd.DataFrame,
     latency_sample_size: int = LATENCY_SAMPLE_SIZE,
     parent_run: bool = True,
 ) -> dict[str, float | None]:
-    """Phase 5: real metrics on the independent fraudTest.csv block."""
+    """Phase 5 (test mode only): metrics on the synthetic holdout.
+
+    The real final test set is never read by the pipeline. Real evaluation goes
+    through :func:`step_evaluate`, which consumes the verified D48 artifacts.
+    """
 
     with mlflow.start_run(run_name="5_evaluate", nested=parent_run):
         target = test_df[TARGET_COLUMN].to_numpy(dtype=np.int64)
@@ -702,8 +763,12 @@ def step_evaluate(
             pyfunc_model.threshold_fraud,
         )
         covered = np.where(target == 0, legit_in, fraud_in)
-        coverage_legit = float(legit_in[target == 0].mean()) if np.any(target == 0) else 0.0
-        coverage_fraud = float(fraud_in[target == 1].mean()) if np.any(target == 1) else 0.0
+        coverage_legit = (
+            float(legit_in[target == 0].mean()) if np.any(target == 0) else 0.0
+        )
+        coverage_fraud = (
+            float(fraud_in[target == 1].mean()) if np.any(target == 1) else 0.0
+        )
 
         review_rate = float((set_size != 1).mean())
         automation_rate = 1.0 - review_rate
@@ -744,6 +809,49 @@ def step_evaluate(
         return metrics
 
 
+def step_evaluate(
+    pyfunc_model: FraudDetectorModel,
+    evaluation_dir: Path,
+    expected_model_sha256: str | None = None,
+    parent_run: bool = True,
+) -> dict[str, float | None]:
+    """Phase 5: consume the verified D48 evaluation artifacts.
+
+    ``evaluate_final_candidate.py`` is the only reader of the final test set.
+    This step refuses a missing, partial or inconsistent directory and never
+    opens the source itself.
+    """
+
+    missing = [
+        name
+        for name in ("alpha", "threshold_legit", "threshold_fraud")
+        if getattr(pyfunc_model, name, None) is None
+    ]
+    if missing:
+        raise ValueError(
+            "Le modele charge doit exposer alpha, threshold_legit et threshold_fraud; "
+            f"attributs manquants: {missing}"
+        )
+
+    evaluation = load_verified_final_evaluation(
+        evaluation_dir,
+        expected_model_sha256=expected_model_sha256,
+        expected_alpha=float(pyfunc_model.alpha),
+        expected_threshold_legit=float(pyfunc_model.threshold_legit),
+        expected_threshold_fraud=float(pyfunc_model.threshold_fraud),
+    )
+    with mlflow.start_run(run_name="5_evaluate", nested=parent_run):
+        for key, value in evaluation.metrics.items():
+            if value is not None:
+                mlflow.log_metric(key, value)
+        for key, value in evaluation.provenance.items():
+            rendered = str(value).lower() if isinstance(value, bool) else str(value)
+            mlflow.set_tag(f"evaluation_{key}", rendered)
+        mlflow.set_tag("evaluation_source", "final_test")
+        mlflow.set_tag("evaluation_status", "verified")
+        return evaluation.metrics
+
+
 def load_logreg_params(path: Path | None = None) -> dict[str, Any]:
     """Load ``models.logreg.params`` with a conservative fallback."""
 
@@ -755,7 +863,9 @@ def load_logreg_params(path: Path | None = None) -> dict[str, Any]:
             if isinstance(params, dict) and params:
                 return dict(params)
         except (KeyError, TypeError, json.JSONDecodeError) as exc:
-            logger.warning("Invalid logreg params in best_params.json (%s); using defaults.", exc)
+            logger.warning(
+                "Invalid logreg params in best_params.json (%s); using defaults.", exc
+            )
     return {"solver": "lbfgs", "max_iter": 1000, "C": 0.01}
 
 
@@ -767,11 +877,10 @@ def step_logreg_baseline(
     seed: int = 42,
     parent_run: bool = True,
 ) -> dict[str, float]:
-    """Phase 5b: score the logistic-regression reference on the test block.
+    """Phase 5b (test mode only): score the logistic-regression reference.
 
-    §5.4 replaces the first-run absolute PR-AUC minimum with "at least the
-    logistic regression". The reference is fitted on the development block with
-    the same preprocessing and evaluated on the same independent test block.
+    The final test set is never used. Real non-regression uses the explicit
+    ``--champion-pr-auc`` / ``--baseline-pr-auc`` reference instead.
     """
 
     with mlflow.start_run(run_name="5b_logreg_baseline", nested=parent_run):
@@ -788,7 +897,9 @@ def step_logreg_baseline(
 
         classifier = build_model("logreg", model_params, seed=seed)
         classifier.fit(x_dev, y_dev)
-        probabilities = np.asarray(classifier.predict_proba(x_test), dtype=np.float64)[:, 1]
+        probabilities = np.asarray(classifier.predict_proba(x_test), dtype=np.float64)[
+            :, 1
+        ]
 
         if np.unique(y_test).size > 1:
             pr_auc = float(average_precision_score(y_test, probabilities))
@@ -798,7 +909,9 @@ def step_logreg_baseline(
             roc_auc = 0.0
         brier = float(brier_score_loss(y_test, probabilities)) if y_test.size else 0.0
 
-        mlflow.log_params({f"logreg_{key}": value for key, value in model_params.items()})
+        mlflow.log_params(
+            {f"logreg_{key}": value for key, value in model_params.items()}
+        )
         mlflow.log_metric("logreg_pr_auc", pr_auc)
         mlflow.log_metric("logreg_roc_auc", roc_auc)
         mlflow.log_metric("logreg_brier_score", brier)
@@ -816,7 +929,8 @@ def step_quality_gates(
 
     Gates:
     1. Non-regression: PR-AUC >= champion - 0.01, or >= logistic regression
-       on the first run (no champion yet)
+       on the first run (no champion yet). Without either explicit reference,
+       the gate is UNVERIFIED and cannot pass.
     2. Per-class conformal coverage >= (1 - alpha) - 0.02
     3. Review rate <= 2 % of transactions
     4. Inference p95 < 50 ms
@@ -826,17 +940,23 @@ def step_quality_gates(
         alpha = float(metrics.get("alpha") or DEFAULT_ALPHA)
     if not 0.0 < alpha < 1.0:
         raise ValueError("alpha doit etre dans ]0, 1[.")
-    if champion_pr_auc is None and baseline_pr_auc is None:
-        raise ValueError("champion_pr_auc ou baseline_pr_auc requis pour la non-regression.")
 
     with mlflow.start_run(run_name="6_quality_gates", nested=parent_run):
-        pr_auc = float(metrics.get("pr_auc") if metrics.get("pr_auc") is not None else 0.0)
+        pr_auc = float(
+            metrics.get("pr_auc") if metrics.get("pr_auc") is not None else 0.0
+        )
         if champion_pr_auc is not None:
-            reference = float(champion_pr_auc)
+            reference: float | None = float(champion_pr_auc)
             gate_non_regression = pr_auc >= (reference - 0.01)
-        else:
-            reference = float(baseline_pr_auc or 0.0)
+            non_regression_status = "PASS" if gate_non_regression else "FAIL"
+        elif baseline_pr_auc is not None:
+            reference = float(baseline_pr_auc)
             gate_non_regression = pr_auc >= reference
+            non_regression_status = "PASS" if gate_non_regression else "FAIL"
+        else:
+            reference = None
+            gate_non_regression = False
+            non_regression_status = "UNVERIFIED"
 
         target_coverage = (1.0 - alpha) - COVERAGE_SLACK
         coverage_legit = metrics.get("conformal_coverage_legit")
@@ -866,7 +986,9 @@ def step_quality_gates(
         all_passed = all(gates.values())
 
         mlflow.log_param("alpha", alpha)
-        mlflow.log_param("non_regression_reference", reference)
+        if reference is not None:
+            mlflow.log_param("non_regression_reference", reference)
+        mlflow.log_param("non_regression_status", non_regression_status)
         mlflow.log_param("quality_gates_passed", str(all_passed))
         for gate_name, passed in gates.items():
             mlflow.log_metric(gate_name, 1.0 if passed else 0.0)
@@ -876,7 +998,7 @@ def step_quality_gates(
 
 
 def step_visualize(
-    test_df: pd.DataFrame,
+    sample_df: pd.DataFrame,
     pyfunc_model: FraudDetectorModel,
     features: list[str] | None = None,
     output_dir: Path | None = None,
@@ -896,7 +1018,7 @@ def step_visualize(
         if features is None:
             features = ["amt", "city_pop", "lat", "long", "merch_lat", "merch_long"]
 
-        sample = prepare_visualization_sample(test_df, max_samples=max_samples)
+        sample = prepare_visualization_sample(sample_df, max_samples=max_samples)
         probabilities = pyfunc_model.batch_probabilities(sample)
         y_pred = (probabilities >= 0.5).astype(np.int64)
 
@@ -909,8 +1031,10 @@ def step_visualize(
             max_samples=max_samples,
         )
 
-        output_dir = Path(output_dir) if output_dir is not None else Path(
-            tempfile.mkdtemp(prefix="ml-viz-")
+        output_dir = (
+            Path(output_dir)
+            if output_dir is not None
+            else Path(tempfile.mkdtemp(prefix="ml-viz-"))
         )
         export_projections_to_cache(projections, output_dir)
         mlflow.log_metric("total_projection_files", len(projections))

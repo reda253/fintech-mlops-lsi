@@ -155,10 +155,31 @@ pour cette mesure. Les métriques sont partagées via `final_metrics.py`.
 Le journal doit être monté de façon persistante et être accessible à l’utilisateur
 du Job. Les prédictions doivent figurer dans le manifeste vérifié.
 
-L’adaptation est à réaliser par Omar puis à tester avant D48 : artefact absent,
-empreinte du candidat incorrecte, manifeste altéré et prédictions modifiées
-font échouer le pipeline, sans lecture de la source finale. Le lancement D48
-attend le merge, les tests et la CI verts, puis la confirmation de cette intégration.
+L’adaptation est réalisée dans `ml/src/pipeline` : `run.py --mode evaluate`
+charge le joblib gelé (`--candidate-model`), vérifie son empreinte contre le
+candidat D44 approuvé, charge le modèle du registry MLflow et exige des
+probabilités identiques sur une sonde fixe. Un modèle différent possédant les
+mêmes alpha et seuils est donc refusé. `step_evaluate` vérifie ensuite le
+répertoire D48 : manifeste, `predictions.csv`, historique, bornes des métriques,
+`source_sha256` approuvée pour D48 et empreintes. Artefact absent, empreinte du
+candidat incorrecte, source différente, manifeste altéré, prédictions modifiées,
+décision différente de D48, métrique hors bornes ou alpha/seuils incohérents
+font échouer le pipeline avant toute lecture de la source finale et avant
+l’ouverture du run MLflow. Le mode évaluation n’entraîne, n’enregistre et ne
+promeut rien.
+
+```bash
+PYTHONPATH=. python -m ml.src.pipeline.run --mode evaluate \
+  --evaluation-dir /outside/repo/d48-results \
+  --candidate-model /outside/repo/d44/candidate.joblib \
+  --model-uri models:/fraud-detector/1 \
+  --baseline-pr-auc <reference-pr-auc> \
+  --tracking-uri http://localhost:5000
+```
+
+Le joblib gelé et le répertoire D48 sont montés en lecture seule ; aucun
+`fraudTest.csv` n’est monté dans ce Job. Le lancement D48 reste conditionnel :
+merge des correctifs, tests et CI verts, puis confirmation de cette intégration.
 Il ne déclenche aucune promotion.
 
 ### Préparation de la seconde mesure, sans exécution

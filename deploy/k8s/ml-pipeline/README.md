@@ -66,7 +66,38 @@ kubectl -n ml get cronjob ml-pipeline-cron
 
 ## Running on Real Dataset (Volume Mount)
 
-To run the pipeline against the real Sparkov CSV dataset:
+The committed Job/CronJob run with `--test-mode` (synthetic data). For a real
+training run:
+
 1. Ensure the dataset is present on the worker node at `/data/sparkov/fraudTrain.csv`.
 2. Add a `hostPath` volume mount in `job.yaml` targeting `/data/sparkov`.
-3. Update `configmap.yaml` with `--data-path=/data/sparkov/fraudTrain.csv` and set `PIPELINE_TEST_MODE: "false"`.
+3. In `job.yaml`, remove `--test-mode`, add `--data-path=/data/sparkov/fraudTrain.csv`
+   and `--no-register`. Real training never reads `fraudTest.csv`; it cannot
+   register without the verified D48 evaluation.
+
+For the D48 evaluation, run a separate Job (do **not** mount `fraudTest.csv`).
+Mount the frozen D44 joblib and the D48 output directory read-only:
+
+```yaml
+volumeMounts:
+  - name: d44-candidate
+    mountPath: /data/d44
+    readOnly: true
+  - name: d48-results
+    mountPath: /data/d48-results
+    readOnly: true
+args:
+  - --mode=evaluate
+  - --evaluation-dir=/data/d48-results
+  - --candidate-model=/data/d44/candidate.joblib
+  - --model-uri=models:/fraud-detector/1
+  - --baseline-pr-auc=<reference-pr-auc>
+```
+
+The pipeline hashes `/data/d44/candidate.joblib`, requires the approved
+`aa1565ca…` digest, and binds the MLflow-served model to it through a fixed
+probe; a different model with the same alpha/thresholds is refused before any
+run is opened. The artifact directory is produced once by
+`evaluate_final_candidate.py`; `step_evaluate` verifies every hash, the approved
+source (`7e50d0ce…`), metric bounds and consistency, and refuses a missing or
+inconsistent directory. No final-test source is mounted in this Job.

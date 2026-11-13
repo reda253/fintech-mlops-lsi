@@ -12,8 +12,13 @@ from datetime import UTC, datetime
 from itertools import pairwise
 from pathlib import Path
 
-LEGACY_SOURCE = "7e50d0ce13f08b45ed1740127fe56f9c90c8eeec37a11288a372afcc61efe3b3"
-LEGACY_MODEL = "aa1565caf7fed3af833a5613fd76416b6489c9a9f31ee8c523d65e5d9113da33"
+from ml.src.evaluation.final_artifacts import (
+    APPROVED_D48_MODEL_SHA256,
+    APPROVED_D48_SOURCE_SHA256,
+)
+
+LEGACY_SOURCE = APPROVED_D48_SOURCE_SHA256
+LEGACY_MODEL = APPROVED_D48_MODEL_SHA256
 
 
 def digest_bytes(value: bytes) -> str:

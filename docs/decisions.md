@@ -97,8 +97,11 @@ par cette décision documentaire.
 - Option **B**, décidée par Omar : la CLI est le seul lecteur final ;
   `step_evaluate` consomme `final_metrics.json`, les portes et le hash du candidat,
   et refuse une absence ou incohérence. `run.py` ne charge plus `--test-path`
-  pour l’évaluation finale. `final_metrics.py` demeure partagé. L’adaptation
-  du pipeline revient à Omar ; cette décision ne prétend pas qu’elle est déjà intégrée.
+  pour l’évaluation finale. `final_metrics.py` demeure partagé. L’intégration
+  (PR #117) exige en plus le joblib gelé (`--candidate-model`) : son empreinte
+  doit être celle du candidat D44, la source doit être celle approuvée pour D48,
+  et le modèle servi par MLflow doit produire les mêmes probabilités sur une
+  sonde fixe. Les métriques sont bornées et cohérentes avec leurs effectifs.
 - Tout problème d’équité est publié tel quel : aucun réglage des seuils ou
   changement post hoc des définitions après observation. XGBoost reste
   **provisional** ; aucune promotion n’est autorisée dans cette mesure.

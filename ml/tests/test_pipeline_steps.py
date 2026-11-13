@@ -8,13 +8,14 @@ import mlflow
 import numpy as np
 import pytest
 
+import ml.src.pipeline.steps as pipeline_steps
 from ml.src.pipeline.smoke import dispose_sqlite_tracking_engine, run_smoke
 from ml.src.pipeline.steps import (
     DEFAULT_ALPHA,
     generate_synthetic_data,
     step_calibrate,
     step_conformal,
-    step_evaluate,
+    step_evaluate_synthetic,
     step_package_model,
     step_prepare,
     step_quality_gates,
@@ -75,9 +76,38 @@ def test_step_prepare_splits_are_disjoint(local_mlflow_env):
 
     blocks = [development, prob_calib, conformal_calib]
     for index, block in enumerate(blocks):
-        for other in blocks[index + 1:]:
+        for other in blocks[index + 1 :]:
             assert set(block["trans_num"]).isdisjoint(set(other["trans_num"]))
     assert set(prob_calib["trans_num"]).isdisjoint(set(test["trans_num"]))
+
+
+def test_step_prepare_real_mode_never_reads_final_test(
+    tmp_path: Path, local_mlflow_env, monkeypatch
+):
+    frame = generate_synthetic_data(n_samples=2000, random_state=7)
+    data_dir = tmp_path / "data" / "raw"
+    data_dir.mkdir(parents=True)
+    data_path = data_dir / "fraudTrain.csv"
+    frame.to_csv(data_path, index=False)
+
+    calls: list[str] = []
+    real_read = pipeline_steps._read_sparkov_csv
+
+    def spy(path):
+        name = Path(path).name
+        calls.append(name)
+        if "fraudtest" in name.lower():
+            raise AssertionError("fraudTest.csv must never be read by the pipeline")
+        return real_read(path)
+
+    monkeypatch.setattr(pipeline_steps, "_read_sparkov_csv", spy)
+    with mlflow.start_run():
+        result = step_prepare(data_path=data_path, parent_run=True)
+
+    assert calls == ["fraudTrain.csv"]
+    assert result["test"] is None
+    assert result["test_data_hash"] is None
+    assert result["source"] == "sparkov"
 
 
 def test_train_calibrate_conformal_and_evaluate(local_mlflow_env):
@@ -103,7 +133,7 @@ def test_train_calibrate_conformal_and_evaluate(local_mlflow_env):
             alpha=0.02,
             parent_run=True,
         )
-        metrics = step_evaluate(
+        metrics = step_evaluate_synthetic(
             pyfunc_model=model,
             test_df=prep["test"],
             latency_sample_size=25,
@@ -119,13 +149,15 @@ def test_train_calibrate_conformal_and_evaluate(local_mlflow_env):
     assert conformal["alpha"] == 0.02
     assert model.alpha == 0.02
     assert 0.0 <= metrics["review_rate"] <= 1.0
-    assert metrics["auto_error_rate"] is None or 0.0 <= metrics["auto_error_rate"] <= 1.0
+    assert (
+        metrics["auto_error_rate"] is None or 0.0 <= metrics["auto_error_rate"] <= 1.0
+    )
     assert metrics["conformal_coverage_fraud"] > 0.0
     assert metrics["latency_p95_sec"] >= 0.0
     assert metrics["alpha"] == 0.02
-    assert conformal["fit_rows"] + conformal["choice_rows"] + conformal["evaluation_rows"] == len(
-        prep["conformal_calib"]
-    )
+    assert conformal["fit_rows"] + conformal["choice_rows"] + conformal[
+        "evaluation_rows"
+    ] == len(prep["conformal_calib"])
 
 
 def test_calibrate_and_conformal_use_d46_splits(local_mlflow_env):
@@ -145,7 +177,9 @@ def test_calibrate_and_conformal_use_d46_splits(local_mlflow_env):
         )
 
     assert calibration["fit_rows"] == len(prep["prob_calib"]) // 2
-    assert calibration["choice_rows"] == len(prep["prob_calib"]) - calibration["fit_rows"]
+    assert (
+        calibration["choice_rows"] == len(prep["prob_calib"]) - calibration["fit_rows"]
+    )
     assert conformal["fit_rows"] + conformal["choice_rows"] + conformal[
         "evaluation_rows"
     ] == len(prep["conformal_calib"])
@@ -169,7 +203,9 @@ def test_quality_gates_boundary_and_alpha_propagation(local_mlflow_env):
         "alpha": DEFAULT_ALPHA,
     }
     with mlflow.start_run():
-        passing = step_quality_gates(metrics=base, champion_pr_auc=0.85, parent_run=True)
+        passing = step_quality_gates(
+            metrics=base, champion_pr_auc=0.85, parent_run=True
+        )
         failing = step_quality_gates(
             metrics={**base, "review_rate": 0.021},
             champion_pr_auc=0.85,
@@ -205,7 +241,9 @@ def test_coverage_gate_uses_model_alpha(local_mlflow_env):
     assert at_alpha_02["gate_coverage"] is False
 
 
-def test_coverage_gate_rejects_low_fraud_coverage_despite_global_average(local_mlflow_env):
+def test_coverage_gate_rejects_low_fraud_coverage_despite_global_average(
+    local_mlflow_env,
+):
     metrics = {
         "pr_auc": 0.90,
         "conformal_coverage": 0.995,
@@ -246,9 +284,12 @@ def test_non_regression_uses_logreg_baseline(local_mlflow_env):
     assert below["gate_non_regression"] is False
 
 
-def test_non_regression_requires_champion_or_baseline():
-    with pytest.raises(ValueError, match="champion_pr_auc ou baseline_pr_auc"):
-        step_quality_gates(metrics={"pr_auc": 0.90})
+def test_non_regression_is_unverified_without_reference(local_mlflow_env):
+    with mlflow.start_run():
+        gates = step_quality_gates(metrics={"pr_auc": 0.90}, parent_run=True)
+
+    assert gates["gate_non_regression"] is False
+    assert gates["all_passed"] is False
 
 
 def test_quality_gates_rejects_regression(local_mlflow_env):
@@ -269,7 +310,11 @@ def test_quality_gates_rejects_regression(local_mlflow_env):
 
 
 def test_latency_sample_defaults_to_one_thousand():
-    default = inspect.signature(step_evaluate).parameters["latency_sample_size"].default
+    default = (
+        inspect.signature(step_evaluate_synthetic)
+        .parameters["latency_sample_size"]
+        .default
+    )
     assert default == 1000
 
 
@@ -287,7 +332,7 @@ def test_auto_error_rate_is_none_when_nothing_is_automatic(local_mlflow_env):
 
     frame = generate_synthetic_data(n_samples=20, random_state=5)
     with mlflow.start_run():
-        metrics = step_evaluate(
+        metrics = step_evaluate_synthetic(
             pyfunc_model=AlwaysReviewModel(),
             test_df=frame,
             latency_sample_size=5,

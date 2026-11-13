@@ -54,17 +54,32 @@ PYTHONPATH=. python -m ml.src.pipeline.run \
   --test-mode --model-name fraud-detector-smoke
 ```
 
-Run on the real data (place `fraudTrain.csv` and `fraudTest.csv` in `ml/data/raw/`):
+Run on the real data (place `fraudTrain.csv` in `ml/data/raw/`). Training never reads `fraudTest.csv`:
 
 ```bash
 PYTHONPATH=. python -m ml.src.pipeline.run \
   --mode full --tracking-uri http://localhost:5000 \
   --data-path ml/data/raw/fraudTrain.csv \
-  --test-path ml/data/raw/fraudTest.csv \
-  --model-name fraud-detector
+  --model-name fraud-detector --no-register
 ```
 
-> The pipeline refuses to register when a quality gate fails. Use `--no-register` for a dry run.
+> A real training run cannot register without the verified D48 evaluation. Use `--no-register` for training only, or `--mode evaluate` below once the D48 artifact exists.
+
+## Final evaluation (D48, option B)
+
+`ml/scripts/evaluate_final_candidate.py` is the only reader of `fraudTest.csv`. It writes a new directory outside the repository (`final_metrics.json`, `predictions.csv`, `artifact_manifest.json`, etc.). The pipeline then consumes it and binds it to the frozen candidate:
+
+```bash
+PYTHONPATH=. python -m ml.src.pipeline.run \
+  --mode evaluate \
+  --evaluation-dir /outside/repo/d48-results \
+  --candidate-model /outside/repo/d44/candidate.joblib \
+  --model-uri models:/fraud-detector/1 \
+  --baseline-pr-auc <reference-pr-auc> \
+  --tracking-uri http://localhost:5000
+```
+
+`--candidate-model` is the frozen D44 joblib. The pipeline hashes it, requires the approved `aa1565ca…` digest, loads the MLflow-served model and requires identical calibrated probabilities on a fixed probe — a different model with the same alpha/thresholds is refused. `step_evaluate` then verifies the complete manifest, every SHA-256 (including `predictions.csv`), the D48 decision, the approved `source_sha256` (`7e50d0ce…`), the previous-measurement history, metric bounds/count consistency, and the alpha/thresholds of the served model. Any mismatch is refused before any evaluation metric is logged; the pipeline never reads the source. The evaluation mode never trains, registers or promotes; it only logs the verified metrics and gates.
 
 ## Model registry and P2 hand-off
 
