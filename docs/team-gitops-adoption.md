@@ -47,7 +47,8 @@ ingress-test were outside the candidate. No resources were changed.
 
 1. Agree with Reda on a maintenance window and keep team access restricted
    until the Auth and ingress checks pass. Verify PostgreSQL backups and a
-   recovery procedure. Do not assume reverting only the image reverses
+   recovery procedure using the [PostgreSQL rehearsal](postgres-backup-restore.md).
+   Do not assume reverting only the image reverses
    Flyway V2 or the D47 account changes.
 2. Install and verify Argo CD and Sealed Secrets separately on the intended
    cluster, with a private Argo CD API, and test backup of the new sealing
