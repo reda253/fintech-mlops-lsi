@@ -85,7 +85,16 @@ par cette décision documentaire.
   transactions signalée comme limite.
 - Préconditions : code corrigé mergé, tests et CI verts, option B intégrée et
   vérifiée, protocole exact approuvé et empreinte enregistrée, sauvegarde du
-  premier résultat et du journal. Ces préconditions restent à confirmer avant exécution.
+  premier résultat et du journal.
+  État au 20 novembre 2026 : code mergé (`bc30b93`, PR #117) et CI verte ;
+  option B intégrée et vérifiée ; journal du 10 novembre et son dossier
+  `previous_evaluation/` à fournir ; autorisation `approved: true` à produire
+  après réception du hash du journal. La source finale normalisée en LF donne
+  `7e50d0ce…` et le joblib gelé `aa1565ca…`, conformes à D44.
+- Protocole D48 enregistré : texte `docs/final_evaluation_protocol.md` au commit
+  `bc30b93` (inchangé sur `main`), SHA-256
+  `b0bfaf9ba5b9c3b40dc91c52d34281227846fce4d11b24ff6bf9a166550adc24`. Toute
+  modification du texte change cette empreinte et exige une nouvelle autorisation.
 - Journal central configurable sur un volume monté, hors dépôt, réservé avant
   lecture ; liaison décision/source/modèle/texte du protocole. Une exécution
   complétée consomme D48, indépendamment du motif et du nom de révision. Toute

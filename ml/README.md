@@ -81,6 +81,23 @@ PYTHONPATH=. python -m ml.src.pipeline.run \
 
 `--candidate-model` is the frozen D44 joblib. The pipeline hashes it, requires the approved `aa1565ca…` digest, loads the MLflow-served model and requires identical calibrated probabilities on a fixed probe — a different model with the same alpha/thresholds is refused. `step_evaluate` then verifies the complete manifest, every SHA-256 (including `predictions.csv`), the D48 decision, the approved `source_sha256` (`7e50d0ce…`), the previous-measurement history, metric bounds/count consistency, and the alpha/thresholds of the served model. Any mismatch is refused before any evaluation metric is logged; the pipeline never reads the source. The evaluation mode never trains, registers or promotes; it only logs the verified metrics and gates.
 
+Before the single official measurement, run the read-only preflight. It replays the same checks `evaluate_final_candidate.py` performs before opening the source (hashes, D44 reference, 10 November previous evaluation, protocol, authorization, journal and latency frame) and writes nothing — no journal entry, no output directory, no MLflow run:
+
+```bash
+PYTHONPATH=. python ml/scripts/d48_preflight.py \
+  --model /outside/repo/d44/candidate_model.joblib \
+  --source /outside/repo/d48-data/fraudTest.csv \
+  --reference /outside/repo/d44/results.json \
+  --previous-evaluation /outside/repo/d48/previous_evaluation \
+  --latency-source /outside/repo/data/raw/fraudTrain.csv \
+  --journal /outside/repo/d48/journal.jsonl \
+  --protocol-file docs/final_evaluation_protocol.md \
+  --authorization /outside/repo/d48/authorization-d48.json \
+  --output-dir /outside/repo/d48/results
+```
+
+It prints one `[OK]` line per check and `[PRET]` on success; any mismatch exits non-zero with `[ECHEC]`. A successful preflight does not launch anything: it only proves the one-shot invocation can run. Do not override `--expected-model-sha256`/`--expected-source-sha256` for the official D48 run.
+
 ## Model registry and P2 hand-off
 
 The packaged artifact ships only the runtime modules (`ml/src/model/{fraud_detector,calibration}.py`, `ml/src/preprocessing/pipeline.py`) plus compatibility aliases, so the serving image does not need this repository.
