@@ -81,6 +81,8 @@ PYTHONPATH=. python -m ml.src.pipeline.run \
 
 `--candidate-model` is the frozen D44 joblib. The pipeline hashes it, requires the approved `aa1565ca…` digest, loads the MLflow-served model and requires identical calibrated probabilities on a fixed probe — a different model with the same alpha/thresholds is refused. `step_evaluate` then verifies the complete manifest, every SHA-256 (including `predictions.csv`), the D48 decision, the approved `source_sha256` (`7e50d0ce…`), the previous-measurement history, metric bounds/count consistency, and the alpha/thresholds of the served model. Any mismatch is refused before any evaluation metric is logged; the pipeline never reads the source. The evaluation mode never trains, registers or promotes; it only logs the verified metrics and gates.
 
+All fingerprints (`source_sha256`, `model_sha256`, `protocol_sha256`, `journal_sha256`) are computed on the raw bytes of the file — no parsing, no inference, no label read. The approved digest is verified on those exact bytes: a CRLF copy has a different SHA-256, so normalizing line endings produces a **different** file that must be verified in its own right before the run. The pipeline never normalizes on the fly.
+
 Before the single official measurement, run the read-only preflight. It replays the same checks `evaluate_final_candidate.py` performs before opening the source (hashes, D44 reference, 10 November previous evaluation, protocol, authorization, journal and latency frame) and writes nothing — no journal entry, no output directory, no MLflow run:
 
 ```bash

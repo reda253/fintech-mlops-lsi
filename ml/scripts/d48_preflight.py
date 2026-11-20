@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 import sys
 from pathlib import Path
 
@@ -24,7 +25,6 @@ from ml.scripts.evaluate_final_candidate import (
     FINAL_DECISION_ID,
     ROOT,
     load_latency_sample,
-    preflight_output,
     resolve_journal,
     sha256,
     validate_candidate,
@@ -51,10 +51,28 @@ def _outside_repository(path: Path, label: str) -> Path:
     return resolved
 
 
+def _inspect_output(output: Path, source: Path) -> None:
+    """Contrôle du montage et de l'espace sans créer de fichier sonde."""
+
+    parent = output.resolve().parent
+    _require(parent.is_dir(), "Parent de sortie absent ou montage indisponible")
+    required = max(1024 * 1024, 3 * source.stat().st_size)
+    free = shutil.disk_usage(parent).free
+    _require(
+        free >= required,
+        "Espace disque insuffisant pour la sauvegarde avant analyse",
+    )
+
+
 def preflight(args: argparse.Namespace) -> list[str]:
     """Renvoie la liste des contrôles réussis ; lève sinon."""
 
     checks: list[str] = []
+
+    _require(
+        args.decision_id == FINAL_DECISION_ID,
+        f"Décision {args.decision_id} refusée : {FINAL_DECISION_ID} requise",
+    )
 
     journal = resolve_journal(args.journal)
     _require(journal is not None, "Journal D48 obligatoire (--journal)")
@@ -123,9 +141,9 @@ def preflight(args: argparse.Namespace) -> list[str]:
     )
     checks.append(f"frame de latence : {len(latency)} lignes development")
 
-    output = args.output_dir.expanduser().resolve()
+    output = _outside_repository(args.output_dir, "Le dossier de sortie")
     _require(not output.exists(), f"Dossier de sortie déjà présent : {output}")
-    preflight_output(output, source)
+    _inspect_output(output, source)
     checks.append(f"sortie : {output} (parent accessible, espace suffisant)")
 
     return checks

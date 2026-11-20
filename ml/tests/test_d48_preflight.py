@@ -210,7 +210,7 @@ def _argv(args: argparse.Namespace) -> list[str]:
     ]
 
 
-def test_preflight_passes_and_writes_nothing(env):
+def test_preflight_passes_and_writes_nothing(env, tmp_path: Path):
     args = _args(env)
     journal_before = args.journal.read_bytes()
 
@@ -220,6 +220,7 @@ def test_preflight_passes_and_writes_nothing(env):
     assert any("autorisation" in check for check in checks)
     assert args.journal.read_bytes() == journal_before
     assert not args.output_dir.exists()
+    assert not list(tmp_path.glob(".write-check-*"))
 
 
 def test_cli_reports_success(env, capsys):
@@ -304,3 +305,65 @@ def test_main_returns_two_on_failure(env, capsys):
 
     assert d48_preflight.main(_argv(args)) == 2
     assert "[ECHEC]" in capsys.readouterr().err
+
+
+def test_non_d48_decision_is_refused_before_any_read(env):
+    args = _args(env, decision_id="D49")
+
+    with pytest.raises(ValueError, match="D48 requise"):
+        d48_preflight.preflight(args)
+
+
+def test_output_inside_the_repository_is_refused(env):
+    args = _args(env, output_dir=ROOT / "d48-results")
+
+    with pytest.raises(ValueError, match="hors du dépôt"):
+        d48_preflight.preflight(args)
+
+
+@pytest.mark.parametrize("approved", [1, "true", None])
+def test_authorization_approved_must_be_the_boolean_true(env, approved):
+    args = _args(env)
+    payload = json.loads(args.authorization.read_text(encoding="utf-8"))
+    payload["approved"] = approved
+    _write_json(args.authorization, payload)
+
+    with pytest.raises(ValueError, match="Autorisation"):
+        d48_preflight.preflight(args)
+
+
+@pytest.mark.parametrize(
+    "field", ["decision_id", "source_sha256", "model_sha256", "journal_sha256"]
+)
+def test_wrong_authorization_field_is_refused(env, field):
+    args = _args(env)
+    payload = json.loads(args.authorization.read_text(encoding="utf-8"))
+    payload[field] = "D49" if field == "decision_id" else "b" * 64
+    _write_json(args.authorization, payload)
+
+    with pytest.raises(ValueError, match="Autorisation"):
+        d48_preflight.preflight(args)
+
+
+def test_journal_with_a_d47_entry_is_refused_for_d48(env):
+    args = _args(env)
+    raw, _entries = final_journal.read_journal(args.journal)
+    final_journal._append(
+        args.journal,
+        raw,
+        {
+            "status": "reserved",
+            "utc": "2026-11-12T10:00:00+00:00",
+            "launch_id": "old-d47",
+            "decision_id": "D47",
+            "model_sha256": "d" * 64,
+            "source_sha256": "e" * 64,
+            "protocol_sha256": "f" * 64,
+        },
+    )
+    payload = json.loads(args.authorization.read_text(encoding="utf-8"))
+    payload["journal_sha256"] = _sha(args.journal)
+    _write_json(args.authorization, payload)
+
+    with pytest.raises(ValueError, match="Entrée D47"):
+        d48_preflight.preflight(args)
