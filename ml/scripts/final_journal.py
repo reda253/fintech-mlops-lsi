@@ -142,11 +142,9 @@ def check_authorization(
             "D47 est réservée à Auth ; décision D48 requise pour cette évaluation"
         )
     raw, entries = read_journal(journal)
-    if decision_id == "D48" and any(
-        entry.get("decision_id") == "D47" for entry in entries
-    ):
+    if any(entry.get("decision_id") == "D47" for entry in entries):
         raise ValueError(
-            "Entrée D47 présente dans le journal : examen manuel requis avant D48"
+            "Entrée D47 présente dans le journal : examen manuel requis avant toute évaluation"
         )
     if not re.fullmatch(r"D[0-9]+", decision_id or ""):
         raise ValueError("Identifiant de décision explicite requis")
@@ -191,6 +189,13 @@ def check_authorization(
         "journal_sha256": digest_bytes(raw),
         "approved": True,
     }
+    approved = (
+        authorization.get("approved") if isinstance(authorization, dict) else None
+    )
+    if type(approved) is not bool or approved is not True:
+        raise ValueError(
+            "Autorisation absente, journal modifié ou liaison décision/source/modèle/protocole incorrecte"
+        )
     if any(authorization.get(key) != value for key, value in expected.items()):
         raise ValueError(
             "Autorisation absente, journal modifié ou liaison décision/source/modèle/protocole incorrecte"

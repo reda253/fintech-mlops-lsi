@@ -518,6 +518,10 @@ def main(argv=None) -> int:
         parser.error("--model, --reference et --output-dir sont requis")
     if args.no_mlflow and not args.synthetic:
         parser.error("--no-mlflow est réservé au contrôle synthétique")
+    if args.decision_id is not None and args.decision_id != FINAL_DECISION_ID:
+        parser.error(
+            f"Décision {args.decision_id} refusée : {FINAL_DECISION_ID} requise pour cette évaluation"
+        )
     if (args.comparison_kind is None) != (args.comparison_pr_auc is None):
         parser.error("Fournir ensemble --comparison-kind et --comparison-pr-auc")
     if args.comparison_pr_auc is not None and (
@@ -529,9 +533,9 @@ def main(argv=None) -> int:
     ):
         parser.error("Le dossier de sortie doit être neuf et hors dépôt")
     if args.source is not None:
-        if args.decision_id and args.decision_id != FINAL_DECISION_ID:
+        if args.decision_id != FINAL_DECISION_ID:
             parser.error(
-                f"Décision {args.decision_id} refusée : {FINAL_DECISION_ID} requise pour cette évaluation"
+                f"--decision-id {FINAL_DECISION_ID} est requis pour l'évaluation finale"
             )
         args.journal = resolve_journal(args.journal)
         required = {

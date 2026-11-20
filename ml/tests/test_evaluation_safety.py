@@ -994,6 +994,95 @@ def test_final_cli_refuses_auth_decision_before_opening_source(
     assert journal.read_bytes() == original_journal and not output.exists()
 
 
+def test_final_cli_refuses_a_non_d48_decision_before_opening_source(
+    synthetic_launch, monkeypatch, capsys
+):
+    args, source, journal, output = synthetic_launch
+    monkeypatch.setattr(evaluation, "FINAL_DECISION_ID", "D48")
+    args[args.index("--decision-id") + 1] = "D49"
+    original_journal = journal.read_bytes()
+    opened = deny_source(monkeypatch, source)
+    with pytest.raises(SystemExit):
+        evaluation.main(args)
+    assert "D49" in capsys.readouterr().err and not opened
+    assert journal.read_bytes() == original_journal and not output.exists()
+
+
+def test_shared_validator_refuses_d47_entries_for_any_decision(tmp_path):
+    journal = tmp_path / "journal.jsonl"
+    legacy = [
+        {
+            "status": "started",
+            "utc": "2026-11-10T18:00:00+00:00",
+            "model_sha256": journal_api.LEGACY_MODEL,
+        },
+        {"status": "completed", "source_sha256": journal_api.LEGACY_SOURCE},
+    ]
+    journal.write_text("".join(json.dumps(e) + "\n" for e in legacy), encoding="utf-8")
+    raw, _ = journal_api.read_journal(journal)
+    journal_api._append(
+        journal,
+        raw,
+        {
+            "status": "reserved",
+            "utc": "2026-11-12T10:00:00+00:00",
+            "launch_id": "old-synthetic",
+            "decision_id": "D47",
+            "model_sha256": "d" * 64,
+            "source_sha256": "e" * 64,
+            "protocol_sha256": "f" * 64,
+        },
+    )
+    auth = approved(journal, "D49", journal_api.LEGACY_SOURCE, journal_api.LEGACY_MODEL)
+    with pytest.raises(ValueError, match="Entrée D47"):
+        journal_api.check_authorization(
+            journal,
+            auth,
+            source_sha256=journal_api.LEGACY_SOURCE,
+            model_sha256=journal_api.LEGACY_MODEL,
+            decision_id="D49",
+            protocol_sha256="c" * 64,
+            reason="synthetic",
+        )
+
+
+@pytest.mark.parametrize("value", [1, "true", None])
+def test_authorization_requires_the_boolean_true(tmp_path, value):
+    journal = tmp_path / "journal.jsonl"
+    write_history(journal)
+    auth = approved(journal)
+    auth["approved"] = value
+    with pytest.raises(ValueError, match="Autorisation"):
+        reserve(journal, auth)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        ("decision_id", "D98"),
+        ("source_sha256", "b" * 64),
+        ("model_sha256", "c" * 64),
+        ("protocol_sha256", "d" * 64),
+        ("journal_sha256", "e" * 64),
+    ],
+)
+def test_authorization_fields_must_match_the_journal(tmp_path, field, value):
+    journal = tmp_path / "journal.jsonl"
+    write_history(journal)
+    auth = approved(journal)
+    auth[field] = value
+    with pytest.raises(ValueError, match="Autorisation"):
+        journal_api.check_authorization(
+            journal,
+            auth,
+            source_sha256="a" * 64,
+            model_sha256="b" * 64,
+            decision_id="D99",
+            protocol_sha256="c" * 64,
+            reason="synthetic",
+        )
+
+
 def test_legacy_auth_decision_is_refused_before_journal_read(tmp_path):
     with pytest.raises(ValueError, match="D47.*Auth"):
         journal_api.check_authorization(
@@ -1047,7 +1136,9 @@ def test_final_synthetic_d48_with_history_and_single_use(
     assert not opened
 
 
-@pytest.mark.parametrize("status", ["reserved", "completed"])
+@pytest.mark.parametrize(
+    "status", ["started", "reserved", "predictions_saved", "completed", "failed"]
+)
 def test_d48_refuses_any_previous_d47_entry(tmp_path, status):
     journal = tmp_path / "journal.jsonl"
     legacy = [
