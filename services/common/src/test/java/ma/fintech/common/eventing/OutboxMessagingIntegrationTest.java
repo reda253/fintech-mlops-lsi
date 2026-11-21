@@ -34,6 +34,7 @@ import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
+import org.testcontainers.junit.jupiter.Testcontainers;
 import tools.jackson.databind.json.JsonMapper;
 
 import static org.assertj.core.api.Assertions.assertThat;
@@ -46,7 +47,8 @@ import static org.mockito.Mockito.doThrow;
 
 /**
  * Outbox, relay, topology and idempotent consumer against a real PostgreSQL and RabbitMQ (§3.5).
- * The scheduled relay is slowed to once an hour so each test drives it by hand.
+ * The scheduled relay is slowed to once an hour so each test drives it by hand. Skipped where Docker
+ * is unavailable (image builds run the tests inside docker build); the CI Java job runs it.
  */
 @SpringBootTest(properties = {
         "spring.application.name=test-producer",
@@ -56,6 +58,7 @@ import static org.mockito.Mockito.doThrow;
         "fintech.outbox.enabled=true",
         "fintech.outbox.relay-interval-ms=3600000",
         "spring.rabbitmq.listener.simple.retry.initial-interval=100ms"})
+@Testcontainers(disabledWithoutDocker = true)
 class OutboxMessagingIntegrationTest {
 
     private static final String CORRELATION_ID = "3f1c2b4a-9d8e-4f00-a1b2-c3d4e5f60718";
