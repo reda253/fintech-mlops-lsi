@@ -33,3 +33,68 @@ _TODO_ — prerequisites: JDK 21, Docker, kind, kubectl.
 
 ## 7. Limits and future work
 _TODO_
+
+## Limites éthiques et audit d'équité
+
+Le genre et l'âge sont conservés conformément à D18. L'audit compare `F` et `M`
+et les âges révolus à la transaction : 0–25, 26–35, 36–45, 46–55, 56–65,
+66–120 ans. Les groupes sont figés ; la tranche est stockée sous `age_group`.
+
+Les quatre taux opérationnels sont les fraudes bloquées automatiquement,
+les fraudes interceptées (blocage + revue), les légitimes bloqués
+automatiquement et le taux de revue. `[1]` bloque, `[0]` approuve ; `[]` et
+`[0,1]` vont en revue. Effectifs, fraudes et légitimes sont affichés par groupe.
+Une division indéfinie est rendue par `N/A (undefined)` et `null` dans le JSON.
+
+Les IC percentile 95 % utilisent 10 000 rééchantillonnages, seed 42, avec les
+mêmes tirages pour les groupes et leurs différences. L'implémentation
+multinomiale sur les catégories conjointes reproduit exactement le bootstrap
+iid des transactions pour ces quatre taux. Les IC supposent des transactions
+indépendantes malgré les transactions répétées d'une même carte : cette
+dépendance et la dérive temporelle ne sont pas corrigées.
+
+D48 sur le jeu final est une seconde mesure post hoc, non indépendante. Les
+comparaisons sont descriptives, sans verdict binaire d'équité ni retouche
+ultérieure du modèle. XGBoost reste provisoire, sans promotion automatique.
+
+<!-- BEGIN FAIRNESS RESULTS -->
+**Résultats réels en attente.** Aucun chiffre d'équité synthétique ne doit être
+présenté comme une mesure finale. Compléter après D48 : effectifs, taux, IC,
+écarts absolus, groupes peu représentés, limites et identifiant du run.
+<!-- END FAIRNESS RESULTS -->
+
+`evaluate_final_candidate.py` reste le seul lecteur et exécuteur de
+l'inférence finale. Il sauvegarde `predictions.csv` avec exactement `label`,
+`fraud_probability`, `include_0`, `include_1`, `gender`, `age_group`.
+`ml.fairness.audit` consomme directement ce fichier et les artefacts voisins
+vérifiés, sans nouvelle inférence ni réutilisation de l'autorisation consommée.
+Voir [le protocole](docs/fairness_protocol.md).
+
+```text
+python -m ml.fairness.audit --from-predictions <evaluation-dir>/predictions.csv --output-dir <new-external-dir> --model-metadata <candidate-provenance.json> --journal <external-journal.jsonl> --code-revision <current-full-git-hash>
+```
+
+La provenance candidat doit fournir `model_sha256`, `model_uri` et
+`model_version`. Le run d'évaluation est repris de `mlflow_status.json` et doit
+être publié pour une mesure réelle. `--code-revision` est fourni explicitement
+pour éviter toute commande Git automatique ; il doit correspondre au code
+exécuté. Le manifeste distingue cette révision de celle de l'évaluation.
+
+L'Option B est intégrée par la PR #117 (`bc30b93`) :
+`evaluate_final_candidate.py` → artefacts vérifiés #117 → `audit.py` →
+`step_evaluate`. Le pipeline consomme le dossier d'évaluation original ;
+les sorties fairness restent complémentaires et dans un dossier distinct.
+L'audit réutilise `load_verified_final_evaluation` et les empreintes approuvées
+centralisées, avec alpha attendu 0.02. Son `--journal` est lu sans modification :
+toute entrée D47 d'évaluation est refusée ; un achèvement D48 cohérent est requis.
+`manifest_d48.json` ne remplace jamais `artifact_manifest.json` ni l'historique.
+
+L'alignement inclut désormais #120 (`main` : `c5d9881`). Les préconditions
+locales restent dans `ml/scripts/d48_preflight.py`. Le module
+`ml.fairness.preflight_d48` contrôle uniquement le Registry, avec
+`--manifest`, `--version` ou `--alias`, et `--tracking-uri` : il ne relit ni la
+source finale ni le journal, ne réserve rien et ne prédit rien. `audit.py`
+consomme les prédictions et vérifie le journal de complétion sans réutiliser
+l'autorisation. Les paramètres Registry sont dans une provenance distincte
+du JSON d'autorisation officiel à six champs ; le tag de protocole D44 du
+modèle enregistré ne remplace pas le protocole D48 approuvé.
