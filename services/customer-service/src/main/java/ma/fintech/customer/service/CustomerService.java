@@ -52,7 +52,7 @@ public class CustomerService {
     /** The card cannot change; a concurrent edit ends in 409 (optimistic lock, handled by the advice). */
     @Transactional
     public Customer update(UUID id, Customer.Profile profile) {
-        Customer customer = get(id);
+        Customer customer = customers.findById(id).orElseThrow(() -> notFound("Customer " + id + " not found"));
         customer.apply(profile);
         return customers.saveAndFlush(customer);
     }

@@ -20,7 +20,7 @@ import ma.fintech.customer.domain.Gender;
 final class CustomerDtos {
 
     /** Sparkov card numbers have 11 to 19 digits. */
-    static final String CARD_NUMBER = "^[0-9]{11,19}$";
+    static final String CARD_NUMBER = "^\\d{11,19}$";
 
     private CustomerDtos() {
     }

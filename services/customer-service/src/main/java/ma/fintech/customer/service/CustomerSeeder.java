@@ -1,7 +1,6 @@
 package ma.fintech.customer.service;
 
 import java.nio.file.Path;
-import java.sql.Date;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -74,18 +73,17 @@ public class CustomerSeeder implements ApplicationRunner {
         List<Object[]> rows = new ArrayList<>(byCard.size());
         byCard.forEach((card, p) -> rows.add(new Object[] {
                 UUID.randomUUID(), fingerprinter.fingerprint(card), CardFingerprinter.last4(card),
-                p.firstName(), p.lastName(), p.gender().name(), Date.valueOf(p.dob()), p.job(),
+                p.firstName(), p.lastName(), p.gender().name(), p.dob(), p.job(),
                 p.street(), p.city(), p.state(), p.zip(), p.cityPop(), p.latitude(), p.longitude()}));
-        Integer inserted = transaction.execute(status -> {
-            int total = 0;
+        int[] inserted = {0};
+        transaction.executeWithoutResult(status -> {
             for (int from = 0; from < rows.size(); from += BATCH) {
                 for (int n : jdbc.batchUpdate(INSERT, rows.subList(from, Math.min(from + BATCH, rows.size())))) {
-                    total += Math.max(n, 0);
+                    inserted[0] += Math.max(n, 0);
                 }
             }
-            return total;
         });
-        log.info("Customer seed loaded {} customer(s) from {} file(s)", inserted, files.size());
-        return inserted == null ? 0 : inserted;
+        log.info("Customer seed loaded {} customer(s) from {} file(s)", inserted[0], files.size());
+        return inserted[0];
     }
 }

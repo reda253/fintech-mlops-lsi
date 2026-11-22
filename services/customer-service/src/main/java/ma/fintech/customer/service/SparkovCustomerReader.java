@@ -79,12 +79,13 @@ public final class SparkovCustomerReader {
         List<String> fields = new ArrayList<>();
         StringBuilder current = new StringBuilder();
         boolean quoted = false;
-        for (int i = 0; i < line.length(); i++) {
-            char c = line.charAt(i);
+        int i = 0;
+        while (i < line.length()) {
+            char c = line.charAt(i++);
             if (quoted) {
-                if (c == '"' && i + 1 < line.length() && line.charAt(i + 1) == '"') {
+                if (c == '"' && i < line.length() && line.charAt(i) == '"') {
                     current.append('"');
-                    i++;
+                    i++;    // skip the second quote of ""
                 } else if (c == '"') {
                     quoted = false;
                 } else {
