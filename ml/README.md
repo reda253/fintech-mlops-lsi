@@ -100,37 +100,14 @@ PYTHONPATH=. python ml/scripts/d48_preflight.py \
 
 It prints one `[OK]` line per check and `[PRET]` on success; any mismatch exits non-zero with `[ECHEC]`. A successful preflight does not launch anything: it only proves the one-shot invocation can run. Do not override `--expected-model-sha256`/`--expected-source-sha256` for the official D48 run.
 
-### Recovering an interrupted run (D49)
-
-If the single measurement stops **after** `predictions_saved` (process killed,
-machine rebooted), the journal keeps a reservation with no terminal entry and the
-output directory holds only `predictions.csv` plus a `predictions_saved`
-manifest. Do **not** re-run and do not edit the journal: the final test has
-already been read.
-
-```bash
-PYTHONPATH=. python ml/scripts/evaluate_final_candidate.py \
-  --resume /outside/repo/d48/results \
-  --model /outside/repo/d44/candidate_model.joblib \
-  --model-sha256 aa1565caf7fed3af833a5613fd76416b6489c9a9f31ee8c523d65e5d9113da33 \
-  --source-sha256 7e50d0ce13f08b45ed1740127fe56f9c90c8eeec37a11288a372afcc61efe3b3 \
-  --reference /outside/repo/d44/results.json \
-  --latency-source /outside/repo/data/raw/fraudTrain.csv \
-  --journal /outside/repo/d48/journal.jsonl \
-  --tracking-uri http://127.0.0.1:5001 \
-  --comparison-kind logreg --comparison-pr-auc 0.36970357094266615
-```
-
-The resume verifies the saved manifest and the `predictions.csv` fingerprint,
-rebuilds metrics, intervals and fairness from those predictions (the source is
-never opened), completes the manifest and appends `completed` for the **same**
-`launch_id`. Both the normal run and the resume go through `summarize_details`
-and `finish`, so the artifacts are identical. The bootstrap prints its progress
-every 500 resamples.
-
-An interruption **before** `predictions_saved` leaves nothing to resume; that
-state requires a manual review, because the journal cannot record a `failed`
-entry.
+Before a measurement, run the local `ml/scripts/d48_preflight.py` first, then
+`ml/scripts/registry_preflight.py`, then the authorized
+`ml/scripts/evaluate_final_candidate.py`. The Registry preflight accepts
+`--model-metadata PATH` for the candidate handoff JSON, which must contain
+`model_sha256` and `alpha`; this is not `artifact_manifest.json`. It requires a
+remote HTTP(S) MLflow Registry, a provisional version without the `champion`
+alias, and a pyfunc signature containing the nested `customer` input. The
+Registry check loads the model without inference or journal reservation.
 
 ## Model registry and P2 hand-off
 
