@@ -156,7 +156,7 @@ def verify_login(port):
             f"Signed JWT was not accepted (HTTP {code})")
 
 
-def run(inventory, openssl, kubeseal, team=False):
+def run(inventory, openssl, kubeseal, team=False, extra_check=None):
     images = smoke_images(inventory, team)
     nodes = json.loads(kubectl(CONTEXT, "get", "nodes", "-o", "json", capture_output=True).stdout)
     require([item["metadata"]["name"] for item in nodes["items"]] == [NODE],
@@ -202,6 +202,9 @@ def run(inventory, openssl, kubeseal, team=False):
             kubectl(CONTEXT, "-n", namespace, "rollout", "status", "deployment/" + name,
                     "--timeout=240s", timeout=250)
         require(sql(HISTORY).splitlines() == ["1", "2"], "Expected Flyway V1 and V2 on the fixture database")
+        if extra_check is not None:
+            require(team, "Additional account tests require team mode")
+            extra_check(namespace, username, initial, sql)
         if team:
             verify_team_accounts(namespace, username, initial, secrets.token_hex(24))
             print("PASS: D47 demo logins rejected, sealed admin works, and rotated password survives restart.",
