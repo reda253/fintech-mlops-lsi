@@ -23,14 +23,17 @@ import numpy as np
 
 from ml.scripts.evaluate_final_candidate import (
     FINAL_DECISION_ID,
-    ROOT,
     load_latency_sample,
     resolve_journal,
     sha256,
     validate_candidate,
 )
 from ml.scripts.final_history import load_previous_evaluation
-from ml.scripts.final_journal import check_authorization, read_journal
+from ml.scripts.final_journal import (
+    check_authorization,
+    outside_repository,
+    read_journal,
+)
 from ml.src.evaluation.final_artifacts import (
     APPROVED_D48_MODEL_SHA256,
     APPROVED_D48_SOURCE_SHA256,
@@ -42,13 +45,7 @@ def _require(condition: bool, message: str) -> None:
         raise ValueError(message)
 
 
-def _outside_repository(path: Path, label: str) -> Path:
-    resolved = path.expanduser().resolve()
-    _require(
-        not resolved.is_relative_to(ROOT.resolve()),
-        f"{label} doit rester hors du dépôt",
-    )
-    return resolved
+_outside_repository = outside_repository
 
 
 def _inspect_output(output: Path, source: Path) -> None:

@@ -57,9 +57,9 @@ Pour chaque métrique, le dénominateur pertinent est publié : nombre de fraude
 ## Bootstrap et interprétation
 
 Bootstrap non paramétrique par transaction : 10 000 tirages avec remise,
-seed=42, intervalles percentile 95 % (2.5 et 97.5). Les mêmes indices et poids
-sont utilisés pour les groupes et leurs différences. Les tirages où une
-métrique est indéfinie sont exclus de son intervalle ; rapporter le nombre
+seed=42, intervalles percentile 95 % (2.5 et 97.5). Pour les groupes et leurs
+différences, la méthode est un équivalent exact : multinomial sur les cellules
+conjointes. Les tirages où une métrique est indéfinie sont exclus de son intervalle ; rapporter le nombre
 de tirages valides, et N/A si aucun ne l'est.
 
 Ces intervalles supposent des transactions indépendantes, bien qu'une même

@@ -13,9 +13,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from ml.scripts.d48_preflight import _outside_repository
 from ml.scripts.evaluate_final_candidate import AGE_BINS, AGE_LABELS, atomic_write
-from ml.scripts.final_journal import read_journal
+from ml.scripts.final_journal import outside_repository, read_journal
 from ml.scripts.final_metrics import decision_metrics
 from ml.src.evaluation.final_artifacts import (
     APPROVED_D48_MODEL_SHA256,
@@ -35,7 +34,7 @@ ROOT = Path(__file__).resolve().parents[2]
 
 def read_evaluation_journal(journal: Path) -> list[dict]:
     """Validate saved-run provenance without reusing a consumed authorization."""
-    _outside_repository(journal, "Le journal")
+    outside_repository(journal, "Le journal")
     _, entries = read_journal(journal)
     if any(entry.get("decision_id") == "D47" for entry in entries):
         raise ValueError(
@@ -123,6 +122,7 @@ def interval(samples: np.ndarray, value: float | None, n_boot: int) -> dict:
 def analyze(
     frame: pd.DataFrame,
     *,
+    alpha: float,
     age_reference: str | None = None,
     n_boot: int = 10_000,
     seed: int = 42,
@@ -133,6 +133,13 @@ def analyze(
     Multinomial(N, observed cell frequencies) is the exact count distribution
     of resampling N transactions with replacement, with bounded memory.
     """
+    if (
+        isinstance(alpha, bool)
+        or not isinstance(alpha, (int, float))
+        or not np.isfinite(alpha)
+        or not 0 < alpha < 1
+    ):
+        raise ValueError("Alpha doit être fini et strictement compris entre 0 et 1")
     if n_boot <= 0:
         raise ValueError("Nombre de tirages strictement positif requis")
     frame = normalize(frame)
@@ -217,7 +224,7 @@ def analyze(
                 )
     return {
         "model_status": "provisional",
-        "alpha": 0.02,
+        "alpha": float(alpha),
         "measurement": "seconde mesure post hoc, non indépendante",
         "bootstrap": {
             "n_boot": n_boot,
@@ -408,7 +415,9 @@ def main(argv=None) -> int:
         )
     if hashlib.sha256(source.read_bytes()).hexdigest() != saved["predictions_sha256"]:
         raise ValueError("Prédictions modifiées pendant la lecture")
-    result = analyze(frame, age_reference=args.age_reference)
+    result = analyze(
+        frame, alpha=verified.metrics["alpha"], age_reference=args.age_reference
+    )
     result["scope"] = "saved_d48_predictions"
     result["provenance"] = {
         "source_sha256": saved.get("source_sha256"),
@@ -426,7 +435,7 @@ def main(argv=None) -> int:
         "status": "complete",
         "input_predictions_sha256": hashlib.sha256(source.read_bytes()).hexdigest(),
         "timestamp_utc": datetime.now(UTC).isoformat(),
-        "alpha": 0.02,
+        "alpha": result["alpha"],
         "n_boot": 10000,
         "seed": 42,
         "artifacts": artifacts,

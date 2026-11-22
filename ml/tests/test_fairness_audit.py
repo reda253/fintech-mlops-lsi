@@ -45,7 +45,7 @@ def test_exact_decisions_and_rates():
         "REVUE HUMAINE",
         "REVUE HUMAINE",
     ]
-    result = audit.analyze(sample(), n_boot=200)
+    result = audit.analyze(sample(), alpha=0.02, n_boot=200)
     overall = result["groups"][0]
     assert overall["N"] == 4 and overall["N_pos"] == 2 and overall["N_neg"] == 2
     assert [overall["metrics"][m]["value"] for m in audit.METRICS] == [
@@ -57,8 +57,8 @@ def test_exact_decisions_and_rates():
 
 
 def test_deterministic_shared_bootstrap_and_undefined():
-    a = audit.analyze(sample(), n_boot=1000)
-    assert a == audit.analyze(sample(), n_boot=1000)
+    a = audit.analyze(sample(), alpha=0.02, n_boot=1000)
+    assert a == audit.analyze(sample(), alpha=0.02, n_boot=1000)
     female = next(
         g for g in a["groups"] if g["attribute"] == "gender" and g["group"] == "F"
     )
@@ -73,7 +73,7 @@ def test_deterministic_shared_bootstrap_and_undefined():
 
 
 def test_equivalent_gender_and_age_masks_share_bootstrap_draws():
-    result = audit.analyze(sample(), n_boot=100)
+    result = audit.analyze(sample(), alpha=0.02, n_boot=100)
     female = next(
         g for g in result["groups"] if g["attribute"] == "gender" and g["group"] == "F"
     )
@@ -108,11 +108,12 @@ def test_reject_invalid_predictions(column, value):
     frame = sample()
     frame.loc[0, column] = value
     with pytest.raises(ValueError):
-        audit.analyze(frame, n_boot=10)
+        audit.analyze(frame, alpha=0.02, n_boot=10)
 
 
+@pytest.mark.parametrize("verified_alpha", [0.02, 0.05])
 def test_saved_predictions_cli_synthetic_end_to_end(
-    synthetic_launch, tmp_path, monkeypatch
+    synthetic_launch, tmp_path, monkeypatch, verified_alpha
 ):
     import importlib
     from types import SimpleNamespace
@@ -266,15 +267,29 @@ def test_saved_predictions_cli_synthetic_end_to_end(
         "--journal",
         str(journal),
     ]
+    real_loader = audit.load_verified_final_evaluation
+
+    def synthetic_verified_alpha(*args, **kwargs):
+        verified = real_loader(*args, **kwargs)
+        return SimpleNamespace(
+            metrics={**verified.metrics, "alpha": verified_alpha},
+            provenance=verified.provenance,
+        )
+
+    monkeypatch.setattr(
+        audit, "load_verified_final_evaluation", synthetic_verified_alpha
+    )
     original_manifest = (evaluated / "artifact_manifest.json").read_bytes()
     before_journal = journal.read_bytes()
     assert audit.main(command) == 0
     data = json.loads((output / "fairness_metrics.json").read_text(encoding="utf-8"))
+    assert data["alpha"] == verified_alpha
     assert data["bootstrap"]["n_boot"] == 10000 and data["bootstrap"]["seed"] == 42
     text = (output / "fairness_report.md").read_text(encoding="utf-8")
     assert "N/A (undefined)" in text and "non indépendante" in text
     assert len(list((output / "figures").glob("*.png"))) == 8
     manifest = json.loads((output / "manifest_d48.json").read_text())
+    assert manifest["alpha"] == verified_alpha
     assert manifest["status"] == "complete" and manifest["model_sha256"] == model_hash
     assert manifest["input_predictions_sha256"] == evaluation.sha256(
         evaluated / "predictions.csv"
@@ -300,7 +315,7 @@ def test_saved_predictions_cli_synthetic_end_to_end(
 
 
 def test_reference_is_explicit():
-    result = audit.analyze(sample(), age_reference="0-25", n_boot=20)
+    result = audit.analyze(sample(), alpha=0.02, age_reference="0-25", n_boot=20)
     assert all(
         g["group_b"] == "0-25"
         for g in result["absolute_gaps"]
@@ -392,3 +407,9 @@ def test_audit_uses_strict_reader_despite_valid_hashes(tmp_path, change, match):
             ]
         )
     assert not (tmp_path / "audit").exists()
+
+
+@pytest.mark.parametrize("alpha", [None, float("nan"), float("inf"), 0, 1, -0.1, True])
+def test_analyze_rejects_invalid_alpha(alpha):
+    with pytest.raises(ValueError, match="Alpha"):
+        audit.analyze(sample(), alpha=alpha, n_boot=10)

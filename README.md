@@ -12,6 +12,7 @@ Real-time card-fraud risk platform: every transaction is scored by a calibrated 
 5. [Frontend and observability](#5-frontend-and-observability) — P5
 6. [How to run](#6-how-to-run)
 7. [Limits and future work](#7-limits-and-future-work)
+8. [Limites éthiques et audit d’équité](#limites-éthiques-et-audit-déquité)
 
 ## 1. Architecture microservices
 _TODO (P1)_
@@ -59,8 +60,26 @@ ultérieure du modèle. XGBoost reste provisoire, sans promotion automatique.
 
 <!-- BEGIN FAIRNESS RESULTS -->
 **Résultats réels en attente.** Aucun chiffre d'équité synthétique ne doit être
-présenté comme une mesure finale. Compléter après D48 : effectifs, taux, IC,
-écarts absolus, groupes peu représentés, limites et identifiant du run.
+présenté comme une mesure finale. Les artefacts réels doivent être fournis et vérifiés.
+
+Run MLflow : **à compléter**. D48 est une seconde mesure post hoc non indépendante.
+
+| Attribut | Groupe | N | Fraudes | Légitimes | Fraudes bloquées [IC 95 %] | Fraudes interceptées [IC 95 %] | Légitimes bloqués [IC 95 %] | Revue [IC 95 %] |
+|---|---|---:|---:|---:|---|---|---|---|
+| Genre | F | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter |
+| Genre | M | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter |
+| Âge | 0–25 | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter |
+| Âge | 26–35 | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter |
+| Âge | 36–45 | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter |
+| Âge | 46–55 | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter |
+| Âge | 56–65 | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter |
+| Âge | 66–120 | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter | À compléter |
+
+| Comparaison | Métrique | Écart absolu | IC 95 % | Réplications valides |
+|---|---|---|---|---|
+| Groupes à compléter | À compléter | À compléter | À compléter | À compléter |
+
+Signaler les valeurs indéfinies et petits effectifs ; ne tirer aucun verdict binaire.
 <!-- END FAIRNESS RESULTS -->
 
 `evaluate_final_candidate.py` reste le seul lecteur et exécuteur de
