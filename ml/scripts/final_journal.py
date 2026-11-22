@@ -21,6 +21,15 @@ LEGACY_SOURCE = APPROVED_D48_SOURCE_SHA256
 LEGACY_MODEL = APPROVED_D48_MODEL_SHA256
 
 
+def outside_repository(path: Path, label: str) -> Path:
+    """Resolve a path and refuse paths within this repository."""
+    resolved = path.expanduser().resolve()
+    root = Path(__file__).resolve().parents[2]
+    if resolved.is_relative_to(root):
+        raise ValueError(f"{label} doit rester hors du dépôt")
+    return resolved
+
+
 def digest_bytes(value: bytes) -> str:
     return hashlib.sha256(value).hexdigest()
 
