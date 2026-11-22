@@ -10,3 +10,4 @@ configMapGenerator:
       - AUTH_DEMO_ACCOUNTS=false
 patches:
   - path: auth-secret-refs.yaml
+  - path: customer-secret-ref.yaml
