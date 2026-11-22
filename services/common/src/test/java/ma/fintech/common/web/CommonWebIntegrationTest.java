@@ -160,6 +160,15 @@ class CommonWebIntegrationTest {
                     .andExpect(jsonPath("$.detail", not(containsString("hunter2"))))
                     .andExpect(jsonPath("$.correlationId", matchesPattern(CorrelationId.UUID_PATTERN)));
         }
+
+        /** A @Version conflict is the client's problem (reload and retry), not a server error. */
+        @Test
+        void optimisticLockConflictIs409() throws Exception {
+            mvc.perform(get("/api/v1/test/stale").header(HttpHeaders.AUTHORIZATION, "Bearer admin"))
+                    .andExpect(status().isConflict())
+                    .andExpect(content().contentType(MediaType.APPLICATION_PROBLEM_JSON))
+                    .andExpect(jsonPath("$.correlationId", matchesPattern(CorrelationId.UUID_PATTERN)));
+        }
     }
 
     private static Jwt jwt(String role) {

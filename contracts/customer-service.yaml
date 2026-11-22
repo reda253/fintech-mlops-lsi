@@ -111,7 +111,7 @@ paths:
               type: object
               required: [cardNumber]
               properties:
-                cardNumber: { type: string, pattern: '^[0-9]{12,19}$', writeOnly: true }
+                cardNumber: { type: string, pattern: '^[0-9]{11,19}$', writeOnly: true }
       responses:
         '200':
           description: Customer found
@@ -173,7 +173,7 @@ components:
         - type: object
           required: [cardNumber]
           properties:
-            cardNumber: { type: string, pattern: '^[0-9]{12,19}$', writeOnly: true }
+            cardNumber: { type: string, pattern: '^[0-9]{11,19}$', writeOnly: true }
     Customer:
       allOf:
         - type: object
