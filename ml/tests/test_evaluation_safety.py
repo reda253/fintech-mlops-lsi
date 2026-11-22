@@ -141,7 +141,9 @@ def synthetic_launch(tmp_path, monkeypatch):
     )
     original = evaluation.bootstrap_intervals
     monkeypatch.setattr(
-        evaluation, "bootstrap_intervals", lambda *a: original(*a, resamples=25)
+        evaluation,
+        "bootstrap_intervals",
+        lambda *a, **k: original(*a, resamples=25, on_progress=None),
     )
     monkeypatch.setattr(evaluation, "publish_saved", lambda *_: {"status": "published"})
     return args, source, journal, output
@@ -279,7 +281,9 @@ def test_interruption_during_prediction_save_stops_analysis(
 
     monkeypatch.setattr(evaluation.os, "replace", interrupted)
     monkeypatch.setattr(
-        evaluation, "bootstrap_intervals", lambda *a: pytest.fail("bootstrap interdit")
+        evaluation,
+        "bootstrap_intervals",
+        lambda *a, **k: pytest.fail("bootstrap interdit"),
     )
     with pytest.raises(OSError, match="inference"):
         evaluation.main(args)

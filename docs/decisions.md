@@ -57,6 +57,7 @@ Rule (§10.7): **every new architecture decision is added here**, in the PR that
 | D46 | 2026-11-05 | **Post hoc** internal chronological splits: 50/50 for calibrator fit/comparison; 50/25/25 for conformal quantile fit/alpha choice/evaluation | Reuse the same observations for fitting and evaluation | Keep the comparisons and evaluations distinct; this precision was made after observing the benchmark |
 | D47 | 2026-11-12 | Shared environments run with `AUTH_DEMO_ACCOUNTS=false`: at startup auth-service disables the three V2 demo accounts (sessions revoked) and creates a bootstrap ADMIN from a Sealed Secret (`AUTH_BOOTSTRAP_ADMIN_USERNAME`/`_PASSWORD`, created only if absent, never overwritten). It refuses to start if demo accounts are off and no enabled ADMIN exists. Then one personal account per member: ADMIN for Reda, Assil and Hakima, ANALYSTE for all five; one SIMULATEUR service account for the simulator and a separate one for k6. Local dev keeps the demo accounts | Edit `V2__seed_users.sql`; a V3 migration that disables them everywhere; keep the demo accounts with changed passwords | The V2 passwords are public in the README, including an ADMIN. Editing V2 breaks the Flyway checksum on databases that already ran it, and a V3 would also break local dev and the e2e tests. Creating users needs an ADMIN, so the first one must come from config. Separate service accounts keep simulator and load-test traffic apart in the audit log |
 | D48 | 2026-11-12 | **Post hoc**, accord écrit d’Omar transmis par Basma : accord conditionnel pour une seule seconde mesure du candidat D44 figé : aucune exécution avant merge des correctifs, CI verte et intégration de l’option B. Seule la CLI `evaluate_final_candidate.py` lit la source finale ; le Job consomme ses artefacts vérifiés | Réévaluer avec réglage du modèle ; deux lecteurs officiels du jeu final ; relances par simple changement de motif | Compléter les IC bootstrap et l’audit d’équité absents le 10 novembre, sans nouvelle sélection ni promotion. Seconde mesure post hoc, non indépendante ; conditions détaillées ci-dessous |
+| D49 | 2026-11-22 | Reprise `--resume` d'une exécution D48 interrompue après `predictions_saved` : métriques et IC reconstruits depuis `predictions.csv` vérifié, manifeste complété, `completed` enregistré avec le même `launch_id`, sans relire le jeu final | Relancer la mesure (seconde lecture) ; éditer le journal ; laisser la réservation bloquer D48 | La source finale reste lue une seule fois ; le protocole approuvé est inchangé |
 
 ## D48 — autorisation conditionnelle de seconde mesure
 
@@ -114,3 +115,35 @@ par cette décision documentaire.
 - Tout problème d’équité est publié tel quel : aucun réglage des seuils ou
   changement post hoc des définitions après observation. XGBoost reste
   **provisional** ; aucune promotion n’est autorisée dans cette mesure.
+
+## D49 — Résolution d'une exécution D48 interrompue
+
+Décision du **22 novembre 2026**, après incident.
+
+**Contexte.** L'exécution D48 a été lancée une fois puis interrompue : le journal
+contient `reserved` et `predictions_saved`, sans entrée terminale, et le dossier
+de sortie ne contient que `predictions.csv` (555 719 lignes, empreinte conforme
+au manifeste) et un manifeste `status=predictions_saved`. Cause identifiée : le
+bootstrap de 10 000 rééchantillonnages prenait environ 99 minutes sans aucune
+sortie, et la machine a été interrompue. Le jeu final a donc déjà été lu une
+fois ; une relance normale serait une seconde lecture, interdite par D48.
+
+**Décision.** Ajouter une reprise `--resume <dossier>` à la CLI officielle. Elle
+vérifie le manifeste et l'empreinte de `predictions.csv`, reconstruit les
+métriques, les IC et l'équité à partir des prédictions sauvegardées (sans
+relire `fraudTest.csv`), réécrit le manifeste complet, puis enregistre
+`completed` avec le **même** `launch_id`. Le protocole approuvé
+(`b0bfaf9b…adc24`) n'est pas modifié et aucune nouvelle autorisation n'est
+nécessaire.
+
+**Motifs.** La lecture unique est préservée ; la source finale reste lue par un
+seul programme ; les artefacts repris sont produits par le même code que
+l'exécution normale (`summarize_details` et `finish` sont partagés), donc
+identiques à ceux d'une exécution non interrompue.
+
+**Conséquences.** Le bootstrap est parallélisé au niveau du noyau de calcul
+(masques précalculés, sommes entières via `bincount`) et affiche sa progression
+toutes les 500 réplications ; la reprise reste une opération manuelle et
+explicite, jamais automatique. Une interruption avant `predictions_saved` ne
+laisse aucune reprise possible : `record_event` n'écrit pas d'entrée `failed`,
+ce qui reste une lacune connue du journal.

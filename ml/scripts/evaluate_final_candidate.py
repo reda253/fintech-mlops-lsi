@@ -9,6 +9,7 @@ import io
 import json
 import os
 import platform
+import re
 import shutil
 import sys
 import tempfile
@@ -164,6 +165,76 @@ def synthetic_data() -> pd.DataFrame:
     )
 
 
+def summarize_details(details, alpha):
+    """Overall metrics and per-group table from a details dict.
+
+    ``details`` carries labels, probabilities, conformal membership, gender and
+    age group. It is produced either by ``evaluate`` (fresh inference) or by the
+    saved ``predictions.csv`` (``--resume``), so both paths share this exact
+    computation.
+    """
+    labels = details["labels"]
+    probabilities = details["probabilities"]
+    members = details["members"]
+    gender = details["gender"]
+    age_group = details["age_group"]
+    overall = evaluate_sets(members, labels)
+    weighted = weighted_metrics(labels, probabilities, members, np.ones(len(labels)))
+    expected_pr_auc = float(average_precision_score(labels, probabilities))
+    if not np.isclose(weighted["pr_auc"], expected_pr_auc, rtol=1e-12, atol=1e-12):
+        raise ValueError("Calcul PR-AUC incohérent")
+    overall.update(weighted)
+    overall["n_transactions"] = len(labels)
+    overall["fraud_coverage_floor"] = (1 - alpha) - 0.02
+    coverage = overall["coverage_by_class"]["1"]
+    overall["fraud_coverage_floor_met"] = (
+        coverage >= overall["fraud_coverage_floor"] if coverage is not None else None
+    )
+    overall["review_capacity_met"] = overall["review_rate"] <= 0.02
+
+    predicted = probabilities >= 0.5  # convention existante de FraudDetectorModel
+    review = members.sum(axis=1) != 1
+    groups = []
+    group_masks = {}
+    for attribute, values, names in (
+        (
+            "gender",
+            gender,
+            sorted(set(gender)),
+        ),
+        ("age", age_group, AGE_LABELS),
+    ):
+        for name in names:
+            mask = values == name
+            group_masks[f"{attribute}:{name}"] = mask
+            positives = int(np.sum(mask & (labels == 1)))
+            negatives = int(np.sum(mask & (labels == 0)))
+            n = int(mask.sum())
+            groups.append(
+                {
+                    "attribute": attribute,
+                    "group": name,
+                    "n": n,
+                    **decision_metrics(labels, members, mask.astype(float)),
+                    "frauds": positives,
+                    "legitimate": negatives,
+                    "recall_point_prediction": float(
+                        np.sum(mask & (labels == 1) & predicted) / positives
+                    )
+                    if positives
+                    else None,
+                    "false_positive_rate_point_prediction": float(
+                        np.sum(mask & (labels == 0) & predicted) / negatives
+                    )
+                    if negatives
+                    else None,
+                    "review_rate": float(review[mask].mean()) if n else None,
+                }
+            )
+    details["group_masks"] = group_masks
+    return overall, pd.DataFrame(groups)
+
+
 def evaluate(
     model, frame: pd.DataFrame, *, return_details: bool = False, on_predictions=None
 ):
@@ -220,69 +291,11 @@ def evaluate(
         "age_group": bins.astype(str).to_numpy(),
     }
     if on_predictions is not None:
-        on_predictions(
-            details
-        )  # Immédiatement après inférence, avant métriques et bootstrap.
-    overall = evaluate_sets(members, labels)
-    weighted = weighted_metrics(labels, probabilities, members, np.ones(len(labels)))
-    expected_pr_auc = float(average_precision_score(labels, probabilities))
-    if not np.isclose(weighted["pr_auc"], expected_pr_auc, rtol=1e-12, atol=1e-12):
-        raise ValueError("Calcul PR-AUC incohérent")
-    overall.update(weighted)
-    overall["n_transactions"] = len(labels)
-    overall["fraud_coverage_floor"] = (1 - model.alpha) - 0.02
-    coverage = overall["coverage_by_class"]["1"]
-    overall["fraud_coverage_floor_met"] = (
-        coverage >= overall["fraud_coverage_floor"] if coverage is not None else None
-    )
-    overall["review_capacity_met"] = overall["review_rate"] <= 0.02
-
-    predicted = probabilities >= 0.5  # convention existante de FraudDetectorModel
-    review = members.sum(axis=1) != 1
-    groups = []
-    group_masks = {}
-    for attribute, values, names in (
-        (
-            "gender",
-            frame["gender"].astype(str).to_numpy(),
-            sorted(frame["gender"].astype(str).unique()),
-        ),
-        ("age", bins.astype(str).to_numpy(), AGE_LABELS),
-    ):
-        for name in names:
-            mask = values == name
-            group_masks[f"{attribute}:{name}"] = mask
-            positives = int(np.sum(mask & (labels == 1)))
-            negatives = int(np.sum(mask & (labels == 0)))
-            n = int(mask.sum())
-            groups.append(
-                {
-                    "attribute": attribute,
-                    "group": name,
-                    "n": n,
-                    **decision_metrics(labels, members, mask.astype(float)),
-                    "frauds": positives,
-                    "legitimate": negatives,
-                    "recall_point_prediction": float(
-                        np.sum(mask & (labels == 1) & predicted) / positives
-                    )
-                    if positives
-                    else None,
-                    "false_positive_rate_point_prediction": float(
-                        np.sum(mask & (labels == 0) & predicted) / negatives
-                    )
-                    if negatives
-                    else None,
-                    "review_rate": float(review[mask].mean()) if n else None,
-                }
-            )
-    result = (overall, pd.DataFrame(groups))
+        on_predictions(details)  # Immédiatement après inférence, avant métriques.
+    overall, groups = summarize_details(details, float(model.alpha))
     if return_details:
-        return (
-            *result,
-            {**details, "group_masks": group_masks},
-        )
-    return result
+        return overall, groups, details
+    return overall, groups
 
 
 def load_latency_sample(source: Path, *, sample_size=100, seed=42) -> pd.DataFrame:
@@ -441,216 +454,37 @@ def resolve_journal(value: Path | None) -> Path | None:
     return path
 
 
-def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--model", type=Path)
-    parser.add_argument("--reference", type=Path)
-    parser.add_argument(
-        "--previous-evaluation",
-        type=Path,
-        help="Dossier des métriques et du rapport du 10 novembre ; obligatoire pour D48",
-    )
-    parser.add_argument("--output-dir", type=Path)
-    mode = parser.add_mutually_exclusive_group(required=True)
-    mode.add_argument("--synthetic", action="store_true")
-    mode.add_argument("--republish", type=Path)
-    mode.add_argument("--source", type=Path)
-    parser.add_argument("--model-sha256")
-    parser.add_argument("--source-sha256")
-    parser.add_argument("--reason")
-    parser.add_argument("--decision-id")
-    parser.add_argument("--protocol-revision")
-    parser.add_argument(
-        "--protocol-file",
-        type=Path,
-        help="Texte du protocole approuvé, empreinte liée à l'autorisation",
-    )
-    parser.add_argument(
-        "--authorization",
-        type=Path,
-        help="Autorisation explicite de l'équipe, JSON hors dépôt",
-    )
-    parser.add_argument("--latency-source", type=Path)
-    parser.add_argument(
-        "--journal",
-        type=Path,
-        help="Journal central persistant hors dépôt ; sinon FINAL_EVALUATION_JOURNAL",
-    )
-    parser.add_argument("--confirm-final-test", action="store_true")
-    parser.add_argument("--tracking-uri")
-    parser.add_argument(
-        "--no-mlflow", action="store_true", help="Tests synthétiques uniquement"
-    )
-    parser.add_argument("--comparison-kind", choices=("champion", "logreg"))
-    parser.add_argument("--comparison-pr-auc", type=float)
-    parser.add_argument(
-        "--code-revision", help="Révision fournie explicitement ; aucune commande Git"
-    )
-    args = parser.parse_args(argv)
-    if args.republish is not None:
-        if any(
-            (
-                args.model,
-                args.reference,
-                args.previous_evaluation,
-                args.output_dir,
-                args.source,
-                args.journal,
-                args.no_mlflow,
-                args.confirm_final_test,
-                args.decision_id,
-                args.protocol_revision,
-                args.latency_source,
-                args.protocol_file,
-                args.authorization,
-                args.reason,
-                args.source_sha256,
-                args.model_sha256,
-            )
-        ):
-            parser.error(
-                "--republish utilise uniquement le dossier sauvegardé et éventuellement --tracking-uri"
-            )
-        state = publish_saved(args.republish, args.tracking_uri)
-        print(json.dumps(state))
-        return 0 if state["status"] == "published" else 2
-    if not args.model or not args.reference or not args.output_dir:
-        parser.error("--model, --reference et --output-dir sont requis")
-    if args.no_mlflow and not args.synthetic:
-        parser.error("--no-mlflow est réservé au contrôle synthétique")
-    if args.decision_id is not None and args.decision_id != FINAL_DECISION_ID:
-        parser.error(
-            f"Décision {args.decision_id} refusée : {FINAL_DECISION_ID} requise pour cette évaluation"
-        )
-    if (args.comparison_kind is None) != (args.comparison_pr_auc is None):
-        parser.error("Fournir ensemble --comparison-kind et --comparison-pr-auc")
-    if args.comparison_pr_auc is not None and (
-        not np.isfinite(args.comparison_pr_auc) or not 0 <= args.comparison_pr_auc <= 1
-    ):
-        parser.error("La PR-AUC de référence doit être finie et dans [0,1]")
-    if args.output_dir.exists() or args.output_dir.resolve().is_relative_to(
-        ROOT.resolve()
-    ):
-        parser.error("Le dossier de sortie doit être neuf et hors dépôt")
-    if args.source is not None:
-        if args.decision_id != FINAL_DECISION_ID:
-            parser.error(
-                f"--decision-id {FINAL_DECISION_ID} est requis pour l'évaluation finale"
-            )
-        args.journal = resolve_journal(args.journal)
-        required = {
-            "--confirm-final-test": args.confirm_final_test,
-            "--journal ou FINAL_EVALUATION_JOURNAL": args.journal,
-            "--model-sha256": args.model_sha256,
-            "--source-sha256": args.source_sha256,
-            "--decision-id": args.decision_id,
-            "--protocol-revision": args.protocol_revision,
-            "--protocol-file": args.protocol_file,
-            "--authorization": args.authorization,
-            "--reason": args.reason,
-            "--latency-source": args.latency_source,
-        }
-        if args.decision_id == "D48":
-            required["--previous-evaluation"] = args.previous_evaluation
-        missing = [key for key, value in required.items() if not value]
-        if missing:
-            parser.error("Test final : arguments manquants : " + ", ".join(missing))
-        if args.source.name.lower() != "fraudtest.csv":
-            parser.error("Nom de source finale non autorisé")
-        args.source_sha256 = args.source_sha256.lower()
-        if args.authorization.resolve().is_relative_to(ROOT.resolve()):
-            parser.error("L'autorisation doit être hors dépôt")
-    if args.decision_id == "D48" and args.previous_evaluation is None:
-        parser.error("D48 : --previous-evaluation est obligatoire avant lecture")
-    model_hash = sha256(args.model)
-    if args.model_sha256 and model_hash.lower() != args.model_sha256.lower():
-        raise ValueError("SHA-256 du modèle différent de celui demandé")
-    model = joblib.load(args.model)
-    reference = json.loads(args.reference.read_text(encoding="utf-8"))
-    validate_candidate(model, reference)
-    previous = None
-    previous_payloads = {}
-    if args.previous_evaluation is not None:
-        previous, previous_payloads = load_previous_evaluation(
-            args.previous_evaluation,
-            model_hash,
-            args.source_sha256,
-            model.alpha,
-        )
-    authorization = None
-    protocol_hash = None
-    if args.synthetic:
-        latency_frame = synthetic_data()
-    else:
-        protocol_hash = sha256(args.protocol_file)
-        authorization = json.loads(args.authorization.read_text(encoding="utf-8"))
-        check_authorization(
-            args.journal,
-            authorization,
-            source_sha256=args.source_sha256,
-            model_sha256=model_hash,
-            decision_id=args.decision_id,
-            protocol_sha256=protocol_hash,
-            reason=args.reason,
-        )
-        latency_frame = load_latency_sample(args.latency_source)
-        # Valide la frame de latence avec le preprocessing figé, sans aucun fit.
-        transformed = model.preprocessor.transform(latency_frame)
-        if not np.isfinite(np.asarray(transformed)).all():
-            raise ValueError("Source de latence invalide : valeurs non finies")
-    preflight_output(args.output_dir, args.source)
-    latency = measure_latency(model, latency_frame)
-    latency["sample_source"] = "synthetic" if args.synthetic else "development"
-    args.output_dir.mkdir(exist_ok=False)
-    if previous is not None:
-        history_dir = args.output_dir / HISTORY_DIR
-        history_dir.mkdir()
-        for name, raw_bytes in previous_payloads.items():
-            atomic_write(history_dir / name, raw_bytes)
-    if args.synthetic:
-        frame = latency_frame
-        source_hash = None
-    else:
-        launch_id = reserve_source(
-            args.journal,
-            args.source.name,
-            args.source_sha256,
-            model_hash,
-            args.reason,
-            decision_id=args.decision_id,
-            protocol_revision=args.protocol_revision,
-            protocol_sha256=protocol_hash,
-            authorization=authorization,
-        )
-        with args.source.open("rb") as stream:
-            raw = stream.read()
-        source_hash = hashlib.sha256(raw).hexdigest()
-        if source_hash != args.source_sha256:
-            raise ValueError(
-                "SHA-256 source différent de l'empreinte déclarée ; aucune analyse"
-            )
-        frame = pd.read_csv(io.BytesIO(raw), usecols=REQUIRED)
-        del raw
-    saved = {}
+def finish(
+    args,
+    *,
+    model,
+    model_hash,
+    source_hash,
+    protocol_hash,
+    protocol_revision,
+    decision_id,
+    launch_id,
+    saved,
+    details,
+    overall,
+    groups,
+    previous,
+    latency,
+    resamples=N_BOOTSTRAP,
+    on_progress=None,
+):
+    """Compute CIs and write every artifact, then record the completion.
 
-    def persist(details):
-        saved["sha256"] = save_predictions(args.output_dir, details)
-        if not args.synthetic:
-            record_event(
-                args.journal,
-                launch_id,
-                "predictions_saved",
-                predictions_sha256=saved["sha256"],
-            )
-
-    overall, groups, details = evaluate(
-        model, frame, return_details=True, on_predictions=persist
-    )
+    Shared by the normal one-shot run and by ``--resume``, so a recovered run
+    produces byte-identical artifacts to an uninterrupted one.
+    """
     bootstrap = bootstrap_intervals(
         details["labels"],
         details["probabilities"],
         details["members"],
         details["group_masks"],
+        on_progress=on_progress,
+        resamples=resamples,
     )
     gates = quality_gates(
         overall, latency, args.comparison_kind, args.comparison_pr_auc
@@ -658,8 +492,8 @@ def main(argv=None) -> int:
     result = {
         "scope": "synthetic_only" if args.synthetic else "final_test",
         "model_status": "provisional",
-        "decision_id": args.decision_id,
-        "protocol_revision": args.protocol_revision,
+        "decision_id": decision_id,
+        "protocol_revision": protocol_revision,
         "protocol_sha256": protocol_hash,
         "model_sha256": model_hash,
         "source_sha256": source_hash,
@@ -855,6 +689,363 @@ def main(argv=None) -> int:
         )
     )
     return 0 if publication["status"] in {"published", "skipped_synthetic"} else 2
+
+
+def load_saved_details(directory: Path, predictions_sha256: str) -> dict:
+    """Rebuild the details dict from a saved predictions.csv, without the source."""
+
+    predictions = Path(directory) / "predictions.csv"
+    if not predictions.is_file():
+        raise ValueError(f"Reprise : predictions.csv absent de {directory}")
+    if sha256(predictions) != predictions_sha256:
+        raise ValueError("Reprise : predictions.csv ne correspond pas au manifeste")
+    frame = pd.read_csv(predictions)
+    expected = {
+        "label",
+        "fraud_probability",
+        "include_0",
+        "include_1",
+        "gender",
+        "age_group",
+    }
+    missing = expected - set(frame.columns)
+    if missing:
+        raise ValueError(
+            f"Reprise : colonnes manquantes dans predictions.csv {sorted(missing)}"
+        )
+    return {
+        "labels": frame["label"].to_numpy(dtype=int),
+        "probabilities": frame["fraud_probability"].to_numpy(dtype=float),
+        "members": np.column_stack(
+            [
+                frame["include_0"].to_numpy(dtype=bool),
+                frame["include_1"].to_numpy(dtype=bool),
+            ]
+        ),
+        "gender": frame["gender"].astype(str).to_numpy(),
+        "age_group": frame["age_group"].astype(str).to_numpy(),
+    }
+
+
+def resume(args) -> int:
+    """Finish a run that stopped after predictions_saved, without reading the source."""
+
+    from ml.scripts.final_journal import find_open_launch
+
+    if (
+        not args.model
+        or not args.journal
+        or not args.reference
+        or not args.latency_source
+    ):
+        raise ValueError(
+            "Reprise : --model, --journal, --reference et --latency-source sont requis"
+        )
+    directory = args.resume
+    args.output_dir = directory
+    manifest_path = directory / "artifact_manifest.json"
+    if not manifest_path.is_file():
+        raise ValueError(f"Reprise : manifeste absent de {directory}")
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    if manifest.get("status") != "predictions_saved":
+        raise ValueError(
+            f"Reprise : manifeste {manifest.get('status')!r}, 'predictions_saved' attendu"
+        )
+    predictions_sha256 = str(
+        (manifest.get("artifacts") or {}).get("predictions.csv") or ""
+    )
+    if not re.fullmatch(r"[0-9a-f]{64}", predictions_sha256):
+        raise ValueError("Reprise : manifeste sans empreinte de predictions.csv")
+
+    model = joblib.load(args.model)
+    model_hash = sha256(args.model)
+    if args.model_sha256 and model_hash != args.model_sha256:
+        raise ValueError("Reprise : empreinte du modèle différente de celle déclarée")
+    details = load_saved_details(directory, predictions_sha256)
+    overall, groups = summarize_details(details, float(model.alpha))
+
+    launch = find_open_launch(
+        args.journal,
+        source_sha256=launch_source(args),
+        model_sha256=model_hash,
+        predictions_sha256=predictions_sha256,
+    )
+    source_hash = str(launch["source_sha256"])
+    latency_frame = load_latency_sample(args.latency_source)
+    latency = measure_latency(model, latency_frame)
+    previous = None
+    history = directory / "previous_evaluation"
+    if history.is_dir():
+        previous, _payloads = load_previous_evaluation(
+            history, model_hash, source_hash, float(model.alpha)
+        )
+    print(
+        f"[resume] launch {launch['launch_id']} ; {len(details['labels'])} lignes reprises",
+        flush=True,
+    )
+    return finish(
+        args,
+        model=model,
+        model_hash=model_hash,
+        source_hash=source_hash,
+        protocol_hash=str(launch["protocol_sha256"]),
+        protocol_revision=str(launch.get("protocol_revision") or ""),
+        decision_id=str(launch.get("decision_id") or ""),
+        launch_id=str(launch["launch_id"]),
+        saved={"sha256": predictions_sha256},
+        details=details,
+        overall=overall,
+        groups=groups,
+        previous=previous,
+        latency=latency,
+        on_progress=lambda done, total: print(
+            f"[bootstrap] {done}/{total}", flush=True
+        ),
+    )
+
+
+def launch_source(args) -> str:
+    if not args.source_sha256:
+        raise ValueError("Reprise : --source-sha256 est requis")
+    return args.source_sha256
+
+
+def main(argv=None) -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--model", type=Path)
+    parser.add_argument("--reference", type=Path)
+    parser.add_argument(
+        "--previous-evaluation",
+        type=Path,
+        help="Dossier des métriques et du rapport du 10 novembre ; obligatoire pour D48",
+    )
+    parser.add_argument("--output-dir", type=Path)
+    mode = parser.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--synthetic", action="store_true")
+    mode.add_argument("--republish", type=Path)
+    mode.add_argument("--source", type=Path)
+    mode.add_argument(
+        "--resume",
+        type=Path,
+        help="Reprend une exécution arrêtée après predictions_saved, sans relire la source",
+    )
+    parser.add_argument("--model-sha256")
+    parser.add_argument("--source-sha256")
+    parser.add_argument("--reason")
+    parser.add_argument("--decision-id")
+    parser.add_argument("--protocol-revision")
+    parser.add_argument(
+        "--protocol-file",
+        type=Path,
+        help="Texte du protocole approuvé, empreinte liée à l'autorisation",
+    )
+    parser.add_argument(
+        "--authorization",
+        type=Path,
+        help="Autorisation explicite de l'équipe, JSON hors dépôt",
+    )
+    parser.add_argument("--latency-source", type=Path)
+    parser.add_argument(
+        "--journal",
+        type=Path,
+        help="Journal central persistant hors dépôt ; sinon FINAL_EVALUATION_JOURNAL",
+    )
+    parser.add_argument("--confirm-final-test", action="store_true")
+    parser.add_argument("--tracking-uri")
+    parser.add_argument(
+        "--no-mlflow", action="store_true", help="Tests synthétiques uniquement"
+    )
+    parser.add_argument("--comparison-kind", choices=("champion", "logreg"))
+    parser.add_argument("--comparison-pr-auc", type=float)
+    parser.add_argument(
+        "--code-revision", help="Révision fournie explicitement ; aucune commande Git"
+    )
+    args = parser.parse_args(argv)
+    if args.resume is not None:
+        try:
+            return resume(args)
+        except (ValueError, OSError, KeyError) as exc:
+            print(f"[ECHEC] {exc}", file=sys.stderr)
+            return 2
+    if args.republish is not None:
+        if any(
+            (
+                args.model,
+                args.reference,
+                args.previous_evaluation,
+                args.output_dir,
+                args.source,
+                args.journal,
+                args.no_mlflow,
+                args.confirm_final_test,
+                args.decision_id,
+                args.protocol_revision,
+                args.latency_source,
+                args.protocol_file,
+                args.authorization,
+                args.reason,
+                args.source_sha256,
+                args.model_sha256,
+            )
+        ):
+            parser.error(
+                "--republish utilise uniquement le dossier sauvegardé et éventuellement --tracking-uri"
+            )
+        state = publish_saved(args.republish, args.tracking_uri)
+        print(json.dumps(state))
+        return 0 if state["status"] == "published" else 2
+    if not args.model or not args.reference or not args.output_dir:
+        parser.error("--model, --reference et --output-dir sont requis")
+    if args.no_mlflow and not args.synthetic:
+        parser.error("--no-mlflow est réservé au contrôle synthétique")
+    if args.decision_id is not None and args.decision_id != FINAL_DECISION_ID:
+        parser.error(
+            f"Décision {args.decision_id} refusée : {FINAL_DECISION_ID} requise pour cette évaluation"
+        )
+    if (args.comparison_kind is None) != (args.comparison_pr_auc is None):
+        parser.error("Fournir ensemble --comparison-kind et --comparison-pr-auc")
+    if args.comparison_pr_auc is not None and (
+        not np.isfinite(args.comparison_pr_auc) or not 0 <= args.comparison_pr_auc <= 1
+    ):
+        parser.error("La PR-AUC de référence doit être finie et dans [0,1]")
+    if args.output_dir.exists() or args.output_dir.resolve().is_relative_to(
+        ROOT.resolve()
+    ):
+        parser.error("Le dossier de sortie doit être neuf et hors dépôt")
+    if args.source is not None:
+        if args.decision_id != FINAL_DECISION_ID:
+            parser.error(
+                f"--decision-id {FINAL_DECISION_ID} est requis pour l'évaluation finale"
+            )
+        args.journal = resolve_journal(args.journal)
+        required = {
+            "--confirm-final-test": args.confirm_final_test,
+            "--journal ou FINAL_EVALUATION_JOURNAL": args.journal,
+            "--model-sha256": args.model_sha256,
+            "--source-sha256": args.source_sha256,
+            "--decision-id": args.decision_id,
+            "--protocol-revision": args.protocol_revision,
+            "--protocol-file": args.protocol_file,
+            "--authorization": args.authorization,
+            "--reason": args.reason,
+            "--latency-source": args.latency_source,
+        }
+        if args.decision_id == "D48":
+            required["--previous-evaluation"] = args.previous_evaluation
+        missing = [key for key, value in required.items() if not value]
+        if missing:
+            parser.error("Test final : arguments manquants : " + ", ".join(missing))
+        if args.source.name.lower() != "fraudtest.csv":
+            parser.error("Nom de source finale non autorisé")
+        args.source_sha256 = args.source_sha256.lower()
+        if args.authorization.resolve().is_relative_to(ROOT.resolve()):
+            parser.error("L'autorisation doit être hors dépôt")
+    if args.decision_id == "D48" and args.previous_evaluation is None:
+        parser.error("D48 : --previous-evaluation est obligatoire avant lecture")
+    model_hash = sha256(args.model)
+    if args.model_sha256 and model_hash.lower() != args.model_sha256.lower():
+        raise ValueError("SHA-256 du modèle différent de celui demandé")
+    model = joblib.load(args.model)
+    reference = json.loads(args.reference.read_text(encoding="utf-8"))
+    validate_candidate(model, reference)
+    previous = None
+    previous_payloads = {}
+    if args.previous_evaluation is not None:
+        previous, previous_payloads = load_previous_evaluation(
+            args.previous_evaluation,
+            model_hash,
+            args.source_sha256,
+            model.alpha,
+        )
+    authorization = None
+    protocol_hash = None
+    if args.synthetic:
+        latency_frame = synthetic_data()
+    else:
+        protocol_hash = sha256(args.protocol_file)
+        authorization = json.loads(args.authorization.read_text(encoding="utf-8"))
+        check_authorization(
+            args.journal,
+            authorization,
+            source_sha256=args.source_sha256,
+            model_sha256=model_hash,
+            decision_id=args.decision_id,
+            protocol_sha256=protocol_hash,
+            reason=args.reason,
+        )
+        latency_frame = load_latency_sample(args.latency_source)
+        # Valide la frame de latence avec le preprocessing figé, sans aucun fit.
+        transformed = model.preprocessor.transform(latency_frame)
+        if not np.isfinite(np.asarray(transformed)).all():
+            raise ValueError("Source de latence invalide : valeurs non finies")
+    preflight_output(args.output_dir, args.source)
+    launch_id = None
+    latency = measure_latency(model, latency_frame)
+    latency["sample_source"] = "synthetic" if args.synthetic else "development"
+    args.output_dir.mkdir(exist_ok=False)
+    if previous is not None:
+        history_dir = args.output_dir / HISTORY_DIR
+        history_dir.mkdir()
+        for name, raw_bytes in previous_payloads.items():
+            atomic_write(history_dir / name, raw_bytes)
+    if args.synthetic:
+        frame = latency_frame
+        source_hash = None
+    else:
+        launch_id = reserve_source(
+            args.journal,
+            args.source.name,
+            args.source_sha256,
+            model_hash,
+            args.reason,
+            decision_id=args.decision_id,
+            protocol_revision=args.protocol_revision,
+            protocol_sha256=protocol_hash,
+            authorization=authorization,
+        )
+        with args.source.open("rb") as stream:
+            raw = stream.read()
+        source_hash = hashlib.sha256(raw).hexdigest()
+        if source_hash != args.source_sha256:
+            raise ValueError(
+                "SHA-256 source différent de l'empreinte déclarée ; aucune analyse"
+            )
+        frame = pd.read_csv(io.BytesIO(raw), usecols=REQUIRED)
+        del raw
+    saved = {}
+
+    def persist(details):
+        saved["sha256"] = save_predictions(args.output_dir, details)
+        if not args.synthetic:
+            record_event(
+                args.journal,
+                launch_id,
+                "predictions_saved",
+                predictions_sha256=saved["sha256"],
+            )
+
+    overall, groups, details = evaluate(
+        model, frame, return_details=True, on_predictions=persist
+    )
+    return finish(
+        args,
+        model=model,
+        model_hash=model_hash,
+        source_hash=source_hash,
+        protocol_hash=protocol_hash,
+        protocol_revision=args.protocol_revision,
+        decision_id=args.decision_id,
+        launch_id=launch_id,
+        saved=saved,
+        details=details,
+        overall=overall,
+        groups=groups,
+        previous=previous,
+        latency=latency,
+        on_progress=lambda done, total: print(
+            f"[bootstrap] {done}/{total}", flush=True
+        ),
+    )
 
 
 if __name__ == "__main__":
