@@ -53,6 +53,9 @@ jobs:
       - name: Test Customer read-only seed wiring
         run: python3 -B -m unittest discover -s deploy/bootstrap -p test_customer_seed_wiring.py
 
+      - name: Test synthetic Customer smoke fixtures
+        run: python3 -B -m unittest discover -s deploy/bootstrap -p test_customer_kubernetes_smoke.py
+
       - name: Check repository structure
         run: |
           test -f docker-compose.yml
