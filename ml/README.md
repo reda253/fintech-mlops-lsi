@@ -100,6 +100,15 @@ PYTHONPATH=. python ml/scripts/d48_preflight.py \
 
 It prints one `[OK]` line per check and `[PRET]` on success; any mismatch exits non-zero with `[ECHEC]`. A successful preflight does not launch anything: it only proves the one-shot invocation can run. Do not override `--expected-model-sha256`/`--expected-source-sha256` for the official D48 run.
 
+Before a measurement, run the local `ml/scripts/d48_preflight.py` first, then
+`ml/scripts/registry_preflight.py`, then the authorized
+`ml/scripts/evaluate_final_candidate.py`. The Registry preflight accepts
+`--model-metadata PATH` for the candidate handoff JSON, which must contain
+`model_sha256` and `alpha`; this is not `artifact_manifest.json`. It requires a
+remote HTTP(S) MLflow Registry, a provisional version without the `champion`
+alias, and a pyfunc signature containing the nested `customer` input. The
+Registry check loads the model without inference or journal reservation.
+
 ## Model registry and P2 hand-off
 
 The packaged artifact ships only the runtime modules (`ml/src/model/{fraud_detector,calibration}.py`, `ml/src/preprocessing/pipeline.py`) plus compatibility aliases, so the serving image does not need this repository.

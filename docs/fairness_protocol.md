@@ -87,7 +87,7 @@ La PR #120 est mergée sur `main` (`c5d9881`). Les responsabilités sont sépar�
    autorisation, journal, source de latence et sortie. Lui seul effectue ces
    contrôles avant l'évaluateur. Son calcul du hash source lit les octets du
    fichier final : ne pas l'exécuter sur le réel sans instruction explicite.
-2. `ml/fairness/preflight_d48.py` contrôle uniquement le Registry : un manifeste
+2. `ml/scripts/registry_preflight.py` contrôle uniquement le Registry : un manifeste
    de provenance du candidat avec `model_sha256` et `alpha`, la version/alias,
    le tag `source_model_sha256`, la signature pyfunc et alpha=0.02. Il n'accepte
    plus `--source`, `--journal`, `--authorization`, `--protocol-file`,

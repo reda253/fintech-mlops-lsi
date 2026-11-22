@@ -120,7 +120,7 @@ def test_saved_predictions_cli_synthetic_end_to_end(
     import mlflow
     import mlflow.tracking
 
-    from ml.fairness import preflight_d48 as preflight
+    from ml.scripts import registry_preflight as preflight
     from ml.scripts import d48_preflight as local_preflight
     from ml.scripts import evaluate_final_candidate as evaluation
     from ml.scripts import final_journal
@@ -176,10 +176,21 @@ def test_saved_predictions_cli_synthetic_end_to_end(
         preflight, "get_tracking_uri", lambda _: "http://synthetic.invalid"
     )
     monkeypatch.setattr(mlflow, "set_tracking_uri", lambda _: None)
-    version = SimpleNamespace(version="1", tags={"source_model_sha256": model_hash})
+    from mlflow.types.schema import ColSpec, Object, Property, Schema
+
+    version = SimpleNamespace(
+        version="1",
+        tags={"source_model_sha256": model_hash, "status": "PROVISIONAL"},
+        aliases=["challenger"],
+    )
     loaded = SimpleNamespace(
         metadata=SimpleNamespace(
-            signature=SimpleNamespace(inputs=["x"], outputs=["y"])
+            signature=SimpleNamespace(
+                inputs=Schema(
+                    [ColSpec(Object([Property("dob", "string")]), "customer")]
+                ),
+                outputs=Schema([ColSpec("double", "score")]),
+            )
         ),
         unwrap_python_model=lambda: SimpleNamespace(alpha=0.02),
     )
@@ -215,7 +226,17 @@ def test_saved_predictions_cli_synthetic_end_to_end(
         )
     )
     assert local_checks and not evaluated.exists()
-    assert preflight.main(["--manifest", str(provenance)]) == 0
+    assert (
+        preflight.main(
+            [
+                "--model-metadata",
+                str(provenance),
+                "--tracking-uri",
+                "http://synthetic.invalid",
+            ]
+        )
+        == 0
+    )
     assert evaluation.main(args) == 0
     (evaluated / "mlflow_status.json").write_text(
         json.dumps({"status": "published", "run_id": "synthetic-evaluation"})

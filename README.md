@@ -91,8 +91,8 @@ toute entrée D47 d'évaluation est refusée ; un achèvement D48 cohérent est 
 
 L'alignement inclut désormais #120 (`main` : `c5d9881`). Les préconditions
 locales restent dans `ml/scripts/d48_preflight.py`. Le module
-`ml.fairness.preflight_d48` contrôle uniquement le Registry, avec
-`--manifest`, `--version` ou `--alias`, et `--tracking-uri` : il ne relit ni la
+`ml.scripts.registry_preflight` contrôle uniquement le Registry, avec
+`--model-metadata`, `--version` ou `--alias`, et `--tracking-uri` : il ne relit ni la
 source finale ni le journal, ne réserve rien et ne prédit rien. `audit.py`
 consomme les prédictions et vérifie le journal de complétion sans réutiliser
 l'autorisation. Les paramètres Registry sont dans une provenance distincte

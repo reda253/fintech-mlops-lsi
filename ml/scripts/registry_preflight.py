@@ -9,41 +9,53 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import os
 from pathlib import Path
 
 from ml.src.evaluation.final_artifacts import APPROVED_D48_MODEL_SHA256
 from ml.tracking_smoke import get_tracking_uri
 
 
-def verify_manifest(manifest: dict) -> None:
+def verify_model_metadata(metadata: dict) -> None:
     """Only the candidate binding and alpha belong to this Registry check."""
-    if manifest.get("model_sha256") != APPROVED_D48_MODEL_SHA256:
-        raise ValueError("Le manifeste ne désigne pas le candidat D48 approuvé")
+    if metadata.get("model_sha256") != APPROVED_D48_MODEL_SHA256:
+        raise ValueError("Les métadonnées ne désignent pas le candidat D48 approuvé")
     if not math.isclose(
-        float(manifest.get("alpha", -1)), 0.02, abs_tol=1e-12, rel_tol=0
+        float(metadata.get("alpha", -1)), 0.02, abs_tol=1e-12, rel_tol=0
     ):
-        raise ValueError("Alpha du manifeste différent de 0.02")
+        raise ValueError("Alpha des métadonnées différent de 0.02")
 
 
-def verify_registry(client, loader, manifest, *, version=None, alias="challenger"):
+def verify_registry(client, loader, metadata, *, version=None, alias="challenger"):
     """Read the version/tag/signature and load its pyfunc without prediction.
 
     The Registry protocol_sha256 describes D44 training, not D48 approval.
     Local protocol and authorization checks belong to ml.scripts.d48_preflight.
     """
-    verify_manifest(manifest)
+    verify_model_metadata(metadata)
     model = (
         client.get_model_version("fraud-detector", str(version))
         if version is not None
         else client.get_model_version_by_alias("fraud-detector", alias)
     )
-    if model.tags.get("source_model_sha256") != manifest["model_sha256"]:
+    if model.tags.get("source_model_sha256") != metadata["model_sha256"]:
         raise ValueError("Tag source_model_sha256 absent ou différent du candidat figé")
+    if model.tags.get("status") != "PROVISIONAL":
+        raise ValueError("Le modèle doit avoir le statut PROVISIONAL")
+    if "champion" in (model.aliases or []):
+        raise ValueError("Le modèle porte déjà l'alias champion")
     uri = f"models:/fraud-detector/{model.version}"
     loaded = loader(uri)
     signature = loaded.metadata.signature
     if signature is None or signature.inputs is None or signature.outputs is None:
         raise ValueError("Signature pyfunc explicite d'entrée et sortie requise")
+    from mlflow.types.schema import Object
+
+    customer = next(
+        (item for item in signature.inputs if item.name == "customer"), None
+    )
+    if customer is None or not isinstance(customer.type, Object):
+        raise ValueError("Signature d'entrée : champ customer imbriqué requis")
     wrapper = loaded.unwrap_python_model()
     if not math.isclose(float(wrapper.alpha), 0.02, rel_tol=0, abs_tol=1e-12):
         raise ValueError("Alpha du modèle différent de 0.02")
@@ -51,11 +63,20 @@ def verify_registry(client, loader, manifest, *, version=None, alias="challenger
 
 
 def run(args) -> None:
-    manifest = json.loads(args.manifest.read_text(encoding="utf-8"))
-    verify_manifest(manifest)
-    uri = get_tracking_uri(args.tracking_uri)
+    metadata = json.loads(args.model_metadata.read_text(encoding="utf-8"))
+    verify_model_metadata(metadata)
+    configured = (
+        args.tracking_uri or os.environ.get("MLFLOW_TRACKING_URI", "")
+    ).strip()
+    if not configured or configured.lower().startswith("sqlite:"):
+        raise ValueError(
+            "Registry MLflow distant http:// ou https:// requis ; SQLite local interdit"
+        )
+    uri = get_tracking_uri(configured)
     if not uri.startswith(("http://", "https://")):
-        raise ValueError("Registry serveur requis ; repli SQLite interdit")
+        raise ValueError(
+            "Registry MLflow distant http:// ou https:// requis ; SQLite local interdit"
+        )
     import mlflow
     from mlflow.tracking import MlflowClient
 
@@ -63,7 +84,7 @@ def run(args) -> None:
     selected = verify_registry(
         MlflowClient(),
         mlflow.pyfunc.load_model,
-        manifest,
+        metadata,
         version=args.version,
         alias=args.alias,
     )
@@ -74,10 +95,10 @@ def run(args) -> None:
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--manifest",
+        "--model-metadata",
         type=Path,
         required=True,
-        help="Provenance du candidat : model_sha256 et alpha ; pas l'autorisation",
+        help="JSON metadata du candidat : clés model_sha256 et alpha (pas artifact_manifest.json)",
     )
     select = parser.add_mutually_exclusive_group()
     select.add_argument("--version")
