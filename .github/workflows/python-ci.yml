@@ -6,6 +6,7 @@ on:
       - 'ml/**'
       - 'ml-service/**'
       - 'simulator/**'
+      - 'load-tests/**'
       - '.github/workflows/python-ci.yml'
   push:
     branches: [ main ]
@@ -13,6 +14,7 @@ on:
       - 'ml/**'
       - 'ml-service/**'
       - 'simulator/**'
+      - 'load-tests/**'
       - '.github/workflows/python-ci.yml'
 
 jobs:
@@ -48,6 +50,14 @@ jobs:
       - name: Run ml tests
         run: |
           pytest ml/tests -v
+
+      - name: Run load-tests payload generator tests
+        run: |
+          pytest load-tests/tests -v
+
+      - name: Run load-tests contract checks (Node)
+        run: |
+          node --test load-tests/tests/checks.test.mjs
 
   ml-smoke:
     name: ML Smoke Pipeline

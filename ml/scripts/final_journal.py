@@ -264,6 +264,56 @@ def reserve_source(
     return launch_id
 
 
+def find_open_launch(
+    journal: Path,
+    *,
+    source_sha256: str,
+    model_sha256: str,
+    predictions_sha256: str,
+) -> dict:
+    """Return the single reservation that has predictions saved and no terminal entry.
+
+    Used by ``--resume``: the run that stopped after ``predictions_saved`` is the
+    only one whose artifacts may be completed, and it must be unique.
+    """
+
+    for value in (source_sha256, model_sha256, predictions_sha256):
+        if not re.fullmatch(r"[0-9a-f]{64}", value or ""):
+            raise ValueError("Reprise : empreintes invalides")
+    _raw, entries = read_journal(journal)
+    terminal = {
+        entry.get("launch_id")
+        for entry in entries
+        if entry.get("status") in {"completed", "failed"}
+    }
+    saved = {
+        entry.get("launch_id"): entry
+        for entry in entries
+        if entry.get("status") == "predictions_saved"
+    }
+    candidates = []
+    for entry in entries:
+        if entry.get("status") != "reserved":
+            continue
+        launch_id = entry.get("launch_id")
+        if launch_id in terminal:
+            continue
+        if entry.get("source_sha256") != source_sha256:
+            continue
+        if entry.get("model_sha256") != model_sha256:
+            continue
+        record = saved.get(launch_id)
+        if record is None or record.get("predictions_sha256") != predictions_sha256:
+            continue
+        candidates.append(entry)
+    if len(candidates) != 1:
+        raise ValueError(
+            "Reprise : réservation ouverte introuvable ou ambiguë "
+            f"({len(candidates)}) ; revue manuelle requise"
+        )
+    return candidates[0]
+
+
 def record_event(journal: Path, launch_id: str, status: str, **details) -> None:
     """Les sauvegardes et la complétion utilisent le même verrou que la réservation."""
     if status not in {"predictions_saved", "completed"}:

@@ -1,0 +1,69 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: k6-ml-predict
+  namespace: ml
+  labels:
+    app: k6-ml-predict
+    suite: ml-predict
+spec:
+  # One shot: a failed run is data, not something to retry automatically.
+  backoffLimit: 0
+  # Keep the finished pod long enough to copy /results out.
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: k6-ml-predict
+        suite: ml-predict
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 12345
+        runAsGroup: 12345
+        # emptyDir is created root-owned; fsGroup makes it writable for k6.
+        fsGroup: 12345
+      containers:
+        - name: k6
+          image: grafana/k6:0.54.0
+          imagePullPolicy: IfNotPresent
+          command: ["k6", "run", "/scripts/ml-predict.js"]
+          env:
+            - name: SCENARIO
+              value: "smoke"
+            - name: BASE_URL
+              value: "http://ml-service.ml.svc.cluster.local:8000"
+            - name: PAYLOADS
+              value: "/scripts/payloads.json"
+            - name: RESULTS_DIR
+              value: "/results"
+            # Contract assertions: a mock model, another alpha or another
+            # version fails the run instead of passing silently.
+            - name: EXPECTED_VERSION
+              value: "1"
+            - name: EXPECTED_ALPHA
+              value: "0.02"
+            - name: EXPECTED_MODEL
+              value: "fraud-detector"
+          resources:
+            # k6 is an arrival-rate generator: it needs little CPU, but it must
+            # not compete with the pods it measures.
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: scripts
+              mountPath: /scripts
+              readOnly: true
+            - name: results
+              mountPath: /results
+      volumes:
+        - name: scripts
+          configMap:
+            name: k6-ml-predict
+        - name: results
+          emptyDir: {}
