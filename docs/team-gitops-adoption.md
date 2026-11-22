@@ -55,7 +55,10 @@ ingress-test were outside the candidate. No resources were changed.
    key. Do not reuse keys from either lab.
 3. Prepare the dedicated signing key and initial admin out of band. Use
    the target cluster's certificate, strict scope, and the exact names
-   auth-signing and auth-bootstrap-admin in fintech. Verify the generated
+   auth-signing and auth-bootstrap-admin in fintech. Customer also requires
+   the stable customer-hmac Secret described in
+   [Customer wiring](customer-hmac-seed.md); never regenerate it for populated
+   data. Verify the generated
    Secrets exist without displaying their values. The Application does not
    manage these Secrets. Do not reuse or disclose real credentials in Git,
    command logs or chat.

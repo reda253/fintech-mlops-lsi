@@ -20,7 +20,9 @@ Usage:
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
+import re
 import subprocess
 import sys
 from datetime import UTC, datetime
@@ -30,6 +32,7 @@ from typing import Any
 import mlflow
 import numpy as np
 import pandas as pd
+from mlflow.tracking import MlflowClient
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 SRC_DIR = Path(__file__).resolve().parents[1] / "src"
@@ -40,6 +43,24 @@ for _path in (ROOT_DIR, SRC_DIR):
 from ml.src.model.calibration import conformal_quantile
 from ml.src.model.fraud_detector import FraudDetectorModel
 from ml.src.model.registry import register_model
+
+FINAL_DECISION_ID = "D48"
+
+# The six documented §5.4 gates. A promotion report must carry exactly these,
+# each explicitly true, plus the provenance of the D48 evaluation.
+REQUIRED_GATES = (
+    "gate_non_regression",
+    "gate_coverage",
+    "gate_coverage_legit",
+    "gate_coverage_fraud",
+    "gate_review_rate",
+    "gate_latency",
+)
+
+# Approved D48 protocol text: docs/final_evaluation_protocol.md at bc30b93.
+APPROVED_D48_PROTOCOL_SHA256 = (
+    "b0bfaf9ba5b9c3b40dc91c52d34281227846fce4d11b24ff6bf9a166550adc24"
+)
 
 DEFAULT_INPUT_EXAMPLE = pd.DataFrame(
     [
@@ -107,7 +128,9 @@ def _normalise_payload(payload: Any) -> Any:
         beta = getattr(wrapped, "beta", None)
         calibrator = getattr(wrapped, "calibrator", None)
         calibration_method = getattr(
-            calibrator, "method", type(calibrator).__name__ if calibrator is not None else None
+            calibrator,
+            "method",
+            type(calibrator).__name__ if calibrator is not None else None,
         )
     else:
         classifier = wrapped
@@ -140,8 +163,12 @@ def _resolve_thresholds(
     scores = payload.get("conformal_scores") or {}
     if not isinstance(scores, dict):
         scores = {}
-    legit_scores = _first(payload, "legit_scores", "nonconformity_legit") or scores.get("legit")
-    fraud_scores = _first(payload, "fraud_scores", "nonconformity_fraud") or scores.get("fraud")
+    legit_scores = _first(payload, "legit_scores", "nonconformity_legit") or scores.get(
+        "legit"
+    )
+    fraud_scores = _first(payload, "fraud_scores", "nonconformity_fraud") or scores.get(
+        "fraud"
+    )
     if legit_scores is None or fraud_scores is None:
         raise ValueError(
             "Le candidat doit fournir threshold_legit/threshold_fraud "
@@ -168,7 +195,9 @@ def build_model_from_payload(
     payload = _normalise_payload(payload)
 
     if isinstance(payload, dict):
-        preprocessor = _first(payload, "preprocessor", "pipeline", "preproc", "feature_pipeline")
+        preprocessor = _first(
+            payload, "preprocessor", "pipeline", "preproc", "feature_pipeline"
+        )
         classifier = _first(payload, "classifier", "model", "estimator", "clf")
         if classifier is None:
             raise ValueError("Le dict candidat doit contenir 'classifier' ou 'model'.")
@@ -176,7 +205,9 @@ def build_model_from_payload(
         feature_names = payload.get("feature_names")
         threshold_legit, threshold_fraud = _resolve_thresholds(payload, alpha)
         metadata = payload.get("metadata") or {}
-        trained_at = payload.get("trained_at") or metadata.get("trained_at") or trained_at
+        trained_at = (
+            payload.get("trained_at") or metadata.get("trained_at") or trained_at
+        )
         payload_alpha = payload.get("alpha") or metadata.get("alpha", alpha)
         beta = payload.get("beta", metadata.get("beta"))
         calibration_method = (
@@ -186,7 +217,9 @@ def build_model_from_payload(
             or (type(calibrator).__name__ if calibrator is not None else "none")
         )
         git_commit = payload.get("git_commit", metadata.get("git_commit", git_commit))
-        data_sha256 = payload.get("data_sha256", metadata.get("data_sha256", data_sha256))
+        data_sha256 = payload.get(
+            "data_sha256", metadata.get("data_sha256", data_sha256)
+        )
     else:
         # Single object: assumed to consume raw Sparkov rows and expose predict_proba.
         if not hasattr(payload, "predict_proba"):
@@ -233,20 +266,186 @@ def _current_git_commit() -> str:
         return "unknown"
 
 
-def _validate_promotion_gates(path: Path) -> dict[str, bool]:
-    """Refuse promotion unless every §5.4 gate is explicitly true."""
+def _sha256_file(path: Path) -> str:
+    with Path(path).open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+
+
+def _validate_promotion_gates(
+    path: Path,
+    *,
+    client: MlflowClient | None = None,
+    candidate_sha256: str | None = None,
+    expected_model_uri: str | None = None,
+) -> dict[str, bool]:
+    """Refuse promotion unless the six §5.4 gates are proven for this candidate.
+
+    A bare ``{"gate_...": true}`` file is not accepted: a report must also carry
+    the provenance of the D48 evaluation that produced it (parent run, child
+    ``6_quality_gates`` run, candidate/source/protocol fingerprints), and the
+    MLflow runs are re-read to confirm it.
+    """
+
+    from ml.src.evaluation.final_artifacts import (
+        APPROVED_D48_MODEL_SHA256,
+        APPROVED_D48_SOURCE_SHA256,
+    )
 
     payload = json.loads(Path(path).read_text(encoding="utf-8"))
     gates = payload.get("gates", payload)
     if not isinstance(gates, dict):
         raise TypeError("Le fichier de portes doit contenir un objet JSON.")
+
     gate_items = {key: value for key, value in gates.items() if key.startswith("gate_")}
-    if not gate_items:
-        raise ValueError("Aucune porte 'gate_*' trouvee dans le fichier de promotion.")
+    missing = sorted(set(REQUIRED_GATES) - set(gate_items))
+    if missing:
+        raise ValueError(f"Portes manquantes : {', '.join(missing)}")
+    unexpected = sorted(set(gate_items) - set(REQUIRED_GATES))
+    if unexpected:
+        raise ValueError(f"Portes inconnues : {', '.join(unexpected)}")
     failed = sorted(key for key, value in gate_items.items() if value is not True)
     if failed:
         raise ValueError(f"Portes non validees : {', '.join(failed)}")
-    return {key: True for key in gate_items}
+
+    provenance = payload.get("provenance")
+    if not isinstance(provenance, dict):
+        raise TypeError("Provenance absente : rapport de portes non attribuable.")
+    if provenance.get("decision_id") != FINAL_DECISION_ID:
+        raise ValueError(
+            f"Provenance rattachee a la decision {provenance.get('decision_id')!r}, "
+            f"{FINAL_DECISION_ID} requise"
+        )
+    hashes = {
+        key: str(provenance.get(key) or "")
+        for key in ("candidate_sha256", "source_sha256", "protocol_sha256")
+    }
+    for key, value in hashes.items():
+        if not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise ValueError(f"Provenance : {key} invalide")
+    if hashes["candidate_sha256"] != APPROVED_D48_MODEL_SHA256:
+        raise ValueError("Provenance : candidat different du modele D44 fige")
+    if hashes["source_sha256"] != APPROVED_D48_SOURCE_SHA256:
+        raise ValueError(
+            "Provenance : source differente de la source approuvee pour D48"
+        )
+    if hashes["protocol_sha256"] != APPROVED_D48_PROTOCOL_SHA256:
+        raise ValueError("Provenance : protocole different du protocole D48 approuve")
+    if candidate_sha256 is not None and hashes["candidate_sha256"] != candidate_sha256:
+        raise ValueError("Provenance : candidat different de l'artefact a promouvoir")
+
+    parent_run_id = str(provenance.get("parent_run_id") or "")
+    gates_run_id = str(provenance.get("gates_run_id") or "")
+    if not parent_run_id or not gates_run_id:
+        raise ValueError("Provenance : parent_run_id et gates_run_id requis")
+
+    client = client or MlflowClient()
+    try:
+        parent = client.get_run(parent_run_id)
+        gates_run = client.get_run(gates_run_id)
+    except Exception as exc:  # mlflow raises MlflowException on a missing run
+        raise ValueError(f"Provenance : run MLflow introuvable ({exc})") from exc
+
+    if parent.data.tags.get("decision_id") != FINAL_DECISION_ID:
+        raise ValueError("Provenance : le run parent n'est pas une evaluation D48")
+    if parent.data.tags.get("evaluation_source") != "final_evaluation_artifacts":
+        raise ValueError("Provenance : le run parent ne consomme pas les artefacts D48")
+    if parent.data.tags.get("candidate_sha256") != hashes["candidate_sha256"]:
+        raise ValueError("Provenance : candidat du run parent different du rapport")
+    model_uri = str(parent.data.tags.get("model_uri") or "")
+    if expected_model_uri is not None and model_uri != expected_model_uri:
+        raise ValueError(
+            f"Provenance : modele evalue {model_uri!r} different de {expected_model_uri!r}"
+        )
+    if gates_run.data.tags.get("mlflow.parentRunId") != parent_run_id:
+        raise ValueError("Provenance : le run de portes n'est pas enfant du run parent")
+    if not str(gates_run.data.tags.get("mlflow.runName", "")).startswith(
+        "6_quality_gates"
+    ):
+        raise ValueError("Provenance : run enfant 6_quality_gates attendu")
+    if gates_run.data.params.get("quality_gates_passed") != "True":
+        raise ValueError("Provenance : quality_gates_passed n'est pas True")
+    for gate in REQUIRED_GATES:
+        if gates_run.data.metrics.get(gate) != 1.0:
+            raise ValueError(
+                f"Provenance : la porte {gate} n'est pas journalisee a 1.0"
+            )
+
+    # The report must also be tied to the evaluation run that consumed the
+    # artifacts: `5_evaluate` logs the three fingerprints it verified from
+    # final_metrics.json. Without this, a report could declare the approved
+    # source/protocol while the run that produced the metrics used another.
+    children = client.search_runs(
+        [str(parent.info.experiment_id)],
+        filter_string=f"tags.`mlflow.parentRunId` = '{parent_run_id}'",
+    )
+    evaluate_runs = [
+        run
+        for run in children
+        if str(run.data.tags.get("mlflow.runName", "")).startswith("5_evaluate")
+    ]
+    if len(evaluate_runs) != 1:
+        raise ValueError(
+            "Provenance : run enfant 5_evaluate introuvable ou multiple "
+            f"({len(evaluate_runs)})"
+        )
+    evaluate = evaluate_runs[0]
+    for field, tag in (
+        ("candidate_sha256", "evaluation_model_sha256"),
+        ("source_sha256", "evaluation_source_sha256"),
+        ("protocol_sha256", "evaluation_protocol_sha256"),
+    ):
+        observed = evaluate.data.tags.get(tag)
+        if not observed:
+            raise ValueError(f"Provenance : tag {tag} absent du run 5_evaluate")
+        if observed != hashes[field]:
+            raise ValueError(
+                f"Provenance : {tag} du run 5_evaluate different du rapport"
+            )
+
+    return {key: True for key in REQUIRED_GATES}
+
+
+def promote_version(
+    model_name: str,
+    model_version: str,
+    *,
+    gates_path: Path | None,
+    tracking_uri: str | None = None,
+    client: MlflowClient | None = None,
+) -> dict[str, Any]:
+    """Move ``champion`` to an already-registered, already-measured version."""
+
+    if gates_path is None:
+        raise ValueError("--promote-version exige --gates avec les portes de qualite.")
+    if client is None:
+        client = (
+            MlflowClient(tracking_uri=tracking_uri) if tracking_uri else MlflowClient()
+        )
+    version = str(model_version)
+    registered = client.get_model_version(model_name, version)
+    candidate_sha256 = str(registered.tags.get("source_model_sha256") or "")
+    if not re.fullmatch(r"[0-9a-f]{64}", candidate_sha256):
+        raise ValueError("Version sans tag source_model_sha256 : promotion refusee")
+    if "champion" in registered.aliases:
+        raise ValueError(f"{model_name}/{version} porte deja l'alias champion")
+
+    model_uri = f"models:/{model_name}/{version}"
+    _validate_promotion_gates(
+        gates_path,
+        client=client,
+        candidate_sha256=candidate_sha256,
+        expected_model_uri=model_uri,
+    )
+
+    client.set_registered_model_alias(model_name, "champion", version)
+    client.set_model_version_tag(model_name, version, "status", "CHAMPION")
+    return {
+        "name": model_name,
+        "version": version,
+        "aliases": {"champion": version},
+        "model_uri": f"models:/{model_name}@champion",
+        "promoted_at": datetime.now(UTC).isoformat(),
+    }
 
 
 def load_input_example(path: Path | None) -> pd.DataFrame:
@@ -282,13 +481,18 @@ def register_candidate(
 
     import joblib
 
+    if tracking_uri:
+        mlflow.set_tracking_uri(tracking_uri)
     if promote:
         if gates_path is None:
             raise ValueError("--promote exige --gates avec les portes de qualite.")
-        _validate_promotion_gates(gates_path)
-
-    if tracking_uri:
-        mlflow.set_tracking_uri(tracking_uri)
+        _validate_promotion_gates(
+            gates_path,
+            client=MlflowClient(tracking_uri=tracking_uri)
+            if tracking_uri
+            else MlflowClient(),
+            candidate_sha256=_sha256_file(Path(artifact_path)),
+        )
     mlflow.set_experiment(experiment)
 
     metadata: dict[str, Any] = {}
@@ -301,7 +505,8 @@ def register_candidate(
         alpha=float(metadata.get("alpha", alpha)),
         model_name=model_name,
         model_version=model_version,
-        git_commit=git_commit or str(metadata.get("git_commit") or _current_git_commit()),
+        git_commit=git_commit
+        or str(metadata.get("git_commit") or _current_git_commit()),
         data_sha256=data_sha256 or str(metadata.get("data_sha256") or "unknown"),
         trained_at=metadata.get("timestamp_utc"),
     )
@@ -345,8 +550,10 @@ def register_candidate(
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Register P2's candidate as fraud-detector")
-    parser.add_argument("--artifact", type=Path, required=True)
+    parser = argparse.ArgumentParser(
+        description="Register P2's candidate as fraud-detector"
+    )
+    parser.add_argument("--artifact", type=Path, default=None)
     parser.add_argument("--metadata", type=Path, default=None)
     parser.add_argument("--tracking-uri", default=None)
     parser.add_argument("--experiment", default="fraud-detector-registry")
@@ -359,15 +566,42 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--promote",
         action="store_true",
-        help="Move the champion alias to this version (requires --gates).",
+        help="Move the champion alias to the version registered by this call.",
+    )
+    parser.add_argument(
+        "--promote-version",
+        default=None,
+        help=(
+            "Move the champion alias to an already registered, already measured "
+            "version (requires --gates). Preferred over --promote."
+        ),
     )
     parser.add_argument(
         "--gates",
         type=Path,
         default=None,
-        help="JSON quality-gate report required by --promote.",
+        help="JSON quality-gate report required by --promote/--promote-version.",
     )
     args = parser.parse_args(argv)
+
+    if args.promote_version is not None:
+        if args.artifact is not None:
+            parser.error("--artifact et --promote-version sont exclusifs")
+        if args.promote:
+            parser.error(
+                "--promote-version deplace deja l'alias ; --promote est inutile"
+            )
+        result = promote_version(
+            args.model_name,
+            args.promote_version,
+            gates_path=args.gates,
+            tracking_uri=args.tracking_uri,
+        )
+        print(json.dumps(result, indent=2, default=str))
+        return 0
+
+    if args.artifact is None:
+        parser.error("--artifact ou --promote-version est requis")
 
     result = register_candidate(
         args.artifact,

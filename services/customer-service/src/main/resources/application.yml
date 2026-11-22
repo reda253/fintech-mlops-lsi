@@ -9,6 +9,8 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/fintech}
     username: ${DB_USER:customer_user}
     password: ${DB_PASSWORD:customer_pwd}
+    hikari:
+      schema: customer          # plain JDBC (seed) uses the service schema whatever the role's search_path
   jpa:
     open-in-view: false
     hibernate:
@@ -26,6 +28,13 @@ spring:
       resourceserver:
         jwt:
           jwk-set-uri: ${JWKS_URI:http://localhost:8081/.well-known/jwks.json}
+
+customer:
+  # HMAC-SHA256 key for card fingerprints, >= 32 bytes, from a K8s Secret. No default: the service refuses
+  # to start without it. Changing it orphans every stored fingerprint.
+  card-hmac-key: ${CARD_HMAC_KEY:}
+  # Comma-separated raw Sparkov CSV files loaded at startup when the table is empty (D50). Blank = no seed.
+  seed-path: ${CUSTOMER_SEED_PATH:}
 
 server:
   port: 8082

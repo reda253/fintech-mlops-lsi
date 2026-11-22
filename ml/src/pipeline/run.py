@@ -83,11 +83,12 @@ def _run_evaluation(
     """Log a verified D48 artifact for the frozen candidate; never trains."""
 
     uri = model_uri or f"models:/{model_name}/{model_version or '1'}"
+    # The registry lookup must hit the requested server, not the local store.
+    mlflow.set_tracking_uri(tracking_uri)
     frozen = load_frozen_candidate(candidate_model)
     model = _load_python_model(uri)
     assert_model_binding(frozen, model)
 
-    mlflow.set_tracking_uri(tracking_uri)
     mlflow.set_experiment(experiment)
     with mlflow.start_run(run_name="pipeline-evaluate"):
         mlflow.set_tag("git_commit", get_git_commit())

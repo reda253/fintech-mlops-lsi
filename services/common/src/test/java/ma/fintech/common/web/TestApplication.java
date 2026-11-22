@@ -53,6 +53,11 @@ class TestApplication {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Customer 42 not found");
         }
 
+        @GetMapping("/api/v1/test/stale")
+        void stale() {
+            throw new org.springframework.dao.OptimisticLockingFailureException("row changed");
+        }
+
         @GetMapping("/api/v1/test/boom")
         void boom() {
             throw new IllegalStateException("jdbc:postgresql://secret-host password=hunter2");

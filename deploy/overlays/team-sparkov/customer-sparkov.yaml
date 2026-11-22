@@ -1,0 +1,24 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: customer-service
+  namespace: fintech
+spec:
+  progressDeadlineSeconds: 1800
+  template:
+    spec:
+      nodeSelector:
+        fintech.local/sparkov: "true"
+      containers:
+        - name: app
+          startupProbe:
+            failureThreshold: 300
+          volumeMounts:
+            - name: sparkov
+              mountPath: /data/sparkov
+              readOnly: true
+      volumes:
+        - name: sparkov
+          hostPath:
+            path: /data/sparkov
+            type: Directory
