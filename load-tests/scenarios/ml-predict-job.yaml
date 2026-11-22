@@ -38,6 +38,14 @@ spec:
               value: "/scripts/payloads.json"
             - name: RESULTS_DIR
               value: "/results"
+            # Contract assertions: a mock model, another alpha or another
+            # version fails the run instead of passing silently.
+            - name: EXPECTED_VERSION
+              value: "1"
+            - name: EXPECTED_ALPHA
+              value: "0.02"
+            - name: EXPECTED_MODEL
+              value: "fraud-detector"
           resources:
             # k6 is an arrival-rate generator: it needs little CPU, but it must
             # not compete with the pods it measures.

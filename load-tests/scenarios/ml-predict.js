@@ -15,11 +15,17 @@ import http from "k6/http";
 import { check } from "k6";
 import { randomBytes } from "k6/crypto";
 import { SharedArray } from "k6/data";
+import { contractIssues, expectedValues, isAllowedSet } from "./checks.mjs";
 
 const BASE_URL = (__ENV.BASE_URL || "http://ml-service.ml.svc.cluster.local:8000").replace(/\/+$/, "");
 const PAYLOADS_PATH = __ENV.PAYLOADS || "/scripts/payloads.json";
 const RESULTS_DIR = (__ENV.RESULTS_DIR || "").replace(/\/+$/, "");
 const SCENARIO = __ENV.SCENARIO || "smoke";
+const EXPECTED = expectedValues({
+  alpha: __ENV.EXPECTED_ALPHA,
+  modelName: __ENV.EXPECTED_MODEL,
+  modelVersion: __ENV.EXPECTED_VERSION,
+});
 
 // 200+ sustained TPS is the platform target; one /predict per transaction.
 // The strict 50 ms figure is the *model* p95 (ml_inference_duration_seconds);
@@ -76,11 +82,18 @@ function buildOptions(name) {
     );
   }
   const thresholds = {
-    http_req_failed: ["rate<0.001"],
+    // Hard stop: the README promises an abort above 1 % of failed requests.
+    http_req_failed: [
+      { threshold: "rate<0.001" },
+      { threshold: "rate<0.01", abortOnFail: true, delayAbortEval: "10s" },
+    ],
     checks: ["rate>0.999"],
   };
   if (name !== "smoke") {
     thresholds[`http_req_duration{scenario:${name}}`] = ["p(95)<50", "p(99)<150"];
+    // An arrival-rate executor that cannot spawn enough VUs silently reports
+    // fewer requests than requested; that is a finding, not a valid run.
+    thresholds.dropped_iterations = ["count==0"];
   }
   return {
     scenarios: { [name]: PROFILES[name] },
@@ -132,16 +145,22 @@ export default function () {
   } catch (_) {
     parsed = null;
   }
+  const problems = contractIssues(parsed, EXPECTED);
+  if (problems.length > 0) {
+    console.warn(`/predict hors contrat: ${problems.join("; ")}`);
+  }
 
   check(response, {
     "status is 200": (r) => r.status === 200,
-    "body has a prediction_set": () => parsed !== null && Array.isArray(parsed.prediction_set),
-    "prediction_set has 0..2 items": () =>
+    "prediction_set is [], [0], [1] or [0,1]": () =>
+      parsed !== null && isAllowedSet(parsed.prediction_set),
+    "alpha is the expected alpha": () => parsed !== null && parsed.alpha === EXPECTED.alpha,
+    "served by the expected real model": () =>
       parsed !== null &&
-      Array.isArray(parsed.prediction_set) &&
-      parsed.prediction_set.length <= 2,
-    "alpha is a probability": () =>
-      parsed !== null && typeof parsed.alpha === "number" && parsed.alpha > 0 && parsed.alpha < 1,
+      parsed.model !== undefined &&
+      parsed.model.name === EXPECTED.modelName &&
+      String(parsed.model.version) === EXPECTED.modelVersion &&
+      parsed.model.version !== "mock",
     "inference_ms is reported": () =>
       parsed !== null && typeof parsed.inference_ms === "number" && parsed.inference_ms >= 0,
   });

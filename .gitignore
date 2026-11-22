@@ -15,6 +15,7 @@ venv/
 mlruns/
 /.mlflow/
 /mlflow.db
+/ml-service/mlflow.db
 *.egg-info/
 
 # Node

@@ -15,6 +15,7 @@ Files:
 | File | Purpose |
 |---|---|
 | `ml-predict.js` | k6 scenario (5 profiles, thresholds, JSON summary) |
+| `checks.mjs` | pure contract checks (allowed sets, alpha, model version), shared with the Node tests |
 | `generate_payloads.py` | builds fixed `/predict` payloads from `fraudTrain.csv` (stdlib only) |
 | `ml-predict-job.yaml` | Kubernetes Job that runs the scenario in-cluster |
 
@@ -50,6 +51,7 @@ category from the contract enum). `transaction_id` is a fixed UUID per payload:
 ```bash
 kubectl -n ml create configmap k6-ml-predict \
   --from-file=ml-predict.js=load-tests/scenarios/ml-predict.js \
+  --from-file=checks.mjs=load-tests/scenarios/checks.mjs \
   --from-file=payloads.json=/tmp/k6/payloads.json \
   --dry-run=client -o yaml | kubectl apply -f -
 
@@ -85,7 +87,7 @@ docker run --rm --network host \
   -v /tmp/k6:/data:z \
   grafana/k6:0.54.0 run \
   -e SCENARIO=smoke -e BASE_URL=http://127.0.0.1:8000 \
-  -e PAYLOADS=/data/payloads.json -e RESULTS_DIR=/data \
+  -e PAYLOADS=/data/payloads.json -e EXPECTED_VERSION=1 \
   /scripts/ml-predict.js
 ```
 
@@ -102,10 +104,24 @@ must be readable by the container user (uid `12345`).
 | `stress` | `ramping-arrival-rate` | 50 → 400 rps | HPA ceiling and saturation point |
 | `soak` | `constant-arrival-rate` | 200 rps, 30 min | memory leaks, cache drift |
 
-Thresholds: `http_req_failed < 0.1 %`, `checks > 99.9 %`, and for every profile
-except `smoke`, `http_req_duration{scenario:<profile>} p(95) < 50 ms`,
-`p(99) < 150 ms`. k6 exits **99** when a threshold fails — a failed threshold is
-a result to report, not a reason to re-run until it passes.
+Every response is checked against the real contract, not just for HTTP 200:
+
+- `status is 200`;
+- `prediction_set` is exactly `[]`, `[0]`, `[1]` or `[0,1]` (a `[9,9]`, `[0,0]` or `[1,0]` fails);
+- `alpha` equals `EXPECTED_ALPHA` (default `0.02`, D44) — a mock service answering `0.05` fails;
+- `model.name` equals `EXPECTED_MODEL` and `model.version` equals `EXPECTED_VERSION` (default `1`), and `mock` is refused;
+- `inference_ms` is reported.
+
+Set those three variables for a run against another version.
+
+Thresholds: `http_req_failed < 0.1 %`, `checks > 99.9 %`, `dropped_iterations == 0` for
+every fixed-rate profile, and for every profile except `smoke`,
+`http_req_duration{scenario:<profile>} p(95) < 50 ms`, `p(99) < 150 ms`.
+
+The run **aborts** as soon as the failure rate exceeds 1 % (after a 10 s
+evaluation delay), instead of hammering a failing service. k6 exits **99** when a
+threshold fails — a failed threshold is a result to report, not a reason to re-run
+until it passes.
 
 ## 4. The two p95 numbers
 
@@ -153,4 +169,15 @@ do not assert a target the cluster did not reach.
 - Keep `maxVUs` bounded; an arrival-rate executor that cannot spawn enough VUs
   reports `dropped_iterations`, which is itself a finding.
 - Abort on `http_req_failed > 1 %` instead of continuing to hammer a failing
-  service.
+  service (enforced by the `abortOnFail` threshold).
+
+## 7. Tests
+
+```bash
+python -m pytest load-tests/tests -q          # payload generator
+node --test load-tests/tests/checks.test.mjs  # contract checks
+```
+
+The Node suite covers the cases that a healthy service never produces: mock
+mode, `alpha=0.05`, `[9,9]`, `[1,0]`, a missing body. Both suites run in the
+Python CI workflow.

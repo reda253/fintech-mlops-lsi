@@ -74,22 +74,37 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
-def development_cutoff(source: Path, share: float) -> tuple[str, int]:
-    """Return the last date of the development block, and the row count."""
+def resolve_source(path: Path) -> Path:
+    """Only the full development dataset is accepted, whatever the casing."""
 
-    dates: list[str] = []
-    with source.open(newline="", encoding="utf-8") as stream:
-        reader = csv.DictReader(stream)
-        missing = [c for c in REQUIRED_COLUMNS if c not in (reader.fieldnames or [])]
-        if missing:
-            raise SystemExit(f"colonnes absentes du fichier source: {missing}")
-        for row in reader:
-            dates.append(row["trans_date_trans_time"])
+    source = path.expanduser()
+    if source.name.lower() != "fraudtrain.csv":
+        raise SystemExit(
+            f"refus: seul fraudTrain.csv est accepte (recu {source.name!r}) ; "
+            "fraudTest.csv est reserve a la mesure D48"
+        )
+    if not source.is_file():
+        raise SystemExit(f"source absente: {source}")
+    return source
+
+
+def development_indices(dates: list[str], share: float) -> set[int]:
+    """Indices of the canonical chronological development block.
+
+    The split is by position, not by date value: with identical timestamps on
+    the boundary, comparing timestamps would keep more than ``share`` of the
+    rows. Ties are broken by original row order, so the result is deterministic.
+    """
+
+    if not 0.0 < share < 1.0:
+        raise ValueError("share doit etre dans ]0, 1[")
     if not dates:
-        raise SystemExit("fichier source vide")
-    dates.sort()  # ISO-like strings sort chronologically
-    index = max(0, int(len(dates) * share) - 1)
-    return dates[index], len(dates)
+        raise ValueError("aucune date fournie")
+    count = int(len(dates) * share)
+    if count <= 0:
+        raise ValueError("share laisse un bloc de developpement vide")
+    ordered = sorted(range(len(dates)), key=lambda index: (dates[index], index))
+    return set(ordered[:count])
 
 
 def to_payload(row: dict[str, str]) -> dict | None:
@@ -124,27 +139,39 @@ def to_payload(row: dict[str, str]) -> dict | None:
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
-    source = args.source.expanduser()
+    source = resolve_source(args.source)
+    output = args.output.expanduser()
 
-    if source.name == "fraudTest.csv":
-        raise SystemExit(
-            "refus: fraudTest.csv est reserve a la mesure D48, aucun extrait n'est produit"
-        )
-    if not source.is_file():
-        raise SystemExit(f"source absente: {source}")
+    if output.resolve() == source.resolve():
+        raise SystemExit("refus: --output identique a --source ecraserait le CSV")
     if not 0.0 < args.development_share < 1.0:
         raise SystemExit("--development-share doit etre dans ]0, 1[")
     if args.sample_size <= 0:
         raise SystemExit("--sample-size doit etre positif")
 
-    cutoff, total_rows = development_cutoff(source, args.development_share)
-    rng = random.Random(args.seed)
+    dates: list[str] = []
+    with source.open(newline="", encoding="utf-8") as stream:
+        reader = csv.DictReader(stream)
+        missing = [c for c in REQUIRED_COLUMNS if c not in (reader.fieldnames or [])]
+        if missing:
+            raise SystemExit(f"colonnes absentes du fichier source: {missing}")
+        for row in reader:
+            dates.append(row["trans_date_trans_time"])
+    if not dates:
+        raise SystemExit("fichier source vide")
 
+    try:
+        development = development_indices(dates, args.development_share)
+    except ValueError as exc:
+        raise SystemExit(str(exc)) from exc
+    cutoff = max(dates[index] for index in development)
+
+    rng = random.Random(args.seed)
     reservoir: list[dict] = []
     seen = 0
     with source.open(newline="", encoding="utf-8") as stream:
-        for row in csv.DictReader(stream):
-            if row["trans_date_trans_time"] > cutoff:
+        for index, row in enumerate(csv.DictReader(stream)):
+            if index not in development:
                 continue
             payload = to_payload(row)
             if payload is None:
@@ -153,25 +180,24 @@ def main(argv: list[str] | None = None) -> int:
             if len(reservoir) < args.sample_size:
                 reservoir.append(payload)
             else:
-                index = rng.randrange(seen)
-                if index < args.sample_size:
-                    reservoir[index] = payload
+                slot = rng.randrange(seen)
+                if slot < args.sample_size:
+                    reservoir[slot] = payload
 
     if len(reservoir) < args.sample_size:
         raise SystemExit(
             f"seulement {len(reservoir)} lignes exploitables, {args.sample_size} demandees"
         )
 
-    output = args.output.expanduser()
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text(json.dumps(reservoir, indent=2) + "\n", encoding="utf-8")
 
-    dates = sorted(p["trans_datetime"] for p in reservoir)
-    print(f"source        {source} ({total_rows} lignes)")
-    print(f"cutoff        {cutoff} ({args.development_share:.0%} development)")
+    sampled = sorted(p["trans_datetime"] for p in reservoir)
+    print(f"source        {source} ({len(dates)} lignes)")
+    print(f"development   {len(development)} lignes, cutoff {cutoff}")
     print(f"candidates    {seen}")
     print(f"payloads      {len(reservoir)} -> {output}")
-    print(f"date range    {dates[0]} .. {dates[-1]}")
+    print(f"date range    {sampled[0]} .. {sampled[-1]}")
     return 0
 
 

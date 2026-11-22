@@ -111,14 +111,17 @@ Three read-only endpoints expose the model to the platform: `/api/v1/ml/model` (
 
 ### 3.6 Promotion and rollback
 
-Registration is challenger-first: a new version is always `PROVISIONAL` and receives the `challenger` alias. The `champion` alias only moves on an explicit call:
+Registration is challenger-first: a new version is always `PROVISIONAL` and receives the `challenger` alias. The `champion` alias only moves on an explicit call, and it moves to the version that was measured rather than to a fresh copy:
 
 ```bash
-python -m ml.scripts.register_champion --artifact … --metadata … \
-  --promote --gates gate-report.json
+python -m ml.scripts.register_champion \
+  --promote-version 1 --model-name fraud-detector \
+  --gates quality-gates.json
 ```
 
-`--promote` refuses unless every `gate_*` entry in the report is `true`. While no champion exists, the live ConfigMap pins `models:/fraud-detector/<version>`; the promotion PR switches it to `models:/fraud-detector@champion`, after which promotion and rollback are registry-only operations — **rollback is the same mechanism in reverse**, moving the alias back to the previous version. Both are rehearsed on a throwaway model name, never on `fraud-detector`. The full procedure, failure modes and evidence checklist are in [`docs/model-promotion-runbook.md`](docs/model-promotion-runbook.md).
+The gate report must carry **exactly the six gates**, each explicitly `true`, plus the provenance of the D48 evaluation that produced them (parent run, `6_quality_gates` child run, candidate/source/protocol fingerprints). The script re-reads the MLflow runs, so a subset of gates, a training run's report, or another candidate/source/protocol is refused. `--artifact … --promote` still exists for a re-packaging, but it registers a new version and the parity checks must be redone on it.
+
+While no champion exists, the live ConfigMap pins `models:/fraud-detector/<version>`; the promotion PR switches it to `models:/fraud-detector@champion`, after which promotion and rollback are registry-only operations — **rollback is the same mechanism in reverse**, moving the alias back to the previous version. Either way a running pod keeps its cached model: the alias change only takes effect after `kubectl -n ml rollout restart deployment/ml-service`. The full procedure, failure modes and evidence checklist are in [`docs/model-promotion-runbook.md`](docs/model-promotion-runbook.md).
 
 ### 3.7 Governance: why version 1 is still `PROVISIONAL`
 
@@ -137,7 +140,7 @@ The final test set is read by exactly one program (`evaluate_final_candidate.py`
 
 - Model registry: `fraud-detector` version `1`, run `f20ac523af6745c1bc1a3bfbbc81d07c`, `status=PROVISIONAL`, alias `challenger`, 15 `viz/` artifacts, `source_model_sha256=aa1565ca…`, no `champion` alias.
 - Serving: `ml-service` 2/2 pods, live ConfigMap `MODEL_MODE=real` and `MODEL_URI=models:/fraud-detector/1`; `/api/v1/ml/model` reports `version=1`, `algorithm=xgboost-calibrated`, `alpha=0.02`, `mode=real`.
-- Tests: `ml/tests` 486, `ml-service/tests` 36, `ruff check` clean.
+- Tests: `ml/tests` 498, `ml-service/tests` 36, `load-tests/tests` 13 + 9 Node contract tests, `ruff check` clean.
 
 ## 4. DevOps
 _TODO (P4)_
