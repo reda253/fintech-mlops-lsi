@@ -1,0 +1,125 @@
+# ServiceMonitors for Prometheus Operator (kube-prometheus-stack)
+# Spec references: §8.1 (Découverte automatique des cibles), §8.2 (Couverture des sources), Decision D43
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: fintech-spring-boot-services
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: fintech-mlops
+    release: prometheus
+spec:
+  namespaceSelector:
+    matchNames:
+      - fintech
+  selector:
+    matchExpressions:
+      - key: app
+        operator: In
+        values:
+          - api-gateway
+          - auth-service
+          - customer-service
+          - transaction-service
+          - risk-service
+          - notification-service
+          - audit-service
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 15s
+      scrapeTimeout: 10s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_service_label_app]
+          targetLabel: application
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ml-service
+  namespace: monitoring
+  labels:
+    app: ml-service
+    app.kubernetes.io/part-of: fintech-mlops
+    release: prometheus
+spec:
+  namespaceSelector:
+    matchNames:
+      - ml
+  selector:
+    matchLabels:
+      app: ml-service
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_service_label_app]
+          targetLabel: application
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: rabbitmq
+  namespace: monitoring
+  labels:
+    app: rabbitmq
+    app.kubernetes.io/part-of: fintech-mlops
+    release: prometheus
+spec:
+  namespaceSelector:
+    matchNames:
+      - data
+  selector:
+    matchLabels:
+      app: rabbitmq
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: postgres-exporter
+  namespace: monitoring
+  labels:
+    app: postgres-exporter
+    app.kubernetes.io/part-of: fintech-mlops
+    release: prometheus
+spec:
+  namespaceSelector:
+    matchNames:
+      - data
+  selector:
+    matchLabels:
+      app: postgres-exporter
+  endpoints:
+    - port: metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: Probe
+metadata:
+  name: fintech-http-blackbox
+  namespace: monitoring
+  labels:
+    app.kubernetes.io/part-of: fintech-mlops
+    release: prometheus
+spec:
+  jobName: fintech-http-blackbox
+  interval: 15s
+  scrapeTimeout: 10s
+  module: http_2xx
+  prober:
+    url: prometheus-blackbox-exporter.monitoring.svc.cluster.local:9115
+  targets:
+    staticConfig:
+      static:
+        - http://frontend.fintech.svc.cluster.local:8080/
+        - http://api-gateway.fintech.svc.cluster.local:8080/actuator/health/readiness
