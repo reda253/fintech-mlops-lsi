@@ -370,6 +370,38 @@ def _validate_promotion_gates(
                 f"Provenance : la porte {gate} n'est pas journalisee a 1.0"
             )
 
+    # The report must also be tied to the evaluation run that consumed the
+    # artifacts: `5_evaluate` logs the three fingerprints it verified from
+    # final_metrics.json. Without this, a report could declare the approved
+    # source/protocol while the run that produced the metrics used another.
+    children = client.search_runs(
+        [str(parent.info.experiment_id)],
+        filter_string=f"tags.`mlflow.parentRunId` = '{parent_run_id}'",
+    )
+    evaluate_runs = [
+        run
+        for run in children
+        if str(run.data.tags.get("mlflow.runName", "")).startswith("5_evaluate")
+    ]
+    if len(evaluate_runs) != 1:
+        raise ValueError(
+            "Provenance : run enfant 5_evaluate introuvable ou multiple "
+            f"({len(evaluate_runs)})"
+        )
+    evaluate = evaluate_runs[0]
+    for field, tag in (
+        ("candidate_sha256", "evaluation_model_sha256"),
+        ("source_sha256", "evaluation_source_sha256"),
+        ("protocol_sha256", "evaluation_protocol_sha256"),
+    ):
+        observed = evaluate.data.tags.get(tag)
+        if not observed:
+            raise ValueError(f"Provenance : tag {tag} absent du run 5_evaluate")
+        if observed != hashes[field]:
+            raise ValueError(
+                f"Provenance : {tag} du run 5_evaluate different du rapport"
+            )
+
     return {key: True for key in REQUIRED_GATES}
 
 

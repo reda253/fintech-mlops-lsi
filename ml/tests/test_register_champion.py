@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
@@ -41,7 +42,10 @@ from ml.src.preprocessing.pipeline import build_preprocessing_pipeline
 class _Run:
     """Minimal MLflow run stand-in for the provenance checks."""
 
-    def __init__(self, tags=None, metrics=None, params=None):
+    def __init__(
+        self, tags=None, metrics=None, params=None, run_id="run", experiment_id="1"
+    ):
+        self.info = SimpleNamespace(run_id=run_id, experiment_id=experiment_id)
         self.data = SimpleNamespace(
             tags=dict(tags or {}),
             metrics=dict(metrics or {}),
@@ -76,9 +80,20 @@ class _FakeClient:
     def set_model_version_tag(self, name, version, key, value):
         self.version_tags[(name, str(version), key)] = value
 
+    def search_runs(self, experiment_ids=None, filter_string=None, max_results=None):
+        if not filter_string:
+            return list(self.runs.values())
+        match = re.search(r"'([^']+)'", filter_string)
+        parent = match.group(1) if match else None
+        return [
+            run
+            for run in self.runs.values()
+            if run.data.tags.get("mlflow.parentRunId") == parent
+        ]
+
 
 def _promotion_report(tmp_path, model_uri="models:/fraud-detector/1"):
-    parent, gates = "run-parent", "run-gates"
+    parent, gates, evaluate = "run-parent", "run-gates", "run-evaluate"
     runs = {
         parent: _Run(
             tags={
@@ -95,6 +110,15 @@ def _promotion_report(tmp_path, model_uri="models:/fraud-detector/1"):
             },
             metrics={gate: 1.0 for gate in REQUIRED_GATES},
             params={"quality_gates_passed": "True"},
+        ),
+        evaluate: _Run(
+            tags={
+                "mlflow.parentRunId": parent,
+                "mlflow.runName": "5_evaluate",
+                "evaluation_model_sha256": APPROVED_D48_MODEL_SHA256,
+                "evaluation_source_sha256": APPROVED_D48_SOURCE_SHA256,
+                "evaluation_protocol_sha256": APPROVED_D48_PROTOCOL_SHA256,
+            }
         ),
     }
     report = {
@@ -312,6 +336,38 @@ def test_promotion_refuses_a_report_without_the_measured_model(tmp_path):
             client=_FakeClient(runs),
             expected_model_uri="models:/fraud-detector/2",
         )
+
+
+def test_promotion_refuses_a_different_protocol_in_the_evaluation_run(tmp_path):
+    report, runs = _promotion_report(tmp_path)
+    runs["run-evaluate"].data.tags["evaluation_protocol_sha256"] = "e" * 64
+
+    with pytest.raises(ValueError, match="evaluation_protocol_sha256"):
+        _validate_promotion_gates(report, client=_FakeClient(runs))
+
+
+@pytest.mark.parametrize(
+    "tag",
+    (
+        "evaluation_model_sha256",
+        "evaluation_source_sha256",
+        "evaluation_protocol_sha256",
+    ),
+)
+def test_promotion_refuses_a_missing_evaluation_tag(tmp_path, tag):
+    report, runs = _promotion_report(tmp_path)
+    runs["run-evaluate"].data.tags.pop(tag)
+
+    with pytest.raises(ValueError, match=f"{tag} absent"):
+        _validate_promotion_gates(report, client=_FakeClient(runs))
+
+
+def test_promotion_refuses_a_report_without_the_evaluation_run(tmp_path):
+    report, runs = _promotion_report(tmp_path)
+    runs.pop("run-evaluate")
+
+    with pytest.raises(ValueError, match="5_evaluate introuvable"):
+        _validate_promotion_gates(report, client=_FakeClient(runs))
 
 
 def test_promote_version_moves_the_alias_of_the_measured_version(tmp_path):

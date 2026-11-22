@@ -77,7 +77,13 @@ The validator requires **exactly** the six gates (a subset — e.g. only
   and — for `--promote-version` — the same `model_uri`;
 - the child run is named `6_quality_gates`, its `mlflow.parentRunId` is the
   parent, its six `gate_*` metrics are all `1.0`, and its
-  `quality_gates_passed` param is `True`.
+  `quality_gates_passed` param is `True`;
+- the parent has **exactly one** `5_evaluate` child, and that child's
+  `evaluation_model_sha256`, `evaluation_source_sha256` and
+  `evaluation_protocol_sha256` tags exist and equal the report's three
+  fingerprints. This is what ties the report to the run that actually consumed
+  the artifacts: without it, a report could declare the approved source and
+  protocol while the run that produced the metrics verified another one.
 
 A training run has a `6_quality_gates` child too, but no
 `evaluation_source=final_evaluation_artifacts` tag: it is refused. That is the
@@ -423,6 +429,9 @@ the alias reference.
 | `Provenance : run MLflow introuvable` | wrong run id, or MLflow not reachable | check `$MLFLOW_TRACKING_URI/health` |
 | `Provenance : le run parent n'est pas une evaluation D48` | a training run's gates | only `run.py --mode evaluate` produces a promotable report |
 | `Provenance : modele evalue … different` | the run measured another version | promote the version that was measured |
+| `Provenance : run enfant 5_evaluate introuvable ou multiple` | the report is not tied to an evaluation run of that parent | rebuild it from the `pipeline-evaluate` run |
+| `Provenance : tag evaluation_… absent du run 5_evaluate` | the run predates the fingerprint tags, or is not the D48 path | re-run the evaluation from merged code; do not invent the tag |
+| `Provenance : evaluation_… du run 5_evaluate different du rapport` | the report declares a source/protocol the run did not verify | rebuild the report from the run, never edit it |
 | `Version sans tag source_model_sha256` | an imported version with no provenance | re-register it with `register_champion` |
 | `porte deja l'alias champion` | already promoted | nothing to do |
 | command exits `120` with no JSON | stdout piped to `head`/`grep -m1` | redirect to a file; the run may have logged a model before dying |
