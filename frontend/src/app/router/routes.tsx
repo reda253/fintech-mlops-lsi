@@ -9,6 +9,8 @@ import { ClientDetailPage } from '@/features/customers/ClientDetailPage';
 import { ClientFormPage } from '@/features/customers/ClientFormPage';
 import { TransactionsPage } from '@/features/transactions/TransactionsPage';
 import { InvestigationPage } from '@/features/investigation/InvestigationPage';
+import { SmartReviewPage } from '@/features/reviews/SmartReviewPage';
+import { NotificationsPage } from '@/features/notifications/NotificationsPage';
 import { RequireAuth } from '../guards/RequireAuth';
 import { RootRedirect } from '../guards/RootRedirect';
 import { RequirePermission } from '../guards/RequirePermission';
@@ -50,13 +52,8 @@ export const routes: RouteObject[] = [
             children: [
               { path: PATHS.investigation, element: <InvestigationPage /> },
               { path: '/investigation/:transactionId', element: <InvestigationPage /> },
-            ],
-          },
-          {
-            element: <RequirePermission permission="reviews:read" />,
-            children: [
-              { path: PATHS.reviews, element: <PlaceholderPage title="Smart Review" lot={4} mockup="09 — file de revue" /> },
-              { path: '/reviews/:id', element: <PlaceholderPage title="Dossier de revue" lot={4} mockup="10 / 10b / 10c — décision" /> },
+              { path: PATHS.reviews, element: <SmartReviewPage /> },
+              { path: '/reviews/:id', element: <InvestigationPage /> },
             ],
           },
           {
@@ -68,7 +65,7 @@ export const routes: RouteObject[] = [
           },
           {
             element: <RequirePermission permission="notifications:read" />,
-            children: [{ path: PATHS.notifications, element: <PlaceholderPage title="Notifications" lot={5} mockup="13 — notifications" /> }],
+            children: [{ path: PATHS.notifications, element: <NotificationsPage /> }],
           },
           {
             element: <RequirePermission permission="users:manage" />,

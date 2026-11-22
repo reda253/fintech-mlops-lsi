@@ -15,6 +15,8 @@ import ma.fintech.auth.domain.RefreshToken;
 import ma.fintech.auth.domain.User;
 import ma.fintech.auth.repository.RefreshTokenRepository;
 import ma.fintech.auth.repository.UserRepository;
+import ma.fintech.common.events.EventTypes;
+import ma.fintech.common.outbox.OutboxPublisher;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jose.jws.SignatureAlgorithm;
@@ -39,29 +41,42 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokens;
     private final PasswordEncoder passwordEncoder;
     private final JwtEncoder jwtEncoder;
+    private final OutboxPublisher outbox;
     private final String dummyHash;
 
     public AuthService(UserRepository users, RefreshTokenRepository refreshTokens,
-                       PasswordEncoder passwordEncoder, JwtEncoder jwtEncoder) {
+                       PasswordEncoder passwordEncoder, JwtEncoder jwtEncoder, OutboxPublisher outbox) {
         this.users = users;
         this.refreshTokens = refreshTokens;
         this.passwordEncoder = passwordEncoder;
         this.jwtEncoder = jwtEncoder;
+        this.outbox = outbox;
         this.dummyHash = passwordEncoder.encode(UUID.randomUUID().toString());    // random: matches no password
     }
 
     /**
      * Unknown user, wrong password and disabled account all get the same 401, and BCrypt always runs,
-     * so neither the message nor the response time reveals which usernames exist.
+     * so neither the message nor the response time reveals which usernames exist. Every attempt writes
+     * an {@code auth.login.*} event to the outbox; noRollbackFor keeps the failure event with the 401.
+     * Only the audit log tells the failure reasons apart.
      */
-    @Transactional
+    @Transactional(noRollbackFor = ResponseStatusException.class)
     public TokenResponse login(String username, String password) {
         User user = users.findByUsername(username).orElse(null);
         boolean passwordOk = passwordEncoder.matches(password, user != null ? user.getPasswordHash() : dummyHash);
         if (user == null || !passwordOk || !user.isEnabled()) {
+            LoginEvent.Reason reason = user != null && passwordOk ? LoginEvent.Reason.DISABLED
+                    : LoginEvent.Reason.BAD_CREDENTIALS;
+            publishLogin(EventTypes.LOGIN_FAILED, new LoginEvent(user != null ? user.getId() : null, username, reason));
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Invalid username or password");
         }
+        publishLogin(EventTypes.LOGIN_SUCCEEDED, new LoginEvent(user.getId(), username, null));
         return issueTokens(user);
+    }
+
+    private void publishLogin(String type, LoginEvent event) {
+        outbox.publish(type, event.userId() != null ? event.userId().toString() : event.username(),
+                event, event.username());
     }
 
     /**

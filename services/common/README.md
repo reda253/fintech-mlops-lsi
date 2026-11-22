@@ -30,6 +30,41 @@ Declaring your own `SecurityFilterChain` replaces the common one entirely. Avoid
 
 Outgoing calls: inject `RestClient.Builder`. Don't use `RestClient.create()`, which skips the correlation interceptor.
 
+## Events (outbox, topology, idempotent consumer)
+
+Rules: [`contracts/events.md`](../../contracts/events.md), choices: D15, D49.
+
+| Feature | What a service gets | Where |
+|---|---|---|
+| Envelope | `EventEnvelope` record, `EventTypes` and `Topology` constants | `events/` |
+| Outbox | `OutboxPublisher` writes the event in your transaction. A relay publishes every 500 ms (`FOR UPDATE SKIP LOCKED`, publisher confirms), a job purges rows published more than 7 days ago, and `outbox_pending` / `outbox_publish_failures_total` are exported. Opt-in: `fintech.outbox.enabled=true` | `outbox/` |
+| Topology | Exchanges, queues, DLQs and bindings declared by every AMQP service. JSON message converter, so listeners take `EventEnvelope` | `messaging/` |
+| Delivery defaults | Publisher confirms, ack after the listener returns, 3 attempts then the queue's DLQ. Overridable in `application.yml` | `messaging/` |
+| Idempotent consumer | `IdempotentConsumer.handle(event, action)`: `processed_events` insert + action in one transaction, duplicates skipped, correlation id in the MDC | `messaging/` |
+
+Set `spring.datasource.hikari.schema: <schema>` so plain JDBC uses the service schema.
+
+Producer (must run inside the business transaction, otherwise `IllegalTransactionStateException`):
+
+```java
+@Transactional
+public void decide(Transaction tx) {
+    tx.setStatus(BLOQUEE);
+    outbox.publish(EventTypes.TRANSACTION_BLOCKED, tx.getId().toString(), DecidedEvent.of(tx));   // actor = "system"
+}
+```
+
+Consumer:
+
+```java
+@RabbitListener(queues = Topology.TRANSACTION_REVIEW_RESULTS_QUEUE)
+void onReviewCompleted(EventEnvelope event) {
+    idempotentConsumer.handle(event, e -> transactions.applyReview(e.payload()));
+}
+```
+
+A throwing action rolls back its `processed_events` row, so the retry sees the event as new; after 3 attempts it lands in `<queue>.dlq`.
+
 ## Not here yet
 
-Outbox, event envelope, idempotent consumer, RabbitMQ topology (#8), and metric tags (#14).
+Metric tags (#14).

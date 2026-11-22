@@ -1,3 +1,6 @@
 ma.fintech.common.correlation.CorrelationAutoConfiguration
 ma.fintech.common.error.ProblemDetailsAutoConfiguration
 ma.fintech.common.security.ResourceServerSecurityAutoConfiguration
+ma.fintech.common.messaging.RabbitTopologyAutoConfiguration
+ma.fintech.common.messaging.IdempotentConsumerAutoConfiguration
+ma.fintech.common.outbox.OutboxAutoConfiguration

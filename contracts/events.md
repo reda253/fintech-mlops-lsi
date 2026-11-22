@@ -30,6 +30,8 @@ Owner: P1. Source: architecture §3.5. Envelope JSON Schema: [`events.schema.jso
 
 ## Topology
 
+Declared in code by every service that has AMQP (`services/common`, D49), so a queue exists before the first event is routed to it.
+
 | Exchange | Type | Purpose |
 |---|---|---|
 | `fintech.events` | topic, durable | All domain events |
