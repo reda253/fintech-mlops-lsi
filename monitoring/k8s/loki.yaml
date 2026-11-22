@@ -1,0 +1,237 @@
+# Loki monolithic deployment (SingleBinary) for centralized JSON logs
+# Spec references: §8.6 (Logs centralisés — Loki, décision D27)
+# Resources: 256Mi–512Mi RAM, 5Gi PVC, 3 days (72h) retention
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: loki-config
+  namespace: monitoring
+  labels:
+    app: loki
+    app.kubernetes.io/part-of: fintech-mlops
+data:
+  loki.yaml: |
+    auth_enabled: false
+
+    server:
+      http_listen_port: 3100
+      grpc_listen_port: 9095
+      log_level: info
+
+    common:
+      instance_addr: 127.0.0.1
+      path_prefix: /var/loki
+      storage:
+        filesystem:
+          chunks_directory: /var/loki/chunks
+          rules_directory: /var/loki/rules
+      replication_factor: 1
+      ring:
+        kvstore:
+          store: inmemory
+
+    schema_config:
+      configs:
+        - from: "2024-01-01"
+          store: tsdb
+          object_store: filesystem
+          schema: v13
+          index:
+            prefix: index_
+            period: 24h
+
+    storage_config:
+      tsdb_shipper:
+        active_index_directory: /var/loki/tsdb-index
+        cache_location: /var/loki/tsdb-cache
+
+    compactor:
+      working_directory: /var/loki/compactor
+      compaction_interval: 10m
+      retention_enabled: true
+      retention_delete_delay: 2h
+      retention_delete_worker_count: 50
+      delete_request_store: filesystem
+
+    limits_config:
+      retention_period: 72h
+      reject_old_samples: true
+      reject_old_samples_max_age: 72h
+      allow_structured_metadata: false
+      max_label_names_per_series: 10
+      ingestion_rate_mb: 8
+      ingestion_burst_size_mb: 16
+
+    ruler:
+      storage:
+        type: local
+        local:
+          directory: /etc/loki/rules
+      rule_path: /var/loki/rules-temp
+      alertmanager_url: http://prometheus-alertmanager.monitoring.svc.cluster.local:9093
+      ring:
+        kvstore:
+          store: inmemory
+      enable_api: true
+
+  fintech-log-alerts.yaml: |
+    groups:
+      - name: fintech-loki-critical-log-alerts
+        interval: 1m
+        rules:
+          - alert: JavaOutOfMemoryErrorInLogs
+            expr: |
+              sum by (namespace, app) (
+                count_over_time({namespace="fintech"} |= "OutOfMemoryError" [5m])
+              ) > 0
+            for: 0m
+            labels:
+              severity: critical
+            annotations:
+              summary: "OutOfMemoryError detected in {{ $labels.app }} logs"
+              description: "Pod in {{ $labels.namespace }}/{{ $labels.app }} emitted an OutOfMemoryError in the last 5 minutes."
+          - alert: MlModelLoadFailureInLogs
+            expr: |
+              sum by (namespace, app) (
+                count_over_time({namespace="ml", app="ml-service"} |~ "(?i)(model.*load.*failed|ModelNotLoadedError|champion.*failed)" [5m])
+              ) > 0
+            for: 0m
+            labels:
+              severity: critical
+            annotations:
+              summary: "ML model loading failure detected in ml-service logs"
+              description: "ml-service reported a critical error while loading the fraud detection artifact."
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: loki
+  namespace: monitoring
+  labels:
+    app: loki
+    app.kubernetes.io/part-of: fintech-mlops
+spec:
+  type: ClusterIP
+  selector:
+    app: loki
+  ports:
+    - name: http-metrics
+      port: 3100
+      targetPort: http-metrics
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: loki
+  namespace: monitoring
+  labels:
+    app: loki
+    app.kubernetes.io/part-of: fintech-mlops
+spec:
+  serviceName: loki
+  replicas: 1
+  selector:
+    matchLabels:
+      app: loki
+  template:
+    metadata:
+      labels:
+        app: loki
+        app.kubernetes.io/part-of: fintech-mlops
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      containers:
+        - name: loki
+          image: grafana/loki:3.1.1
+          args:
+            - -config.file=/etc/loki/config/loki.yaml
+          ports:
+            - name: http-metrics
+              containerPort: 3100
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http-metrics
+            initialDelaySeconds: 15
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /ready
+              port: http-metrics
+            initialDelaySeconds: 30
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /etc/loki/config
+              readOnly: true
+            - name: rules
+              mountPath: /etc/loki/rules/fake
+              readOnly: true
+            - name: storage
+              mountPath: /var/loki
+      volumes:
+        - name: config
+          configMap:
+            name: loki-config
+            items:
+              - key: loki.yaml
+                path: loki.yaml
+        - name: rules
+          configMap:
+            name: loki-config
+            items:
+              - key: fintech-log-alerts.yaml
+                path: fintech-log-alerts.yaml
+  volumeClaimTemplates:
+    - metadata:
+        name: storage
+        labels:
+          app: loki
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        resources:
+          requests:
+            storage: 5Gi
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: loki
+  namespace: monitoring
+  labels:
+    app: loki
+    app.kubernetes.io/part-of: fintech-mlops
+    release: prometheus
+spec:
+  namespaceSelector:
+    matchNames:
+      - monitoring
+  selector:
+    matchLabels:
+      app: loki
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s

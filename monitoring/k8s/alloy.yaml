@@ -1,0 +1,259 @@
+# Grafana Alloy DaemonSet for Kubernetes Pod JSON Log Collection -> Loki
+# Spec references: §8.6 (Logs centralisés — Loki & Grafana Alloy, décisions D27 & D39)
+# Labels policy: ONLY [namespace, app, pod, level] are indexed. correlationId stays in JSON body.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: alloy
+  namespace: monitoring
+  labels:
+    app: alloy
+    app.kubernetes.io/part-of: fintech-mlops
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: alloy-log-collector
+  labels:
+    app: alloy
+    app.kubernetes.io/part-of: fintech-mlops
+rules:
+  - apiGroups: [""]
+    resources:
+      - nodes
+      - nodes/proxy
+      - services
+      - endpoints
+      - pods
+      - pods/log
+      - namespaces
+    verbs:
+      - get
+      - list
+      - watch
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: alloy-log-collector
+  labels:
+    app: alloy
+    app.kubernetes.io/part-of: fintech-mlops
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: alloy-log-collector
+subjects:
+  - kind: ServiceAccount
+    name: alloy
+    namespace: monitoring
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: alloy-config
+  namespace: monitoring
+  labels:
+    app: alloy
+    app.kubernetes.io/part-of: fintech-mlops
+data:
+  config.alloy: |
+    logging {
+      level  = "info"
+      format = "json"
+    }
+
+    // 1. Discover all Kubernetes pods across namespaces (fintech, ml, data, monitoring)
+    discovery.kubernetes "pods" {
+      role = "pod"
+    }
+
+    // 2. Extract base Kubernetes labels: namespace, app, pod
+    discovery.relabel "pod_logs" {
+      targets = discovery.kubernetes.pods.targets
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_phase"]
+        regex         = "Pending|Succeeded|Failed|Completed"
+        action        = "drop"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_namespace"]
+        target_label  = "namespace"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app"]
+        target_label  = "app"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_label_app_kubernetes_io_name"]
+        regex         = "(.+)"
+        target_label  = "app"
+      }
+
+      rule {
+        source_labels = ["__meta_kubernetes_pod_name"]
+        target_label  = "pod"
+      }
+    }
+
+    // 3. Collect pod logs via Kubernetes API / node logs
+    loki.source.kubernetes "pod_logs" {
+      targets    = discovery.relabel.pod_logs.output
+      forward_to = [loki.process.json_logs.receiver]
+    }
+
+    // 4. Parse JSON logs (ECS Spring Boot D39 & FastAPI ml-service)
+    // IMPORTANT (§8.6 / D27): Index ONLY namespace, app, pod, level.
+    // Never index correlationId as a Loki label; query it in JSON via LogQL.
+    loki.process "json_logs" {
+      stage.json {
+        expressions = {
+          ecs_level     = "\"log.level\"",
+          plain_level   = "level",
+          severity      = "severity",
+        }
+      }
+
+      stage.template {
+        source   = "resolved_level"
+        template = "{{ if .ecs_level }}{{ .ecs_level }}{{ else if .plain_level }}{{ .plain_level }}{{ else if .severity }}{{ .severity }}{{ else }}INFO{{ end }}"
+      }
+
+      stage.labels {
+        values = {
+          level = "resolved_level",
+        }
+      }
+
+      // Enforce strict label cardinality guard (§8.6): keep ONLY namespace, app, pod, level
+      stage.label_keep {
+        values = ["namespace", "app", "pod", "level"]
+      }
+
+      forward_to = [loki.write.local.receiver]
+    }
+
+    // 5. Push processed streams to Loki in monitoring namespace
+    loki.write "local" {
+      endpoint {
+        url = "http://loki.monitoring.svc.cluster.local:3100/loki/api/v1/push"
+      }
+    }
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: alloy
+  namespace: monitoring
+  labels:
+    app: alloy
+    app.kubernetes.io/part-of: fintech-mlops
+spec:
+  type: ClusterIP
+  selector:
+    app: alloy
+  ports:
+    - name: http-metrics
+      port: 12345
+      targetPort: http-metrics
+      protocol: TCP
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: alloy
+  namespace: monitoring
+  labels:
+    app: alloy
+    app.kubernetes.io/part-of: fintech-mlops
+spec:
+  selector:
+    matchLabels:
+      app: alloy
+  template:
+    metadata:
+      labels:
+        app: alloy
+        app.kubernetes.io/part-of: fintech-mlops
+    spec:
+      serviceAccountName: alloy
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+      containers:
+        - name: alloy
+          image: grafana/alloy:v1.4.2
+          args:
+            - run
+            - /etc/alloy/config.alloy
+            - --storage.path=/tmp/alloy
+            - --server.http.listen-addr=0.0.0.0:12345
+          ports:
+            - name: http-metrics
+              containerPort: 12345
+              protocol: TCP
+          readinessProbe:
+            httpGet:
+              path: /-/ready
+              port: http-metrics
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /-/healthy
+              port: http-metrics
+            initialDelaySeconds: 20
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 200m
+              memory: 100Mi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop:
+                - ALL
+          volumeMounts:
+            - name: config
+              mountPath: /etc/alloy
+              readOnly: true
+            - name: tmp
+              mountPath: /tmp/alloy
+      volumes:
+        - name: config
+          configMap:
+            name: alloy-config
+        - name: tmp
+          emptyDir: {}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: alloy
+  namespace: monitoring
+  labels:
+    app: alloy
+    app.kubernetes.io/part-of: fintech-mlops
+    release: prometheus
+spec:
+  namespaceSelector:
+    matchNames:
+      - monitoring
+  selector:
+    matchLabels:
+      app: alloy
+  endpoints:
+    - port: http-metrics
+      path: /metrics
+      interval: 15s
+      scrapeTimeout: 10s
