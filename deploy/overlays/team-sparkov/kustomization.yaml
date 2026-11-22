@@ -1,0 +1,12 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+resources:
+  - ../team
+configMapGenerator:
+  - name: customer-service-config
+    namespace: fintech
+    behavior: merge
+    literals:
+      - CUSTOMER_SEED_PATH=/data/sparkov/fraudTrain.csv,/data/sparkov/fraudTest.csv
+patches:
+  - path: customer-sparkov.yaml

@@ -46,7 +46,25 @@ def decode_objects(output):
     return items
 
 
-def validate(items, allow_placeholder=False, team_auth=False):
+SPARKOV_PATHS = "/data/sparkov/fraudTrain.csv,/data/sparkov/fraudTest.csv"
+
+
+def customer_seed_storage(pod, app, config):
+    require(pod.get("nodeSelector") == {"fintech.local/sparkov": "true"}, "Seed requires verified Sparkov node")
+    require(sorted(pod["volumes"], key=lambda item: item["name"]) == [
+        {"name": "sparkov", "hostPath": {"path": "/data/sparkov", "type": "Directory"}},
+        {"name": "tmp", "emptyDir": {"medium": "Memory", "sizeLimit": "128Mi"}},
+    ], "Seed may mount only the existing Sparkov directory and bounded tmp")
+    mounts = sorted(app["volumeMounts"], key=lambda item: item["name"])
+    require(mounts == [
+        {"name": "sparkov", "mountPath": "/data/sparkov", "readOnly": True},
+        {"name": "tmp", "mountPath": "/tmp"},
+    ], "Sparkov must be read-only")
+    require(config.get("CUSTOMER_SEED_PATH") == SPARKOV_PATHS, "Unexpected Customer seed paths")
+
+
+def validate(items, allow_placeholder=False, team_auth=False, customer_seed=False):
+    require(not customer_seed or team_auth, "Seed validation requires the team overlay")
     keys = [(item["kind"], item["metadata"]["name"]) for item in items]
     require(len(keys) == len(set(keys)), "Duplicate resource identity")
     require(all(item["metadata"].get("namespace") == "fintech" for item in items), "Unexpected namespace")
@@ -91,9 +109,10 @@ def validate(items, allow_placeholder=False, team_auth=False):
         for probe in ("startupProbe", "livenessProbe", "readinessProbe"):
             path = "/healthz" if fe else "/actuator/health/" + ("readiness" if probe == "readinessProbe" else "liveness")
             require(app[probe]["httpGet"] == {"path": path, "port": "http"}, f"{name}: unsafe {probe}")
-        require(pod["volumes"] == [{"name": "tmp", "emptyDir": {"medium": "Memory", "sizeLimit": "64Mi" if fe else "128Mi"}}],
-                f"{name}: only bounded temporary storage is allowed")
-        require(app["volumeMounts"] == [{"name": "tmp", "mountPath": "/tmp"}], f"{name}: incorrect tmp mount")
+        if not (customer_seed and name == "customer-service"):
+            require(pod["volumes"] == [{"name": "tmp", "emptyDir": {"medium": "Memory", "sizeLimit": "64Mi" if fe else "128Mi"}}],
+                    f"{name}: only bounded temporary storage is allowed")
+            require(app["volumeMounts"] == [{"name": "tmp", "mountPath": "/tmp"}], f"{name}: incorrect tmp mount")
         service = index["Service"][name]["spec"]
         require(service["type"] == "ClusterIP" and service["selector"] == labels, f"{name}: unsafe Service")
         require(service["ports"] == [{"name": "http", "port": port, "targetPort": "http"}], f"{name}: Service port mismatch")
@@ -101,6 +120,12 @@ def validate(items, allow_placeholder=False, team_auth=False):
         require(config_name.startswith(name + "-config-") and config_name in index["ConfigMap"],
                 f"{name}: ConfigMap hash/reference missing")
         config = index["ConfigMap"][config_name]["data"]
+        if customer_seed and name == "customer-service":
+            customer_seed_storage(pod, app, config)
+            require(app["startupProbe"]["periodSeconds"] == 5
+                    and app["startupProbe"]["failureThreshold"] == 300
+                    and deployment["progressDeadlineSeconds"] == 1800,
+                    "Seed must have an explicit startup budget")
         require(not any(re.search("PASSWORD|TOKEN|PRIVATE_KEY|HMAC", key) for key in config), f"{name}: secret in ConfigMap")
         if not fe:
             readiness = "readinessState" if name == "api-gateway" else "readinessState,db"
@@ -119,6 +144,8 @@ def validate(items, allow_placeholder=False, team_auth=False):
             require(config["GATEWAY_UPSTREAM"] == "http://api-gateway.fintech.svc.cluster.local:8080",
                     "Frontend must resolve the Gateway by its Kubernetes FQDN")
         expected_secrets = {}
+        if team_auth and name == "customer-service":
+            expected_secrets["CARD_HMAC_KEY"] = ("customer-hmac", "key")
         if team_auth and name == "auth-service":
             require(config.get("AUTH_DEMO_ACCOUNTS") == "false", "Team Auth must disable demo accounts")
             expected_secrets.update(JWT_PRIVATE_KEY=("auth-signing", "private-key"),
