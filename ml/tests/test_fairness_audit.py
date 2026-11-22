@@ -120,10 +120,10 @@ def test_saved_predictions_cli_synthetic_end_to_end(
     import mlflow
     import mlflow.tracking
 
-    from ml.scripts import registry_preflight as preflight
     from ml.scripts import d48_preflight as local_preflight
     from ml.scripts import evaluate_final_candidate as evaluation
     from ml.scripts import final_journal
+    from ml.scripts import registry_preflight as preflight
     from ml.tests.test_evaluation_safety import approved, write_previous_evaluation
 
     args, raw, journal, evaluated = synthetic_launch
