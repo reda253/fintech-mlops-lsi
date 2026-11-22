@@ -132,7 +132,7 @@ components:
           examples: [2da90c7d74bd46a0caf3777415b3ebd3]
         cardNumber:
           type: string
-          pattern: '^[0-9]{12,19}$'
+          pattern: '^[0-9]{11,19}$'
           writeOnly: true
           description: Sparkov `cc_num`. Never stored, only resolved to customerId and last 4 digits.
         transDateTime:
