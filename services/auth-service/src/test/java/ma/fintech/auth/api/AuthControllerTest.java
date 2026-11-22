@@ -1,6 +1,8 @@
 package ma.fintech.auth.api;
 
 import java.time.Instant;
+import java.util.List;
+import java.util.Map;
 import java.util.Set;
 
 import com.jayway.jsonpath.JsonPath;
@@ -18,6 +20,7 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
@@ -25,6 +28,7 @@ import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.test.web.servlet.ResultActions;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.tuple;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
@@ -41,10 +45,13 @@ class AuthControllerTest {
     @Autowired PasswordEncoder passwordEncoder;
     @Autowired JwtDecoder jwtDecoder;
 
+    @Autowired JdbcClient jdbc;
+
     User analyst;
 
     @BeforeEach
     void setUp() {
+        jdbc.sql("DELETE FROM outbox_events").update();
         refreshTokens.deleteAll();
         users.deleteAll();
         analyst = users.save(new User("analyste1", passwordEncoder.encode("correct-horse"), Set.of(Role.ANALYSTE)));
@@ -83,6 +90,37 @@ class AuthControllerTest {
         assertThat(rejected("nobody", "correct-horse")).isEqualTo(wrongPassword);
         assertThat(rejected("disabled1", "correct-horse")).isEqualTo(wrongPassword);
         assertThat(refreshTokens.count()).isZero();
+    }
+
+    /** Every attempt is written to the outbox in the same transaction (contracts/events.md, auth.login.*). */
+    @Test
+    void everyLoginAttemptLeavesOneLoginEventWithoutThePassword() throws Exception {
+        login("analyste1", "correct-horse").andExpect(status().isOk());
+        login("analyste1", "wrong-password").andExpect(status().isUnauthorized());
+        login("nobody", "correct-horse").andExpect(status().isUnauthorized());
+        login("disabled1", "correct-horse").andExpect(status().isUnauthorized());
+
+        List<Map<String, Object>> events = jdbc.sql("""
+                        SELECT event_type, payload::text AS payload,
+                               payload ->> 'actor' AS actor,
+                               payload -> 'payload' ->> 'username' AS username,
+                               payload -> 'payload' ->> 'userId' AS user_id,
+                               payload -> 'payload' ->> 'reason' AS reason
+                        FROM outbox_events ORDER BY created_at""")
+                .query().listOfRows();
+
+        assertThat(events).extracting(e -> e.get("event_type"), e -> e.get("username"), e -> e.get("reason"))
+                .containsExactly(
+                        tuple("auth.login.succeeded", "analyste1", null),
+                        tuple("auth.login.failed", "analyste1", "BAD_CREDENTIALS"),
+                        tuple("auth.login.failed", "nobody", "BAD_CREDENTIALS"),
+                        tuple("auth.login.failed", "disabled1", "DISABLED"));
+        assertThat(events.get(0).get("user_id")).isEqualTo(analyst.getId().toString());
+        assertThat(events.get(2).get("user_id")).as("unknown user").isNull();
+        assertThat(events).allSatisfy(e -> {
+            assertThat(e.get("actor")).isEqualTo(e.get("username"));
+            assertThat((String) e.get("payload")).doesNotContain("correct-horse", "wrong-password");
+        });
     }
 
     @Test

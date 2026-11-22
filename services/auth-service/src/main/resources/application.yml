@@ -9,6 +9,8 @@ spring:
     url: ${DB_URL:jdbc:postgresql://localhost:5432/fintech}
     username: ${DB_USER:auth_user}
     password: ${DB_PASSWORD:auth_pwd}
+    hikari:
+      schema: auth              # plain JDBC (outbox, common) uses the service schema whatever the role's search_path
   jpa:
     open-in-view: false
     hibernate:
@@ -30,6 +32,10 @@ spring:
     port: ${RABBITMQ_PORT:5672}
     username: ${RABBITMQ_USER:guest}
     password: ${RABBITMQ_PASSWORD:guest}
+
+fintech:
+  outbox:
+    enabled: true               # auth.login.* events (common/outbox, D15)
 
 jwt:
   # PKCS#8 PEM: either the PEM text itself (K8s Secret as env var) or a location (file:, classpath:).
