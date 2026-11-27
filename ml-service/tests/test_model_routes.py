@@ -108,6 +108,72 @@ def test_performance_from_registry_reads_served_version(monkeypatch):
     assert measured["tags"]["git_commit"] == "deadbeef"
 
 
+def test_run_metrics_fall_back_to_the_evaluation_child():
+    from app.routes.model import _run_evaluation_metrics
+
+    class FakeClient:
+        def get_run(self, run_id):
+            return {
+                "parent": SimpleNamespace(
+                    info=SimpleNamespace(experiment_id="2"),
+                    data=SimpleNamespace(metrics={}, tags={}),
+                ),
+                "evaluate": SimpleNamespace(
+                    info=SimpleNamespace(experiment_id="2", run_id="evaluate"),
+                    data=SimpleNamespace(
+                        metrics={"pr_auc": 0.8755, "review_rate": 0.0069},
+                        tags={"mlflow.runName": "5_evaluate"},
+                    ),
+                ),
+            }[run_id]
+
+        def search_runs(self, experiment_ids, filter_string=None):
+            return [self.get_run("evaluate")]
+
+    metrics, tags, run_id = _run_evaluation_metrics(FakeClient(), "parent")
+
+    assert metrics["pr_auc"] == 0.8755
+    assert run_id == "evaluate"
+    assert tags["mlflow.runName"] == "5_evaluate"
+
+
+def test_performance_uses_the_version_evaluation_run(monkeypatch):
+    import mlflow.tracking
+    from app.routes import model as model_routes
+
+    seen = {}
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_run(self, run_id):
+            seen["run_id"] = run_id
+            return SimpleNamespace(
+                info=SimpleNamespace(experiment_id="2"),
+                data=SimpleNamespace(
+                    metrics={"pr_auc": 0.8755, "review_rate": 0.0069},
+                    tags={"decision_id": "D48"},
+                ),
+            )
+
+    monkeypatch.setattr(mlflow.tracking, "MlflowClient", FakeClient)
+    monkeypatch.setattr(
+        model_routes,
+        "_model_version",
+        lambda info: SimpleNamespace(
+            run_id="registry-run", tags={"evaluation_run_id": "d48-run"}
+        ),
+    )
+
+    info = SimpleNamespace(name="fraud-detector", version="1", alpha=0.02)
+    measured = model_routes._performance_from_registry(info)
+
+    assert seen["run_id"] == "d48-run"
+    assert measured is not None
+    assert measured["final_test_evaluation"]["pr_auc"]["value"] == 0.8755
+
+
 def test_get_visualizations_valid(client):
     response = client.get("/api/v1/ml/viz/pca?view=class")
     assert response.status_code == 200

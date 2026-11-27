@@ -50,7 +50,9 @@ const PROFILES = {
     rate: 200,
     timeUnit: "1s",
     duration: "5m",
-    preAllocatedVUs: 50,
+    // Pre-allocate enough VUs that the startup ramp cannot drop iterations;
+    // at 200 rps a handful are used once the pods are warm.
+    preAllocatedVUs: 100,
     maxVUs: 300,
   },
   stress: {

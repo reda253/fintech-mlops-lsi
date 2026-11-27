@@ -165,8 +165,14 @@ def _model_version(info: Any) -> Any:
     return client.get_model_version_by_alias(info.name, str(info.version))
 
 
-def _run_evaluation_metrics(client: Any, run_id: str) -> tuple[dict[str, float], dict[str, str], str]:
-    """Read metrics from a run, following ``mlflow.parentRunId`` once."""
+def _run_evaluation_metrics(
+    client: Any, run_id: str
+) -> tuple[dict[str, float], dict[str, str], str]:
+    """Read metrics from a run, its parent, or its ``5_evaluate`` child.
+
+    The D48 pipeline logs metrics on the nested ``5_evaluate`` run, so a parent
+    run with no metrics falls back to that child instead of reporting nothing.
+    """
 
     run = client.get_run(run_id)
     metrics = dict(run.data.metrics)
@@ -178,6 +184,26 @@ def _run_evaluation_metrics(client: Any, run_id: str) -> tuple[dict[str, float],
             metrics = dict(parent.data.metrics)
             tags = {**parent.data.tags, **tags}
             run_id = parent_id
+            run = parent
+    if not any(key in metrics for key in _EVALUATION_METRICS):
+        children = client.search_runs(
+            [run.info.experiment_id],
+            filter_string=f"tags.`mlflow.parentRunId` = '{run_id}'",
+        )
+        child = next(
+            (
+                candidate
+                for candidate in children
+                if str(candidate.data.tags.get("mlflow.runName", "")).startswith(
+                    "5_evaluate"
+                )
+            ),
+            None,
+        )
+        if child is not None:
+            metrics = dict(child.data.metrics)
+            tags = {**tags, **child.data.tags}
+            run_id = child.info.run_id
     return metrics, tags, run_id
 
 
@@ -189,7 +215,11 @@ def _performance_from_registry(info: Any) -> dict[str, Any] | None:
 
         client = MlflowClient()
         version = _model_version(info)
-        metrics, tags, run_id = _run_evaluation_metrics(client, version.run_id)
+        # A promoted version may point at the run that measured it (D48 lives in
+        # a pipeline run, not on the registry run).
+        version_tags = getattr(version, "tags", {}) or {}
+        target_run_id = str(version_tags.get("evaluation_run_id") or version.run_id)
+        metrics, tags, run_id = _run_evaluation_metrics(client, target_run_id)
     except Exception as exc:  # noqa: BLE001 - performance is best effort
         logger.warning("Unable to read performance from MLflow: %s", exc)
         return None

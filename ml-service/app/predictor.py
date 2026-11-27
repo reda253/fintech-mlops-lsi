@@ -169,6 +169,11 @@ class RealPredictor(BasePredictor):
         self.name = name
         self.version = version or "unknown"
         self.model = model_instance
+        # Fast single-row path: the pyfunc wrapper exposes ``predict_one`` but
+        # ``mlflow.pyfunc`` hides it, so keep the unwrapped model when possible.
+        self._fast_model: Any = (
+            model_instance if hasattr(model_instance, "predict_one") else None
+        )
         self.alpha = 0.02
         self.algorithm = "xgboost-calibrated"
         self.git_commit = "unknown"
@@ -239,7 +244,16 @@ class RealPredictor(BasePredictor):
                 import mlflow.pyfunc
 
                 self.model = mlflow.pyfunc.load_model(self.model_uri)
-                logger.info("Loaded pyfunc model from %s", self.model_uri)
+                unwrap = getattr(self.model, "unwrap_python_model", None)
+                if callable(unwrap):
+                    candidate = unwrap()
+                    if hasattr(candidate, "predict_one"):
+                        self._fast_model = candidate
+                logger.info(
+                    "Loaded pyfunc model from %s (fast single-row path: %s)",
+                    self.model_uri,
+                    self._fast_model is not None,
+                )
             except Exception as exc:  # noqa: BLE001
                 logger.warning("Failed to load model from %s (%s); real predictor disabled.", self.model_uri, exc)
 
@@ -270,8 +284,8 @@ class RealPredictor(BasePredictor):
             },
         }
         try:
-            if hasattr(self.model, "predict_one"):
-                self.model.predict_one(sample_record)
+            if self._fast_model is not None:
+                self._fast_model.predict_one(sample_record)
             elif hasattr(self.model, "predict"):
                 self.model.predict(pd.DataFrame([sample_record]))
             logger.info("Warm-up prediction completed successfully.")
@@ -338,8 +352,8 @@ class RealPredictor(BasePredictor):
         }
 
         try:
-            if hasattr(self.model, "predict_one"):
-                out = self.model.predict_one(record)
+            if self._fast_model is not None:
+                out = self._fast_model.predict_one(record)
             else:
                 output = self.model.predict(pd.DataFrame([record]))
                 out = output.iloc[0].to_dict()
