@@ -93,7 +93,7 @@ class _FakeClient:
 
 
 def _promotion_report(tmp_path, model_uri="models:/fraud-detector/1"):
-    parent, gates, evaluate = "run-parent", "run-gates", "run-evaluate"
+    parent, gates, evaluate = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "cccccccccccccccccccccccccccccccc"
     runs = {
         parent: _Run(
             tags={
@@ -316,14 +316,14 @@ def test_promotion_refuses_an_unknown_gate(tmp_path):
 
 def test_promotion_refuses_a_gates_run_that_is_not_a_child(tmp_path):
     report, runs = _promotion_report(tmp_path)
-    runs["run-gates"].data.tags["mlflow.parentRunId"] = "another-parent"
+    runs["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"].data.tags["mlflow.parentRunId"] = "another-parent"
     with pytest.raises(ValueError, match="enfant"):
         _validate_promotion_gates(report, client=_FakeClient(runs))
 
 
 def test_promotion_refuses_a_gate_not_logged_at_one(tmp_path):
     report, runs = _promotion_report(tmp_path)
-    runs["run-gates"].data.metrics["gate_coverage"] = 0.0
+    runs["bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"].data.metrics["gate_coverage"] = 0.0
     with pytest.raises(ValueError, match="gate_coverage"):
         _validate_promotion_gates(report, client=_FakeClient(runs))
 
@@ -340,7 +340,7 @@ def test_promotion_refuses_a_report_without_the_measured_model(tmp_path):
 
 def test_promotion_refuses_a_different_protocol_in_the_evaluation_run(tmp_path):
     report, runs = _promotion_report(tmp_path)
-    runs["run-evaluate"].data.tags["evaluation_protocol_sha256"] = "e" * 64
+    runs["cccccccccccccccccccccccccccccccc"].data.tags["evaluation_protocol_sha256"] = "e" * 64
 
     with pytest.raises(ValueError, match="evaluation_protocol_sha256"):
         _validate_promotion_gates(report, client=_FakeClient(runs))
@@ -356,7 +356,7 @@ def test_promotion_refuses_a_different_protocol_in_the_evaluation_run(tmp_path):
 )
 def test_promotion_refuses_a_missing_evaluation_tag(tmp_path, tag):
     report, runs = _promotion_report(tmp_path)
-    runs["run-evaluate"].data.tags.pop(tag)
+    runs["cccccccccccccccccccccccccccccccc"].data.tags.pop(tag)
 
     with pytest.raises(ValueError, match=f"{tag} absent"):
         _validate_promotion_gates(report, client=_FakeClient(runs))
@@ -364,10 +364,57 @@ def test_promotion_refuses_a_missing_evaluation_tag(tmp_path, tag):
 
 def test_promotion_refuses_a_report_without_the_evaluation_run(tmp_path):
     report, runs = _promotion_report(tmp_path)
-    runs.pop("run-evaluate")
+    runs.pop("cccccccccccccccccccccccccccccccc")
 
     with pytest.raises(ValueError, match="5_evaluate introuvable"):
         _validate_promotion_gates(report, client=_FakeClient(runs))
+
+
+def test_promote_version_tags_the_run_that_measured_it(tmp_path):
+    report, runs = _promotion_report(tmp_path)
+    client = _FakeClient(
+        runs, versions={"1": {"source_model_sha256": APPROVED_D48_MODEL_SHA256}}
+    )
+
+    result = promote_version("fraud-detector", "1", gates_path=report, client=client)
+
+    assert result["evaluation_run_id"] == "a" * 32
+    assert client.version_tags[
+        ("fraud-detector", "1", "evaluation_run_id")
+    ] == "a" * 32
+
+
+def test_promote_version_accepts_an_explicit_evaluation_run(tmp_path):
+    report, runs = _promotion_report(tmp_path)
+    client = _FakeClient(
+        runs, versions={"1": {"source_model_sha256": APPROVED_D48_MODEL_SHA256}}
+    )
+
+    result = promote_version(
+        "fraud-detector",
+        "1",
+        gates_path=report,
+        client=client,
+        evaluation_run_id="d" * 32,
+    )
+
+    assert result["evaluation_run_id"] == "d" * 32
+    assert client.version_tags[
+        ("fraud-detector", "1", "evaluation_run_id")
+    ] == "d" * 32
+
+
+def test_promote_version_refuses_a_report_without_parent_run(tmp_path):
+    report, runs = _promotion_report(tmp_path)
+    payload = json.loads(report.read_text(encoding="utf-8"))
+    payload["provenance"].pop("parent_run_id")
+    report.write_text(json.dumps(payload), encoding="utf-8")
+    client = _FakeClient(
+        runs, versions={"1": {"source_model_sha256": APPROVED_D48_MODEL_SHA256}}
+    )
+
+    with pytest.raises(ValueError, match="parent_run_id"):
+        promote_version("fraud-detector", "1", gates_path=report, client=client)
 
 
 def test_promote_version_moves_the_alias_of_the_measured_version(tmp_path):

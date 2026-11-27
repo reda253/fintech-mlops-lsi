@@ -174,6 +174,52 @@ def test_performance_uses_the_version_evaluation_run(monkeypatch):
     assert measured["final_test_evaluation"]["pr_auc"]["value"] == 0.8755
 
 
+def test_performance_reports_the_published_interval(monkeypatch):
+    import mlflow.tracking
+    from app.routes import model as model_routes
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def get_run(self, run_id):
+            return SimpleNamespace(
+                info=SimpleNamespace(experiment_id="2"),
+                data=SimpleNamespace(
+                    metrics={
+                        "pr_auc": 0.8755,
+                        "pr_auc_ci95_low": 0.8638,
+                        "pr_auc_ci95_high": 0.8867,
+                        "review_rate": 0.0069,
+                        "review_rate_ci95_low": 0.00668,
+                        "review_rate_ci95_high": 0.00712,
+                        "coverage_fraud": 0.9613,
+                        "coverage_fraud_ci95_low": 0.9530,
+                        "coverage_fraud_ci95_high": 0.9692,
+                        "n_transactions": 555719,
+                        "fraud_count": 2145,
+                    },
+                    tags={},
+                ),
+            )
+
+    monkeypatch.setattr(mlflow.tracking, "MlflowClient", FakeClient)
+    monkeypatch.setattr(
+        model_routes, "_model_version", lambda info: SimpleNamespace(run_id="r")
+    )
+
+    info = SimpleNamespace(name="fraud-detector", version="1", alpha=0.02)
+    measured = model_routes._performance_from_registry(info)
+
+    block = measured["final_test_evaluation"]
+    assert block["pr_auc"]["ci_95"] == [0.8638, 0.8867]
+    assert block["conformal_metrics"]["review_rate_ci_95"] == [0.00668, 0.00712]
+    assert block["conformal_metrics"]["coverage_fraud_ci_95"] == [0.9530, 0.9692]
+    assert block["n_test"] == 555719
+    assert block["n_test_fraud"] == 2145
+    assert block["roc_auc"]["ci_95"] is None
+
+
 def test_get_visualizations_valid(client):
     response = client.get("/api/v1/ml/viz/pca?view=class")
     assert response.status_code == 200

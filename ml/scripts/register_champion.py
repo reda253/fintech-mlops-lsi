@@ -271,6 +271,17 @@ def _sha256_file(path: Path) -> str:
         return hashlib.file_digest(stream, "sha256").hexdigest()
 
 
+def _report_parent_run(path: Path) -> str:
+    """Return the evaluation run that produced the report, or refuse."""
+
+    payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    provenance = payload.get("provenance") if isinstance(payload, dict) else None
+    run_id = str((provenance or {}).get("parent_run_id") or "")
+    if not re.fullmatch(r"[0-9a-f]{32}", run_id):
+        raise ValueError("Rapport sans parent_run_id : /performance serait aveugle")
+    return run_id
+
+
 def _validate_promotion_gates(
     path: Path,
     *,
@@ -412,6 +423,7 @@ def promote_version(
     gates_path: Path | None,
     tracking_uri: str | None = None,
     client: MlflowClient | None = None,
+    evaluation_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Move ``champion`` to an already-registered, already-measured version."""
 
@@ -439,11 +451,16 @@ def promote_version(
 
     client.set_registered_model_alias(model_name, "champion", version)
     client.set_model_version_tag(model_name, version, "status", "CHAMPION")
+    # Link the served version to the run that measured it, so ml-service can
+    # answer /performance without a manual registry tag.
+    measured_by = evaluation_run_id or _report_parent_run(gates_path)
+    client.set_model_version_tag(model_name, version, "evaluation_run_id", measured_by)
     return {
         "name": model_name,
         "version": version,
         "aliases": {"champion": version},
         "model_uri": f"models:/{model_name}@champion",
+        "evaluation_run_id": measured_by,
         "promoted_at": datetime.now(UTC).isoformat(),
     }
 
@@ -476,6 +493,7 @@ def register_candidate(
     metadata_path: Path | None = None,
     promote: bool = False,
     gates_path: Path | None = None,
+    evaluation_run_id: str | None = None,
 ) -> dict[str, Any]:
     """Load, package and register P2's candidate; provisional unless promoted."""
 
@@ -544,6 +562,17 @@ def register_candidate(
             set_challenger=not promote,
             extra_tags=extra_tags,
         )
+        if promote:
+            client = (
+                MlflowClient(tracking_uri=tracking_uri)
+                if tracking_uri
+                else MlflowClient()
+            )
+            measured_by = evaluation_run_id or _report_parent_run(gates_path)
+            client.set_model_version_tag(
+                model_name, str(result["version"]), "evaluation_run_id", measured_by
+            )
+            result["evaluation_run_id"] = measured_by
         for key, value in result["tags"].items():
             mlflow.set_tag(f"model_{key}", value)
         return result
@@ -582,6 +611,14 @@ def main(argv: list[str] | None = None) -> int:
         default=None,
         help="JSON quality-gate report required by --promote/--promote-version.",
     )
+    parser.add_argument(
+        "--evaluation-run-id",
+        default=None,
+        help=(
+            "Run that measured the version; defaults to the report's parent_run_id. "
+            "Tagged on the promoted version for /performance."
+        ),
+    )
     args = parser.parse_args(argv)
 
     if args.promote_version is not None:
@@ -596,6 +633,7 @@ def main(argv: list[str] | None = None) -> int:
             args.promote_version,
             gates_path=args.gates,
             tracking_uri=args.tracking_uri,
+            evaluation_run_id=args.evaluation_run_id,
         )
         print(json.dumps(result, indent=2, default=str))
         return 0
@@ -616,6 +654,7 @@ def main(argv: list[str] | None = None) -> int:
         metadata_path=args.metadata,
         promote=args.promote,
         gates_path=args.gates,
+        evaluation_run_id=args.evaluation_run_id,
     )
     print(json.dumps(result, indent=2, default=str))
     return 0

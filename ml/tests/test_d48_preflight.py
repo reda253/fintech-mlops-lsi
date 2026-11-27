@@ -184,7 +184,7 @@ def _args(environment: dict[str, Path], **overrides) -> argparse.Namespace:
 
 
 def _argv(args: argparse.Namespace) -> list[str]:
-    return [
+    argv = [
         "--model",
         str(args.model),
         "--source",
@@ -208,6 +208,9 @@ def _argv(args: argparse.Namespace) -> list[str]:
         "--expected-source-sha256",
         args.expected_source_sha256,
     ]
+    if getattr(args, "verbose", False):
+        argv.append("--verbose")
+    return argv
 
 
 def test_preflight_passes_and_writes_nothing(env, tmp_path: Path):
@@ -290,6 +293,37 @@ def test_existing_output_directory_is_refused(env):
 
     with pytest.raises(ValueError, match="déjà présent"):
         d48_preflight.preflight(args)
+
+
+def test_missing_authorization_is_refused_with_a_clear_message(env):
+    args = _args(env)
+    args.authorization.unlink()
+
+    with pytest.raises(ValueError, match="Autorisation D48 absente"):
+        d48_preflight.preflight(args)
+
+
+def test_unreadable_authorization_is_refused_with_a_clear_message(env):
+    args = _args(env)
+    args.authorization.write_text("{not json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Autorisation D48 illisible"):
+        d48_preflight.preflight(args)
+
+
+def test_verbose_run_shows_the_checks_passed_before_a_failure(env, capsys):
+    args = _args(env, verbose=True)
+    args.authorization.unlink()
+
+    assert d48_preflight.main(_argv(args)) == 2
+
+    captured = capsys.readouterr()
+    assert "[OK] journal lisible" in captured.out
+    assert "[OK] source finale" in captured.out
+    assert "[OK] candidat figé" in captured.out
+    assert "[OK] protocole" in captured.out
+    assert "Autorisation D48 absente" in captured.err
+    assert "[PRET]" not in captured.out
 
 
 def test_missing_journal_is_refused(env):

@@ -207,6 +207,16 @@ def _run_evaluation_metrics(
     return metrics, tags, run_id
 
 
+def _ci(metrics: dict[str, float], key: str) -> list[float] | None:
+    """Percentile CI logged by the D48 publication (``<metric>_ci95_low/high``)."""
+
+    low = metrics.get(f"{key}_ci95_low")
+    high = metrics.get(f"{key}_ci95_high")
+    if low is None or high is None:
+        return None
+    return [float(low), float(high)]
+
+
 def _performance_from_registry(info: Any) -> dict[str, Any] | None:
     """Build the final-test block from the served version's MLflow run."""
 
@@ -235,21 +245,33 @@ def _performance_from_registry(info: Any) -> dict[str, Any] | None:
             if key in tags
         },
         "final_test_evaluation": {
-            "pr_auc": {"value": metrics.get("pr_auc")},
-            "roc_auc": {"value": metrics.get("roc_auc")},
-            "brier_score": {"value": metrics.get("brier_score")},
+            "pr_auc": {
+                "value": metrics.get("pr_auc"),
+                "ci_95": _ci(metrics, "pr_auc"),
+            },
+            "roc_auc": {
+                "value": metrics.get("roc_auc"),
+                "ci_95": _ci(metrics, "roc_auc"),
+            },
+            "brier_score": {
+                "value": metrics.get("brier_score"),
+                "ci_95": _ci(metrics, "brier_score"),
+            },
             "conformal_metrics": {
                 "alpha": metrics.get("alpha", info.alpha),
                 "coverage_legit": metrics.get("conformal_coverage_legit"),
+                "coverage_legit_ci_95": _ci(metrics, "coverage_legitimate"),
                 "coverage_fraud": metrics.get("conformal_coverage_fraud"),
+                "coverage_fraud_ci_95": _ci(metrics, "coverage_fraud"),
                 "coverage_global": metrics.get("conformal_coverage"),
                 "review_rate": metrics.get("review_rate"),
+                "review_rate_ci_95": _ci(metrics, "review_rate"),
                 "automation_rate": metrics.get("automation_rate"),
                 "auto_error_rate": metrics.get("auto_error_rate"),
             },
             "latency_p95_sec": metrics.get("latency_p95_sec"),
-            "n_test": metrics.get("n_test"),
-            "n_test_fraud": metrics.get("n_test_fraud"),
+            "n_test": metrics.get("n_test", metrics.get("n_transactions")),
+            "n_test_fraud": metrics.get("n_test_fraud", metrics.get("fraud_count")),
         },
     }
 

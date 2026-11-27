@@ -61,10 +61,23 @@ def _inspect_output(output: Path, source: Path) -> None:
     )
 
 
+def _trace(checks: list[str], message: str, verbose: bool) -> None:
+    """Record a passed check, and print it immediately when asked.
+
+    Printing as we go is what makes a *partial* run auditable: a failure at the
+    authorisation step still shows every earlier check with its fingerprint.
+    """
+
+    checks.append(message)
+    if verbose:
+        print(f"[OK] {message}", flush=True)
+
+
 def preflight(args: argparse.Namespace) -> list[str]:
     """Renvoie la liste des contrôles réussis ; lève sinon."""
 
     checks: list[str] = []
+    verbose = bool(getattr(args, "verbose", False))
 
     _require(
         args.decision_id == FINAL_DECISION_ID,
@@ -76,7 +89,7 @@ def preflight(args: argparse.Namespace) -> list[str]:
     _require(journal.parent.is_dir(), "Parent du journal absent : montage indisponible")
     _require(journal.is_file(), "Journal central absent ; refus de continuer")
     _raw, entries = read_journal(journal)
-    checks.append(f"journal lisible : {len(entries)} entrées, sha256={sha256(journal)}")
+    _trace(checks, f"journal lisible : {len(entries)} entrées, sha256={sha256(journal)}", verbose)
 
     source = args.source.expanduser().resolve()
     _require(
@@ -88,7 +101,7 @@ def preflight(args: argparse.Namespace) -> list[str]:
         source_sha == str(args.expected_source_sha256).lower(),
         "SHA-256 de la source différent de la source approuvée pour D48",
     )
-    checks.append(f"source finale : {source_sha}")
+    _trace(checks, f"source finale : {source_sha}", verbose)
 
     model_sha = sha256(args.model)
     _require(
@@ -96,11 +109,11 @@ def preflight(args: argparse.Namespace) -> list[str]:
         "SHA-256 du modèle différent du candidat D44 figé",
     )
     model = joblib.load(args.model)
-    checks.append(f"candidat figé : {model_sha}")
+    _trace(checks, f"candidat figé : {model_sha}", verbose)
 
     reference = json.loads(args.reference.read_text(encoding="utf-8"))
     validate_candidate(model, reference)
-    checks.append(f"référence D44 : {sha256(args.reference)}")
+    _trace(checks, f"référence D44 : {sha256(args.reference)}", verbose)
 
     previous, _payloads = load_previous_evaluation(
         args.previous_evaluation,
@@ -108,17 +121,26 @@ def preflight(args: argparse.Namespace) -> list[str]:
         source_sha,
         model.alpha,
     )
-    checks.append(
+    _trace(
+        checks,
         "mesure du 10 novembre : "
         f"{int(previous['overall']['n_transactions'])} transactions, "
-        f"{int(previous['overall']['fraud_count'])} fraudes"
+        f"{int(previous['overall']['fraud_count'])} fraudes",
+        verbose,
     )
 
     protocol_sha = sha256(args.protocol_file)
-    checks.append(f"protocole : {protocol_sha}")
+    _trace(checks, f"protocole : {protocol_sha}", verbose)
 
     authorization_path = _outside_repository(args.authorization, "L'autorisation")
-    authorization = json.loads(authorization_path.read_text(encoding="utf-8"))
+    _require(
+        authorization_path.is_file(),
+        "Autorisation D48 absente ; refus de continuer",
+    )
+    try:
+        authorization = json.loads(authorization_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError, UnicodeError) as exc:
+        raise ValueError(f"Autorisation D48 illisible : {exc}") from exc
     check_authorization(
         journal,
         authorization,
@@ -128,7 +150,7 @@ def preflight(args: argparse.Namespace) -> list[str]:
         protocol_sha256=protocol_sha,
         reason=args.reason,
     )
-    checks.append("autorisation : approuvée et liée au journal courant")
+    _trace(checks, "autorisation : approuvée et liée au journal courant", verbose)
 
     latency = load_latency_sample(args.latency_source)
     transformed = model.preprocessor.transform(latency)
@@ -136,12 +158,12 @@ def preflight(args: argparse.Namespace) -> list[str]:
         bool(np.isfinite(np.asarray(transformed)).all()),
         "Source de latence invalide : valeurs non finies",
     )
-    checks.append(f"frame de latence : {len(latency)} lignes development")
+    _trace(checks, f"frame de latence : {len(latency)} lignes development", verbose)
 
     output = _outside_repository(args.output_dir, "Le dossier de sortie")
     _require(not output.exists(), f"Dossier de sortie déjà présent : {output}")
     _inspect_output(output, source)
-    checks.append(f"sortie : {output} (parent accessible, espace suffisant)")
+    _trace(checks, f"sortie : {output} (parent accessible, espace suffisant)", verbose)
 
     return checks
 
@@ -160,6 +182,11 @@ def main(argv=None) -> int:
     parser.add_argument("--decision-id", default=FINAL_DECISION_ID)
     parser.add_argument("--reason", default="précontrôle D48 en lecture seule")
     parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Affiche chaque contrôle réussi, y compris avant un échec.",
+    )
+    parser.add_argument(
         "--expected-model-sha256",
         default=APPROVED_D48_MODEL_SHA256,
         help="Ne pas surcharger pour la mesure officielle D48.",
@@ -176,8 +203,9 @@ def main(argv=None) -> int:
     except (ValueError, OSError, KeyError, TypeError) as exc:
         print(f"[ECHEC] {exc}", file=sys.stderr)
         return 2
-    for check in checks:
-        print(f"[OK] {check}")
+    if not getattr(args, "verbose", False):
+        for check in checks:
+            print(f"[OK] {check}")
     print("[PRET] préconditions satisfaites ; l'exécution unique reste à lancer")
     return 0
 
