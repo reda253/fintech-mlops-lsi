@@ -11,6 +11,8 @@ import { TransactionsPage } from '@/features/transactions/TransactionsPage';
 import { InvestigationPage } from '@/features/investigation/InvestigationPage';
 import { SmartReviewPage } from '@/features/reviews/SmartReviewPage';
 import { NotificationsPage } from '@/features/notifications/NotificationsPage';
+import { MlPerformancePage } from '@/features/ml/MlPerformancePage';
+import { MlVisualisationsPage } from '@/features/ml/MlVisualisationsPage';
 import { RequireAuth } from '../guards/RequireAuth';
 import { RootRedirect } from '../guards/RootRedirect';
 import { RequirePermission } from '../guards/RequirePermission';
@@ -59,8 +61,8 @@ export const routes: RouteObject[] = [
           {
             element: <RequirePermission permission="ml:read" />,
             children: [
-              { path: PATHS.ml, element: <PlaceholderPage title="Intelligence ML" lot={5} mockup="11 — performances" /> },
-              { path: PATHS.mlViz, element: <PlaceholderPage title="Visualisations ML" lot={5} mockup="12 — PCA / t-SNE / UMAP" /> },
+              { path: PATHS.ml, element: <MlPerformancePage /> },
+              { path: PATHS.mlViz, element: <MlVisualisationsPage /> },
             ],
           },
           {
