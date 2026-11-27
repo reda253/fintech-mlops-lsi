@@ -809,6 +809,25 @@ def step_evaluate_synthetic(
         return metrics
 
 
+def _bootstrap_intervals(directory: Path) -> dict[str, tuple[float, float]]:
+    """Percentile intervals published with the verified D48 artifacts."""
+
+    path = Path(directory) / "bootstrap_intervals.json"
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"Intervalles bootstrap illisibles : {exc}") from exc
+    overall = payload.get("overall") if isinstance(payload, dict) else None
+    if not isinstance(overall, dict):
+        raise TypeError("Intervalles bootstrap sans bloc 'overall'")
+    intervals: dict[str, tuple[float, float]] = {}
+    for metric, block in overall.items():
+        bounds = (block or {}).get("ci95") if isinstance(block, dict) else None
+        if isinstance(bounds, list) and len(bounds) == 2:
+            intervals[str(metric)] = (float(bounds[0]), float(bounds[1]))
+    return intervals
+
+
 def step_evaluate(
     pyfunc_model: FraudDetectorModel,
     evaluation_dir: Path,
@@ -840,10 +859,16 @@ def step_evaluate(
         expected_threshold_legit=float(pyfunc_model.threshold_legit),
         expected_threshold_fraud=float(pyfunc_model.threshold_fraud),
     )
+    intervals = _bootstrap_intervals(evaluation.directory)
     with mlflow.start_run(run_name="5_evaluate", nested=parent_run):
         for key, value in evaluation.metrics.items():
             if value is not None:
                 mlflow.log_metric(key, value)
+        # The intervals belong to the measurement: log them so /performance can
+        # serve uncertainty without depending on the publication run.
+        for metric, (low, high) in intervals.items():
+            mlflow.log_metric(f"{metric}_ci95_low", low)
+            mlflow.log_metric(f"{metric}_ci95_high", high)
         for key, value in evaluation.provenance.items():
             rendered = str(value).lower() if isinstance(value, bool) else str(value)
             mlflow.set_tag(f"evaluation_{key}", rendered)

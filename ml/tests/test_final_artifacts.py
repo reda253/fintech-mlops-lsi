@@ -152,7 +152,20 @@ def build_artifact(
     _write_json(output / "final_metrics.json", metrics)
     (output / "final_report.md").write_text("# report\n", encoding="utf-8")
     (output / "fairness_groups.csv").write_text("attribute,group,n\n", encoding="utf-8")
-    _write_json(output / "bootstrap_intervals.json", {"overall": {}})
+    _write_json(
+        output / "bootstrap_intervals.json",
+        {
+            "overall": {
+                "pr_auc": {
+                    "ci95": [0.70, 0.90],
+                    "valid_resamples": 10_000,
+                    "total_resamples": 10_000,
+                }
+            },
+            "groups": {},
+            "parameters": {"method": "percentile", "resamples": 10_000, "seed": 42},
+        },
+    )
 
     artifacts = {
         name: _sha(output / name) for name in (*REQUIRED_ARTIFACTS, *HISTORY_ARTIFACTS)
@@ -407,3 +420,17 @@ def test_step_evaluate_logs_verified_metrics(tmp_path: Path, local_mlflow_env):
     assert metrics["pr_auc"] == pytest.approx(0.81)
     assert metrics["alpha"] == pytest.approx(0.02)
     assert metrics["latency_sample_size"] == pytest.approx(1000.0)
+
+    parent = mlflow.last_active_run()
+    client = mlflow.tracking.MlflowClient()
+    children = client.search_runs(
+        [parent.info.experiment_id],
+        filter_string=f"tags.`mlflow.parentRunId` = '{parent.info.run_id}'",
+    )
+    evaluate = next(
+        child
+        for child in children
+        if str(child.data.tags.get("mlflow.runName", "")).startswith("5_evaluate")
+    )
+    logged = evaluate.data.metrics
+    assert logged["pr_auc_ci95_low"] < logged["pr_auc"] < logged["pr_auc_ci95_high"]
