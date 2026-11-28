@@ -1,0 +1,3697 @@
+{
+  "schema_version": 1,
+  "synthetic_only": true,
+  "seed": 42,
+  "model_sha256": "aa1565caf7fed3af833a5613fd76416b6489c9a9f31ee8c523d65e5d9113da33",
+  "alpha": 0.02,
+  "candidates_generated": 1298,
+  "candidate_decision_counts": {
+    "APPROUVER": 1017,
+    "BLOQUER": 248,
+    "REVUE": 33
+  },
+  "selected_decision_counts": {
+    "APPROUVER": 34,
+    "BLOQUER": 35,
+    "REVUE": 31
+  },
+  "probability_note": "Batch and corrected unit path are bit-identical on these inputs; 34 [0], 35 [1], 31 []. No performance or fairness rates may be computed on this synthetic stratified nonrepresentative sample. expected.raw_probability is calibrated before rounding; expected.fraud_probability uses 6 decimals; expected_serving preserves service rounding to 4 decimals. Candidate bytes, alpha and conformal thresholds are unchanged.",
+  "cases": [
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000001",
+        "trans_datetime": "2020-08-17T06:00:00",
+        "amount": 0.28,
+        "category": "kids_pets",
+        "merch_lat": 43.8306259716777,
+        "merch_long": -99.61641411882019,
+        "customer": {
+          "dob": "1971-02-20",
+          "gender": "M",
+          "state": "FL",
+          "city_pop": 128113,
+          "lat": 43.574945165343124,
+          "long": -98.98392893413302
+        }
+      },
+      "expected": {
+        "fraud_probability": 2.9e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0005,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 2.8654262589050405e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0005,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000002",
+        "trans_datetime": "2020-08-23T09:00:00",
+        "amount": 734.74,
+        "category": "kids_pets",
+        "merch_lat": 34.09067758372713,
+        "merch_long": -102.12701105057786,
+        "customer": {
+          "dob": "1989-10-19",
+          "gender": "F",
+          "state": "MA",
+          "city_pop": 63817,
+          "lat": 35.80926250949361,
+          "long": -102.86451261874286
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.148805,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.6068,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.14880463666423047
+      },
+      "expected_serving": {
+        "fraud_probability": 0.1488,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.6068,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000003",
+        "trans_datetime": "2020-08-08T05:00:00",
+        "amount": 3641.5,
+        "category": "home",
+        "merch_lat": 44.006492483495755,
+        "merch_long": -88.69939635101878,
+        "customer": {
+          "dob": "1990-09-10",
+          "gender": "M",
+          "state": "TX",
+          "city_pop": 466721,
+          "lat": 44.86314812782197,
+          "long": -87.99512925004231
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.006142,
+        "prediction_set": [],
+        "uncertainty": 0.054,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.006141518992497301
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0061,
+        "prediction_set": [],
+        "uncertainty": 0.054,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000004",
+        "trans_datetime": "2020-08-01T11:00:00",
+        "amount": 3518.03,
+        "category": "health_fitness",
+        "merch_lat": 24.423744922397734,
+        "merch_long": -113.9735401069988,
+        "customer": {
+          "dob": "1948-12-21",
+          "gender": "F",
+          "state": "IL",
+          "city_pop": 189471,
+          "lat": 26.05129037889349,
+          "long": -115.20549895214978
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.000188,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0026,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.00018802499195115738
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0002,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0026,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000005",
+        "trans_datetime": "2020-06-21T10:00:00",
+        "amount": 11.33,
+        "category": "gas_transport",
+        "merch_lat": 25.775725787326245,
+        "merch_long": -95.79851066851138,
+        "customer": {
+          "dob": "1978-07-19",
+          "gender": "M",
+          "state": "IL",
+          "city_pop": 832260,
+          "lat": 28.11811612805132,
+          "long": -96.88481920512177
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.716809,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.8598,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.7168090935416835
+      },
+      "expected_serving": {
+        "fraud_probability": 0.7168,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.8598,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000006",
+        "trans_datetime": "2020-06-26T22:00:00",
+        "amount": 0.45,
+        "category": "shopping_net",
+        "merch_lat": 44.44950271890103,
+        "merch_long": -101.33549359790008,
+        "customer": {
+          "dob": "1937-03-20",
+          "gender": "F",
+          "state": "IL",
+          "city_pop": 664851,
+          "lat": 44.314344579923244,
+          "long": -101.91373239528005
+        }
+      },
+      "expected": {
+        "fraud_probability": 9.2e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0014,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 9.161695922962203e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0001,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0014,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000007",
+        "trans_datetime": "2020-07-12T07:00:00",
+        "amount": 0.45,
+        "category": "grocery_net",
+        "merch_lat": 40.192306855645555,
+        "merch_long": -77.56188852256487,
+        "customer": {
+          "dob": "1962-07-16",
+          "gender": "F",
+          "state": "IL",
+          "city_pop": 565236,
+          "lat": 41.92396908703204,
+          "long": -79.49844523174784
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.004385,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0407,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.004385172123690539
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0044,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0407,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000008",
+        "trans_datetime": "2020-07-20T19:00:00",
+        "amount": 2.68,
+        "category": "misc_net",
+        "merch_lat": 42.43526899265548,
+        "merch_long": -86.10510399745202,
+        "customer": {
+          "dob": "1961-02-16",
+          "gender": "F",
+          "state": "CA",
+          "city_pop": 408529,
+          "lat": 43.359972577984614,
+          "long": -87.82105575996633
+        }
+      },
+      "expected": {
+        "fraud_probability": 1.9e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0003,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 1.914454301205081e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0003,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000009",
+        "trans_datetime": "2020-06-06T05:00:00",
+        "amount": 2.4,
+        "category": "home",
+        "merch_lat": 44.62716846576292,
+        "merch_long": -110.34836992352216,
+        "customer": {
+          "dob": "1943-11-08",
+          "gender": "M",
+          "state": "MA",
+          "city_pop": 664314,
+          "lat": 45.48167375843599,
+          "long": -110.66544930567558
+        }
+      },
+      "expected": {
+        "fraud_probability": 4e-06,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 3.6379750983680018e-06
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000000a",
+        "trans_datetime": "2020-06-16T00:00:00",
+        "amount": 0.26,
+        "category": "personal_care",
+        "merch_lat": 35.727229636132854,
+        "merch_long": -78.53964275444149,
+        "customer": {
+          "dob": "1979-05-01",
+          "gender": "M",
+          "state": "MA",
+          "city_pop": 501045,
+          "lat": 34.75328467456169,
+          "long": -77.60083807403603
+        }
+      },
+      "expected": {
+        "fraud_probability": 6.6e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.001,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 6.60324215831451e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0001,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.001,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000000b",
+        "trans_datetime": "2020-07-11T03:00:00",
+        "amount": 2.61,
+        "category": "misc_pos",
+        "merch_lat": 25.28082159719998,
+        "merch_long": -87.20396356541522,
+        "customer": {
+          "dob": "1966-02-11",
+          "gender": "M",
+          "state": "TX",
+          "city_pop": 118006,
+          "lat": 28.655490465116042,
+          "long": -84.30973862056905
+        }
+      },
+      "expected": {
+        "fraud_probability": 6.7e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.001,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 6.747521028689639e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0001,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.001,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000000c",
+        "trans_datetime": "2020-08-02T23:00:00",
+        "amount": 3582.04,
+        "category": "grocery_net",
+        "merch_lat": 49.56057508612252,
+        "merch_long": -74.07813598968615,
+        "customer": {
+          "dob": "1966-06-08",
+          "gender": "M",
+          "state": "IL",
+          "city_pop": 272241,
+          "lat": 48.08554394918835,
+          "long": -72.2109006296664
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.805608,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.7106,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.8056078637830253
+      },
+      "expected_serving": {
+        "fraud_probability": 0.8056,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.7106,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000000d",
+        "trans_datetime": "2020-07-12T00:00:00",
+        "amount": 2.74,
+        "category": "shopping_net",
+        "merch_lat": 26.125083180290392,
+        "merch_long": -75.44377910577794,
+        "customer": {
+          "dob": "1993-09-06",
+          "gender": "M",
+          "state": "NY",
+          "city_pop": 758520,
+          "lat": 27.31338309168398,
+          "long": -72.55166339700102
+        }
+      },
+      "expected": {
+        "fraud_probability": 1.1e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0002,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 1.0717441177721843e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0002,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000000e",
+        "trans_datetime": "2020-07-27T10:00:00",
+        "amount": 113.14,
+        "category": "misc_net",
+        "merch_lat": 42.625662212735115,
+        "merch_long": -98.93070336487555,
+        "customer": {
+          "dob": "1980-02-17",
+          "gender": "F",
+          "state": "CA",
+          "city_pop": 493991,
+          "lat": 42.267110942822484,
+          "long": -99.37069673281908
+        }
+      },
+      "expected": {
+        "fraud_probability": 4e-06,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 4.457533293337136e-06
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000000f",
+        "trans_datetime": "2020-06-10T07:00:00",
+        "amount": 0.63,
+        "category": "grocery_pos",
+        "merch_lat": 32.13704948967531,
+        "merch_long": -118.51549352974794,
+        "customer": {
+          "dob": "1953-03-17",
+          "gender": "M",
+          "state": "WA",
+          "city_pop": 590916,
+          "lat": 32.91666909598685,
+          "long": -115.76212123463533
+        }
+      },
+      "expected": {
+        "fraud_probability": 2.1e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0004,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 2.0607206637746198e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0004,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000010",
+        "trans_datetime": "2020-07-14T09:00:00",
+        "amount": 0.24,
+        "category": "grocery_net",
+        "merch_lat": 31.3750178367274,
+        "merch_long": -68.53330597868562,
+        "customer": {
+          "dob": "1972-06-22",
+          "gender": "F",
+          "state": "CA",
+          "city_pop": 571728,
+          "lat": 25.54729290471274,
+          "long": -69.36212484523762
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.005333,
+        "prediction_set": [],
+        "uncertainty": 0.0479,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005333311337426081
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0053,
+        "prediction_set": [],
+        "uncertainty": 0.0479,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000011",
+        "trans_datetime": "2020-06-30T20:00:00",
+        "amount": 11.55,
+        "category": "grocery_net",
+        "merch_lat": 38.49570608694218,
+        "merch_long": -108.46829006887138,
+        "customer": {
+          "dob": "1933-07-15",
+          "gender": "F",
+          "state": "FL",
+          "city_pop": 140249,
+          "lat": 36.36374562536689,
+          "long": -108.78238720376207
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.072507,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.3752,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.07250675617646227
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0725,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.3752,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000012",
+        "trans_datetime": "2020-07-31T12:00:00",
+        "amount": 125.49,
+        "category": "personal_care",
+        "merch_lat": 38.55741648788295,
+        "merch_long": -115.8457037332336,
+        "customer": {
+          "dob": "1954-02-08",
+          "gender": "M",
+          "state": "WA",
+          "city_pop": 916012,
+          "lat": 38.296867444937185,
+          "long": -117.81118275527972
+        }
+      },
+      "expected": {
+        "fraud_probability": 6e-06,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 5.8131590952859414e-06
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000013",
+        "trans_datetime": "2020-07-20T22:00:00",
+        "amount": 792.79,
+        "category": "home",
+        "merch_lat": 28.719281425303087,
+        "merch_long": -120.00433827220927,
+        "customer": {
+          "dob": "1992-07-11",
+          "gender": "M",
+          "state": "WA",
+          "city_pop": 290918,
+          "lat": 30.52513578147714,
+          "long": -121.86748429795776
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.911799,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.4304,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.9117993372995714
+      },
+      "expected_serving": {
+        "fraud_probability": 0.9118,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.4304,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000014",
+        "trans_datetime": "2020-08-24T05:00:00",
+        "amount": 0.16,
+        "category": "grocery_pos",
+        "merch_lat": 34.80549595292191,
+        "merch_long": -109.06481400220241,
+        "customer": {
+          "dob": "1930-03-05",
+          "gender": "F",
+          "state": "NY",
+          "city_pop": 748608,
+          "lat": 37.36137110156115,
+          "long": -109.40998983764665
+        }
+      },
+      "expected": {
+        "fraud_probability": 3e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0005,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 2.9593812355619902e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0005,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000015",
+        "trans_datetime": "2020-07-17T16:00:00",
+        "amount": 424.29,
+        "category": "grocery_pos",
+        "merch_lat": 48.59159720120437,
+        "merch_long": -72.21602866029858,
+        "customer": {
+          "dob": "1994-06-09",
+          "gender": "M",
+          "state": "IL",
+          "city_pop": 746790,
+          "lat": 46.379019781084594,
+          "long": -73.0735415372218
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.96774,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.2056,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.9677404354746011
+      },
+      "expected_serving": {
+        "fraud_probability": 0.9677,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.2056,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000016",
+        "trans_datetime": "2020-06-22T16:00:00",
+        "amount": 804.22,
+        "category": "shopping_pos",
+        "merch_lat": 30.532677739876775,
+        "merch_long": -67.67876183509017,
+        "customer": {
+          "dob": "1933-01-04",
+          "gender": "F",
+          "state": "IL",
+          "city_pop": 874562,
+          "lat": 31.29905238214875,
+          "long": -70.60165041957458
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.828795,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.6605,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.8287947471691564
+      },
+      "expected_serving": {
+        "fraud_probability": 0.8288,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.6605,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000017",
+        "trans_datetime": "2020-08-09T23:00:00",
+        "amount": 22.54,
+        "category": "home",
+        "merch_lat": 30.389581074747625,
+        "merch_long": -103.49658692206715,
+        "customer": {
+          "dob": "1930-04-28",
+          "gender": "F",
+          "state": "CA",
+          "city_pop": 131822,
+          "lat": 29.714431977149758,
+          "long": -106.31155064469459
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.000554,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0068,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.0005541074282859651
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0006,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0068,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000018",
+        "trans_datetime": "2020-07-16T13:00:00",
+        "amount": 53.78,
+        "category": "health_fitness",
+        "merch_lat": 40.59556128530696,
+        "merch_long": -115.22374215146169,
+        "customer": {
+          "dob": "1981-12-20",
+          "gender": "F",
+          "state": "NY",
+          "city_pop": 738984,
+          "lat": 41.26380816670858,
+          "long": -117.05554723617372
+        }
+      },
+      "expected": {
+        "fraud_probability": 2.8e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0005,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 2.841741538979229e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0005,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000019",
+        "trans_datetime": "2020-08-23T11:00:00",
+        "amount": 2.6,
+        "category": "food_dining",
+        "merch_lat": 29.221616911383368,
+        "merch_long": -114.27123697704486,
+        "customer": {
+          "dob": "1961-01-12",
+          "gender": "F",
+          "state": "FL",
+          "city_pop": 286446,
+          "lat": 28.145386037375516,
+          "long": -116.94603319193035
+        }
+      },
+      "expected": {
+        "fraud_probability": 4e-06,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 4.270231733550883e-06
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000001a",
+        "trans_datetime": "2020-07-20T23:00:00",
+        "amount": 0.31,
+        "category": "personal_care",
+        "merch_lat": 47.65185896376646,
+        "merch_long": -117.54806091591554,
+        "customer": {
+          "dob": "1959-02-18",
+          "gender": "F",
+          "state": "CA",
+          "city_pop": 596043,
+          "lat": 47.19540230348865,
+          "long": -122.58300899098339
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.000117,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0017,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.00011748607904848093
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0001,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0017,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000001b",
+        "trans_datetime": "2020-07-13T01:00:00",
+        "amount": 0.12,
+        "category": "misc_pos",
+        "merch_lat": 45.93438964291785,
+        "merch_long": -79.45972069019626,
+        "customer": {
+          "dob": "1971-08-22",
+          "gender": "F",
+          "state": "FL",
+          "city_pop": 232640,
+          "lat": 47.39255731840507,
+          "long": -78.15142781006067
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.000255,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0034,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.0002546251472212741
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0003,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0034,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000001c",
+        "trans_datetime": "2020-08-18T02:00:00",
+        "amount": 8.68,
+        "category": "food_dining",
+        "merch_lat": 39.98619163596257,
+        "merch_long": -89.64562332860449,
+        "customer": {
+          "dob": "1934-10-17",
+          "gender": "F",
+          "state": "MA",
+          "city_pop": 867491,
+          "lat": 37.738470174377284,
+          "long": -89.45709822009937
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.000124,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0018,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.0001240497875769051
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0001,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0018,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000001d",
+        "trans_datetime": "2020-06-22T07:00:00",
+        "amount": 687.12,
+        "category": "travel",
+        "merch_lat": 33.55039191218051,
+        "merch_long": -110.60964282534864,
+        "customer": {
+          "dob": "1983-12-21",
+          "gender": "F",
+          "state": "TX",
+          "city_pop": 146173,
+          "lat": 35.89352516983119,
+          "long": -109.87314491177258
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.001755,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0186,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.0017549097285123963
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0018,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0186,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000001e",
+        "trans_datetime": "2020-06-13T22:00:00",
+        "amount": 0.6,
+        "category": "gas_transport",
+        "merch_lat": 44.52429464192011,
+        "merch_long": -109.06071520306773,
+        "customer": {
+          "dob": "1935-11-26",
+          "gender": "F",
+          "state": "FL",
+          "city_pop": 21148,
+          "lat": 44.79194057095219,
+          "long": -106.31092358632776
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.664799,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9202,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.664798876407633
+      },
+      "expected_serving": {
+        "fraud_probability": 0.6648,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9202,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000001f",
+        "trans_datetime": "2020-06-05T19:00:00",
+        "amount": 158.0,
+        "category": "shopping_net",
+        "merch_lat": 27.03300263674065,
+        "merch_long": -113.93912546150065,
+        "customer": {
+          "dob": "1942-06-17",
+          "gender": "F",
+          "state": "IL",
+          "city_pop": 875005,
+          "lat": 26.329489819942243,
+          "long": -114.0454361566564
+        }
+      },
+      "expected": {
+        "fraud_probability": 5e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0008,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 4.9769805971071415e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0008,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000020",
+        "trans_datetime": "2020-06-17T08:00:00",
+        "amount": 1.49,
+        "category": "misc_net",
+        "merch_lat": 46.198852148845944,
+        "merch_long": -123.0480358846604,
+        "customer": {
+          "dob": "1967-11-07",
+          "gender": "M",
+          "state": "NY",
+          "city_pop": 373614,
+          "lat": 45.42715904373294,
+          "long": -121.52192146527086
+        }
+      },
+      "expected": {
+        "fraud_probability": 1.1e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0002,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 1.1191981460871567e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0002,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000021",
+        "trans_datetime": "2020-08-15T00:00:00",
+        "amount": 2217.2,
+        "category": "misc_pos",
+        "merch_lat": 39.42494773233965,
+        "merch_long": -117.29586085805947,
+        "customer": {
+          "dob": "1996-02-02",
+          "gender": "F",
+          "state": "CA",
+          "city_pop": 979571,
+          "lat": 37.57007076922329,
+          "long": -118.2047015344882
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.20619,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.7341,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.20618977946482028
+      },
+      "expected_serving": {
+        "fraud_probability": 0.2062,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.7341,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000022",
+        "trans_datetime": "2020-07-28T19:00:00",
+        "amount": 0.43,
+        "category": "shopping_net",
+        "merch_lat": 44.55374615077119,
+        "merch_long": -76.62679623004793,
+        "customer": {
+          "dob": "1957-08-22",
+          "gender": "M",
+          "state": "IL",
+          "city_pop": 462799,
+          "lat": 44.24862112656625,
+          "long": -79.56978017603424
+        }
+      },
+      "expected": {
+        "fraud_probability": 3.2e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0005,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 3.170133967565635e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0005,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000023",
+        "trans_datetime": "2020-06-24T23:00:00",
+        "amount": 17.6,
+        "category": "gas_transport",
+        "merch_lat": 37.696848334736856,
+        "merch_long": -90.612616349317,
+        "customer": {
+          "dob": "1984-01-04",
+          "gender": "F",
+          "state": "FL",
+          "city_pop": 366392,
+          "lat": 34.24214790640848,
+          "long": -87.54489353948472
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.986972,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.1003,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.9869723370094343
+      },
+      "expected_serving": {
+        "fraud_probability": 0.987,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.1003,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000024",
+        "trans_datetime": "2020-08-01T17:00:00",
+        "amount": 2875.11,
+        "category": "misc_pos",
+        "merch_lat": 36.324516756720975,
+        "merch_long": -100.01572367760966,
+        "customer": {
+          "dob": "1989-03-09",
+          "gender": "M",
+          "state": "FL",
+          "city_pop": 535435,
+          "lat": 32.85989354590109,
+          "long": -102.37054745556505
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.00018,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0025,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.00017993171530925465
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0002,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0025,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000025",
+        "trans_datetime": "2020-08-12T09:00:00",
+        "amount": 94.2,
+        "category": "food_dining",
+        "merch_lat": 47.3446195997567,
+        "merch_long": -89.15912883430391,
+        "customer": {
+          "dob": "1988-07-15",
+          "gender": "F",
+          "state": "WA",
+          "city_pop": 694798,
+          "lat": 45.36545173056699,
+          "long": -86.80252158807419
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.000764,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.009,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.000764385340296046
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0008,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.009,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000026",
+        "trans_datetime": "2020-07-26T07:00:00",
+        "amount": 257.11,
+        "category": "misc_net",
+        "merch_lat": 42.513177128514975,
+        "merch_long": -116.6040446196084,
+        "customer": {
+          "dob": "1933-08-03",
+          "gender": "F",
+          "state": "MA",
+          "city_pop": 958881,
+          "lat": 45.65725763982146,
+          "long": -116.470138273812
+        }
+      },
+      "expected": {
+        "fraud_probability": 3.6e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0006,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 3.640801140403831e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0006,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000027",
+        "trans_datetime": "2020-08-10T10:00:00",
+        "amount": 2788.39,
+        "category": "food_dining",
+        "merch_lat": 41.788099927280065,
+        "merch_long": -91.50240630021098,
+        "customer": {
+          "dob": "1970-12-23",
+          "gender": "F",
+          "state": "FL",
+          "city_pop": 616166,
+          "lat": 44.22122022604232,
+          "long": -90.16012574541782
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.000436,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0055,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.0004361991337419829
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0004,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0055,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000028",
+        "trans_datetime": "2020-07-22T12:00:00",
+        "amount": 28.56,
+        "category": "personal_care",
+        "merch_lat": 29.938771868972317,
+        "merch_long": -88.5653957827684,
+        "customer": {
+          "dob": "2002-06-14",
+          "gender": "M",
+          "state": "CA",
+          "city_pop": 599594,
+          "lat": 29.11099129822693,
+          "long": -91.79781514607082
+        }
+      },
+      "expected": {
+        "fraud_probability": 5e-06,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 5.0303304405670625e-06
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000029",
+        "trans_datetime": "2020-06-11T12:00:00",
+        "amount": 123.39,
+        "category": "personal_care",
+        "merch_lat": 46.20778233351885,
+        "merch_long": -115.54765807550358,
+        "customer": {
+          "dob": "1945-09-03",
+          "gender": "F",
+          "state": "IL",
+          "city_pop": 333638,
+          "lat": 47.34966965656244,
+          "long": -117.175185455436
+        }
+      },
+      "expected": {
+        "fraud_probability": 3e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0005,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 2.9649456874882158e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0005,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000002a",
+        "trans_datetime": "2020-06-25T08:00:00",
+        "amount": 3.0,
+        "category": "grocery_pos",
+        "merch_lat": 47.32758486538384,
+        "merch_long": -78.53601912315223,
+        "customer": {
+          "dob": "1956-10-11",
+          "gender": "F",
+          "state": "FL",
+          "city_pop": 437904,
+          "lat": 46.560797136676854,
+          "long": -80.53566761697282
+        }
+      },
+      "expected": {
+        "fraud_probability": 1.3e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0002,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 1.2823792626540832e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0002,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000002b",
+        "trans_datetime": "2020-07-20T18:00:00",
+        "amount": 464.1,
+        "category": "misc_net",
+        "merch_lat": 34.22252785777915,
+        "merch_long": -79.74999342451548,
+        "customer": {
+          "dob": "1990-12-27",
+          "gender": "F",
+          "state": "NY",
+          "city_pop": 717760,
+          "lat": 34.19967574665783,
+          "long": -82.40791460538946
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.000104,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0015,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.00010435273563418034
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0001,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0015,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000002c",
+        "trans_datetime": "2020-08-16T13:00:00",
+        "amount": 0.37,
+        "category": "home",
+        "merch_lat": 46.91327297817853,
+        "merch_long": -117.03096020994258,
+        "customer": {
+          "dob": "1983-11-18",
+          "gender": "M",
+          "state": "NY",
+          "city_pop": 454318,
+          "lat": 47.828671840092184,
+          "long": -117.24672109862864
+        }
+      },
+      "expected": {
+        "fraud_probability": 3e-06,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 2.8693865189750794e-06
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0001,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000002d",
+        "trans_datetime": "2020-07-12T06:00:00",
+        "amount": 2.62,
+        "category": "kids_pets",
+        "merch_lat": 45.36213662736881,
+        "merch_long": -109.99006732317162,
+        "customer": {
+          "dob": "1932-04-13",
+          "gender": "M",
+          "state": "TX",
+          "city_pop": 997035,
+          "lat": 44.80958826871171,
+          "long": -107.16453555538688
+        }
+      },
+      "expected": {
+        "fraud_probability": 8.1e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0012,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 8.130905759145315e-05
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0001,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0012,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000002e",
+        "trans_datetime": "2020-08-15T07:00:00",
+        "amount": 4951.8,
+        "category": "entertainment",
+        "merch_lat": 46.37728344750325,
+        "merch_long": -106.29695287099807,
+        "customer": {
+          "dob": "1946-01-03",
+          "gender": "M",
+          "state": "WA",
+          "city_pop": 897034,
+          "lat": 46.10080058338589,
+          "long": -107.81721904174978
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.000589,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0072,
+        "alpha": 0.02,
+        "decision": "APPROUVER",
+        "raw_probability": 0.0005889144011761747
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0006,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0072,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000030",
+        "trans_datetime": "2020-08-12T03:00:00",
+        "amount": 980.27,
+        "category": "grocery_net",
+        "merch_lat": 27.738657807801054,
+        "merch_long": -90.03203300684467,
+        "customer": {
+          "dob": "1931-12-07",
+          "gender": "F",
+          "state": "NY",
+          "city_pop": 772109,
+          "lat": 26.239790008345572,
+          "long": -89.46226487407952
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.243868,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.8014,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.24386778069764398
+      },
+      "expected_serving": {
+        "fraud_probability": 0.2439,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.8014,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000003b",
+        "trans_datetime": "2020-06-11T18:00:00",
+        "amount": 3188.82,
+        "category": "food_dining",
+        "merch_lat": 29.55647812038253,
+        "merch_long": -90.87124131922937,
+        "customer": {
+          "dob": "1954-07-11",
+          "gender": "M",
+          "state": "IL",
+          "city_pop": 687665,
+          "lat": 28.686709577455236,
+          "long": -89.7520967471304
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.005019,
+        "prediction_set": [],
+        "uncertainty": 0.0456,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005018760925592754
+      },
+      "expected_serving": {
+        "fraud_probability": 0.005,
+        "prediction_set": [],
+        "uncertainty": 0.0456,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000003f",
+        "trans_datetime": "2020-06-08T13:00:00",
+        "amount": 920.44,
+        "category": "shopping_net",
+        "merch_lat": 38.716230901455596,
+        "merch_long": -96.38922651440804,
+        "customer": {
+          "dob": "2001-04-07",
+          "gender": "M",
+          "state": "IL",
+          "city_pop": 762903,
+          "lat": 39.074684152355104,
+          "long": -95.882471376512
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.64235,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9407,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.6423495128674434
+      },
+      "expected_serving": {
+        "fraud_probability": 0.6423,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9407,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000040",
+        "trans_datetime": "2020-07-19T13:00:00",
+        "amount": 929.35,
+        "category": "grocery_pos",
+        "merch_lat": 26.987439562932053,
+        "merch_long": -99.03317545337896,
+        "customer": {
+          "dob": "1948-11-10",
+          "gender": "F",
+          "state": "TX",
+          "city_pop": 504791,
+          "lat": 26.394603561314735,
+          "long": -103.10332205884109
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.974238,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.1727,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.974238443945705
+      },
+      "expected_serving": {
+        "fraud_probability": 0.9742,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.1727,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000043",
+        "trans_datetime": "2020-08-03T06:00:00",
+        "amount": 4106.55,
+        "category": "shopping_net",
+        "merch_lat": 27.671446921151237,
+        "merch_long": -108.65777459235954,
+        "customer": {
+          "dob": "1990-07-18",
+          "gender": "M",
+          "state": "WA",
+          "city_pop": 903328,
+          "lat": 25.175546951032373,
+          "long": -108.15273992375361
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.007031,
+        "prediction_set": [],
+        "uncertainty": 0.0604,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.007030656404092137
+      },
+      "expected_serving": {
+        "fraud_probability": 0.007,
+        "prediction_set": [],
+        "uncertainty": 0.0604,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000004a",
+        "trans_datetime": "2020-07-06T17:00:00",
+        "amount": 1465.24,
+        "category": "shopping_pos",
+        "merch_lat": 33.33376991180669,
+        "merch_long": -89.30273094908834,
+        "customer": {
+          "dob": "1970-02-08",
+          "gender": "F",
+          "state": "FL",
+          "city_pop": 717639,
+          "lat": 32.174647626853734,
+          "long": -90.35174569966051
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.03161,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.2024,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.03161021917678029
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0316,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.2024,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000057",
+        "trans_datetime": "2020-08-09T13:00:00",
+        "amount": 1.57,
+        "category": "grocery_net",
+        "merch_lat": 37.828722262789746,
+        "merch_long": -110.62610999029084,
+        "customer": {
+          "dob": "1937-12-24",
+          "gender": "M",
+          "state": "MA",
+          "city_pop": 984650,
+          "lat": 39.85885807424738,
+          "long": -114.72362129201741
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.017355,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.1263,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.017354891503877496
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0174,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.1263,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000005f",
+        "trans_datetime": "2020-06-17T01:00:00",
+        "amount": 1087.26,
+        "category": "travel",
+        "merch_lat": 26.260820727367044,
+        "merch_long": -73.4249800141022,
+        "customer": {
+          "dob": "1983-09-06",
+          "gender": "M",
+          "state": "MA",
+          "city_pop": 733495,
+          "lat": 28.58497975283562,
+          "long": -69.19167111616115
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.007571,
+        "prediction_set": [],
+        "uncertainty": 0.0642,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.007570503314127272
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0076,
+        "prediction_set": [],
+        "uncertainty": 0.0642,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000061",
+        "trans_datetime": "2020-06-09T23:00:00",
+        "amount": 312.0,
+        "category": "home",
+        "merch_lat": 49.58386137183362,
+        "merch_long": -78.43729320438577,
+        "customer": {
+          "dob": "1966-01-06",
+          "gender": "F",
+          "state": "IL",
+          "city_pop": 719313,
+          "lat": 45.77374094370468,
+          "long": -78.50844615835501
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.264547,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.8335,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.26454730083086037
+      },
+      "expected_serving": {
+        "fraud_probability": 0.2645,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.8335,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000066",
+        "trans_datetime": "2020-08-28T14:00:00",
+        "amount": 3006.87,
+        "category": "misc_net",
+        "merch_lat": 46.61889246868827,
+        "merch_long": -70.11651958942012,
+        "customer": {
+          "dob": "1995-08-28",
+          "gender": "F",
+          "state": "CA",
+          "city_pop": 552898,
+          "lat": 46.04105913435086,
+          "long": -72.60641434671301
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.005647,
+        "prediction_set": [],
+        "uncertainty": 0.0503,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005647206896826526
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0056,
+        "prediction_set": [],
+        "uncertainty": 0.0503,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000006c",
+        "trans_datetime": "2020-06-15T17:00:00",
+        "amount": 0.95,
+        "category": "gas_transport",
+        "merch_lat": 38.44931715983959,
+        "merch_long": -67.93534780356993,
+        "customer": {
+          "dob": "1992-05-16",
+          "gender": "F",
+          "state": "CA",
+          "city_pop": 916849,
+          "lat": 36.56873823007241,
+          "long": -69.66728508040423
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.287574,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.8656,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.28757384778546463
+      },
+      "expected_serving": {
+        "fraud_probability": 0.2876,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.8656,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000070",
+        "trans_datetime": "2020-06-14T17:00:00",
+        "amount": 7.02,
+        "category": "gas_transport",
+        "merch_lat": 33.99886453953757,
+        "merch_long": -118.72846200586616,
+        "customer": {
+          "dob": "1971-10-18",
+          "gender": "M",
+          "state": "IL",
+          "city_pop": 461099,
+          "lat": 35.99828899687633,
+          "long": -116.64528674062362
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.718887,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.857,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.7188867089911865
+      },
+      "expected_serving": {
+        "fraud_probability": 0.7189,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.857,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000074",
+        "trans_datetime": "2020-06-12T07:00:00",
+        "amount": 136.94,
+        "category": "food_dining",
+        "merch_lat": 36.308256364803924,
+        "merch_long": -98.15945862377072,
+        "customer": {
+          "dob": "1984-10-03",
+          "gender": "M",
+          "state": "MA",
+          "city_pop": 326547,
+          "lat": 34.79576003754431,
+          "long": -98.91714383068751
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.011252,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.089,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.011251788779708836
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0113,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.089,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000079",
+        "trans_datetime": "2020-08-28T00:00:00",
+        "amount": 391.88,
+        "category": "grocery_net",
+        "merch_lat": 52.063248278081986,
+        "merch_long": -78.68522682260793,
+        "customer": {
+          "dob": "1934-01-21",
+          "gender": "M",
+          "state": "WA",
+          "city_pop": 240226,
+          "lat": 47.17298798796415,
+          "long": -75.93059551156719
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.006731,
+        "prediction_set": [],
+        "uncertainty": 0.0582,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.006731498172218191
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0067,
+        "prediction_set": [],
+        "uncertainty": 0.0582,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000007c",
+        "trans_datetime": "2020-07-09T01:00:00",
+        "amount": 2419.21,
+        "category": "grocery_pos",
+        "merch_lat": 30.109684718345132,
+        "merch_long": -115.52657108656804,
+        "customer": {
+          "dob": "2001-05-18",
+          "gender": "M",
+          "state": "WA",
+          "city_pop": 790738,
+          "lat": 29.622179757541836,
+          "long": -115.22407579307529
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.991871,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.0681,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.9918712685475423
+      },
+      "expected_serving": {
+        "fraud_probability": 0.9919,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.0681,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000007d",
+        "trans_datetime": "2020-07-30T17:00:00",
+        "amount": 816.64,
+        "category": "misc_net",
+        "merch_lat": 30.941771474329226,
+        "merch_long": -74.75578140744977,
+        "customer": {
+          "dob": "1986-06-04",
+          "gender": "F",
+          "state": "CA",
+          "city_pop": 500766,
+          "lat": 31.495171654500652,
+          "long": -73.56360360813744
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.071556,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.3717,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.07155551769612366
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0716,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.3717,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000080",
+        "trans_datetime": "2020-08-12T03:00:00",
+        "amount": 1571.54,
+        "category": "grocery_net",
+        "merch_lat": 32.87507380646161,
+        "merch_long": -79.04985460146446,
+        "customer": {
+          "dob": "1950-03-14",
+          "gender": "F",
+          "state": "TX",
+          "city_pop": 153525,
+          "lat": 32.71709637378159,
+          "long": -81.31721555897786
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.019742,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.14,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.019741791226057827
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0197,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.14,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000084",
+        "trans_datetime": "2020-06-16T20:00:00",
+        "amount": 737.49,
+        "category": "entertainment",
+        "merch_lat": 29.779163497788737,
+        "merch_long": -118.55371551681186,
+        "customer": {
+          "dob": "1978-02-05",
+          "gender": "F",
+          "state": "MA",
+          "city_pop": 653540,
+          "lat": 27.853848352815053,
+          "long": -119.09900604367613
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.041511,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.2492,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.04151102597537559
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0415,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.2492,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000008b",
+        "trans_datetime": "2020-07-25T22:00:00",
+        "amount": 1494.18,
+        "category": "entertainment",
+        "merch_lat": 28.273454294210893,
+        "merch_long": -111.6620094463657,
+        "customer": {
+          "dob": "1935-06-06",
+          "gender": "M",
+          "state": "NY",
+          "city_pop": 115326,
+          "lat": 33.5768709640493,
+          "long": -108.90599089266996
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.634672,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.947,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.634671607505246
+      },
+      "expected_serving": {
+        "fraud_probability": 0.6347,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.947,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000091",
+        "trans_datetime": "2020-08-07T23:00:00",
+        "amount": 767.47,
+        "category": "travel",
+        "merch_lat": 31.449433352600177,
+        "merch_long": -90.74056320742201,
+        "customer": {
+          "dob": "1947-07-08",
+          "gender": "M",
+          "state": "MA",
+          "city_pop": 52576,
+          "lat": 30.148935341443448,
+          "long": -91.92767259723314
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.027082,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.1795,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.027082278363350632
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0271,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.1795,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000009a",
+        "trans_datetime": "2020-08-29T10:00:00",
+        "amount": 0.15,
+        "category": "gas_transport",
+        "merch_lat": 27.69343386873581,
+        "merch_long": -93.74604747963397,
+        "customer": {
+          "dob": "1976-06-27",
+          "gender": "M",
+          "state": "TX",
+          "city_pop": 45114,
+          "lat": 25.861573264176613,
+          "long": -93.5277571765113
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.490878,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9998,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.49087825278795405
+      },
+      "expected_serving": {
+        "fraud_probability": 0.4909,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9998,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000009b",
+        "trans_datetime": "2020-06-11T13:00:00",
+        "amount": 836.12,
+        "category": "travel",
+        "merch_lat": 46.708554240699,
+        "merch_long": -77.2780931649532,
+        "customer": {
+          "dob": "1936-04-02",
+          "gender": "F",
+          "state": "MA",
+          "city_pop": 567448,
+          "lat": 47.460978448265934,
+          "long": -76.26388260409672
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.056185,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.3121,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.05618467781696102
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0562,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.3121,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000009d",
+        "trans_datetime": "2020-08-14T16:00:00",
+        "amount": 906.27,
+        "category": "health_fitness",
+        "merch_lat": 45.76667820448672,
+        "merch_long": -82.92382904105095,
+        "customer": {
+          "dob": "1963-02-28",
+          "gender": "M",
+          "state": "TX",
+          "city_pop": 545676,
+          "lat": 45.81527297202835,
+          "long": -83.65289801911747
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.646928,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9368,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.6469278685112709
+      },
+      "expected_serving": {
+        "fraud_probability": 0.6469,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9368,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000000a6",
+        "trans_datetime": "2020-08-13T23:00:00",
+        "amount": 471.47,
+        "category": "shopping_pos",
+        "merch_lat": 36.185048374034764,
+        "merch_long": -115.96196515519472,
+        "customer": {
+          "dob": "1944-09-19",
+          "gender": "F",
+          "state": "IL",
+          "city_pop": 631066,
+          "lat": 36.41346815759044,
+          "long": -120.56114334126936
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.146057,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.5999,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.14605744791306557
+      },
+      "expected_serving": {
+        "fraud_probability": 0.1461,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.5999,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000000ab",
+        "trans_datetime": "2020-08-10T09:00:00",
+        "amount": 676.09,
+        "category": "gas_transport",
+        "merch_lat": 25.545769324282656,
+        "merch_long": -97.82519001593081,
+        "customer": {
+          "dob": "1985-07-21",
+          "gender": "F",
+          "state": "TX",
+          "city_pop": 360810,
+          "lat": 26.678359155444667,
+          "long": -96.57598319950046
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.075397,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.3857,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.07539669179825065
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0754,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.3857,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000000b4",
+        "trans_datetime": "2020-07-22T09:00:00",
+        "amount": 0.15,
+        "category": "gas_transport",
+        "merch_lat": 29.80774667316363,
+        "merch_long": -122.65416579488944,
+        "customer": {
+          "dob": "1961-05-28",
+          "gender": "F",
+          "state": "IL",
+          "city_pop": 89042,
+          "lat": 30.113798425576057,
+          "long": -123.75457078694232
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.557793,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9903,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.5577928012567053
+      },
+      "expected_serving": {
+        "fraud_probability": 0.5578,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9903,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000000b6",
+        "trans_datetime": "2020-07-08T01:00:00",
+        "amount": 2181.62,
+        "category": "food_dining",
+        "merch_lat": 39.43445937028226,
+        "merch_long": -68.07960095485915,
+        "customer": {
+          "dob": "1990-08-12",
+          "gender": "F",
+          "state": "MA",
+          "city_pop": 97788,
+          "lat": 41.569646908372036,
+          "long": -67.9697312224533
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.629488,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9511,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.6294877176776786
+      },
+      "expected_serving": {
+        "fraud_probability": 0.6295,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.9511,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000000dd",
+        "trans_datetime": "2020-06-24T05:00:00",
+        "amount": 4358.65,
+        "category": "kids_pets",
+        "merch_lat": 36.24214229363586,
+        "merch_long": -72.68410391550196,
+        "customer": {
+          "dob": "1993-02-20",
+          "gender": "F",
+          "state": "MA",
+          "city_pop": 339736,
+          "lat": 39.84785468647162,
+          "long": -71.17978217936692
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.006577,
+        "prediction_set": [],
+        "uncertainty": 0.0571,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.006576787381098791
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0066,
+        "prediction_set": [],
+        "uncertainty": 0.0571,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000010c",
+        "trans_datetime": "2020-08-23T20:00:00",
+        "amount": 3798.14,
+        "category": "home",
+        "merch_lat": 33.09855561000868,
+        "merch_long": -100.13842401008,
+        "customer": {
+          "dob": "1964-07-20",
+          "gender": "F",
+          "state": "TX",
+          "city_pop": 107287,
+          "lat": 32.13788701824592,
+          "long": -105.20223336556435
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.008409,
+        "prediction_set": [],
+        "uncertainty": 0.07,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.008408776059938077
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0084,
+        "prediction_set": [],
+        "uncertainty": 0.07,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000010e",
+        "trans_datetime": "2020-08-02T06:00:00",
+        "amount": 362.04,
+        "category": "entertainment",
+        "merch_lat": 43.997504460910264,
+        "merch_long": -123.15434090150045,
+        "customer": {
+          "dob": "1998-11-18",
+          "gender": "M",
+          "state": "FL",
+          "city_pop": 322463,
+          "lat": 42.416823297340855,
+          "long": -120.08861114479504
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.005117,
+        "prediction_set": [],
+        "uncertainty": 0.0463,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005117411812800398
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0051,
+        "prediction_set": [],
+        "uncertainty": 0.0463,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000013d",
+        "trans_datetime": "2020-06-29T21:00:00",
+        "amount": 2599.52,
+        "category": "home",
+        "merch_lat": 37.55238011777344,
+        "merch_long": -76.1912317994097,
+        "customer": {
+          "dob": "1972-07-22",
+          "gender": "M",
+          "state": "MA",
+          "city_pop": 414427,
+          "lat": 35.35163875637899,
+          "long": -77.54244506573866
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.011635,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.0914,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.011635178586558884
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0116,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.0914,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000014a",
+        "trans_datetime": "2020-08-23T18:00:00",
+        "amount": 709.48,
+        "category": "gas_transport",
+        "merch_lat": 39.64951491253339,
+        "merch_long": -112.91777388552123,
+        "customer": {
+          "dob": "1983-12-15",
+          "gender": "M",
+          "state": "WA",
+          "city_pop": 875100,
+          "lat": 40.61949436105684,
+          "long": -116.69362182858016
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.008805,
+        "prediction_set": [],
+        "uncertainty": 0.0728,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.008805335980778595
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0088,
+        "prediction_set": [],
+        "uncertainty": 0.0728,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000162",
+        "trans_datetime": "2020-06-26T22:00:00",
+        "amount": 0.13,
+        "category": "grocery_net",
+        "merch_lat": 43.240302076396155,
+        "merch_long": -115.1648681393356,
+        "customer": {
+          "dob": "1960-04-06",
+          "gender": "M",
+          "state": "IL",
+          "city_pop": 388053,
+          "lat": 45.73778729781158,
+          "long": -115.83196616260801
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.005783,
+        "prediction_set": [],
+        "uncertainty": 0.0513,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005783194031375975
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0058,
+        "prediction_set": [],
+        "uncertainty": 0.0513,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000181",
+        "trans_datetime": "2020-06-28T22:00:00",
+        "amount": 11.58,
+        "category": "kids_pets",
+        "merch_lat": 41.04072351973687,
+        "merch_long": -105.62621352673438,
+        "customer": {
+          "dob": "1967-10-28",
+          "gender": "F",
+          "state": "TX",
+          "city_pop": 552672,
+          "lat": 39.873150429150975,
+          "long": -106.82839720156296
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.008145,
+        "prediction_set": [],
+        "uncertainty": 0.0682,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.008144957961979846
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0081,
+        "prediction_set": [],
+        "uncertainty": 0.0682,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000018e",
+        "trans_datetime": "2020-08-12T01:00:00",
+        "amount": 18.85,
+        "category": "personal_care",
+        "merch_lat": 43.234897816209426,
+        "merch_long": -70.74535331105106,
+        "customer": {
+          "dob": "1937-12-11",
+          "gender": "M",
+          "state": "NY",
+          "city_pop": 328071,
+          "lat": 42.33946775601929,
+          "long": -71.83711098652935
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.008809,
+        "prediction_set": [],
+        "uncertainty": 0.0728,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.00880921363453818
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0088,
+        "prediction_set": [],
+        "uncertainty": 0.0728,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000001a1",
+        "trans_datetime": "2020-06-24T13:00:00",
+        "amount": 2290.5,
+        "category": "grocery_net",
+        "merch_lat": 32.28528405075165,
+        "merch_long": -107.1245236271258,
+        "customer": {
+          "dob": "1967-04-08",
+          "gender": "F",
+          "state": "TX",
+          "city_pop": 88390,
+          "lat": 36.15046209263287,
+          "long": -104.40248977131085
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.007371,
+        "prediction_set": [],
+        "uncertainty": 0.0628,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.007370853535189388
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0074,
+        "prediction_set": [],
+        "uncertainty": 0.0628,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000001bf",
+        "trans_datetime": "2020-07-30T15:00:00",
+        "amount": 1792.43,
+        "category": "health_fitness",
+        "merch_lat": 50.68632105507156,
+        "merch_long": -86.60778450980855,
+        "customer": {
+          "dob": "1952-08-14",
+          "gender": "M",
+          "state": "CA",
+          "city_pop": 546140,
+          "lat": 47.725414987210186,
+          "long": -86.83814627611413
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.006865,
+        "prediction_set": [],
+        "uncertainty": 0.0592,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.0068651434073017294
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0069,
+        "prediction_set": [],
+        "uncertainty": 0.0592,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000001dc",
+        "trans_datetime": "2020-08-29T11:00:00",
+        "amount": 0.25,
+        "category": "grocery_net",
+        "merch_lat": 44.82841029937251,
+        "merch_long": -109.1107490215899,
+        "customer": {
+          "dob": "1960-11-17",
+          "gender": "F",
+          "state": "FL",
+          "city_pop": 809580,
+          "lat": 46.835045080095874,
+          "long": -111.66580940507045
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.007781,
+        "prediction_set": [],
+        "uncertainty": 0.0657,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.007781427094519832
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0078,
+        "prediction_set": [],
+        "uncertainty": 0.0657,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000207",
+        "trans_datetime": "2020-06-12T21:00:00",
+        "amount": 1287.91,
+        "category": "personal_care",
+        "merch_lat": 29.306648182035122,
+        "merch_long": -117.85736844358163,
+        "customer": {
+          "dob": "1973-09-03",
+          "gender": "M",
+          "state": "TX",
+          "city_pop": 737152,
+          "lat": 28.414791485358215,
+          "long": -117.65219655116448
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.009679,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.0787,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.009678647516729984
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0097,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.0787,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000027d",
+        "trans_datetime": "2020-06-07T02:00:00",
+        "amount": 3038.89,
+        "category": "health_fitness",
+        "merch_lat": 48.06859018238567,
+        "merch_long": -86.01807312475124,
+        "customer": {
+          "dob": "1966-01-06",
+          "gender": "M",
+          "state": "IL",
+          "city_pop": 382448,
+          "lat": 46.52662700399937,
+          "long": -85.2365312404846
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.009179,
+        "prediction_set": [],
+        "uncertainty": 0.0753,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.009178598243514097
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0092,
+        "prediction_set": [],
+        "uncertainty": 0.0753,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000002a6",
+        "trans_datetime": "2020-07-05T19:00:00",
+        "amount": 1137.43,
+        "category": "home",
+        "merch_lat": 34.088065205358944,
+        "merch_long": -81.65677539401916,
+        "customer": {
+          "dob": "1968-09-04",
+          "gender": "F",
+          "state": "NY",
+          "city_pop": 686898,
+          "lat": 34.87805974795529,
+          "long": -80.5277610627918
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.007373,
+        "prediction_set": [],
+        "uncertainty": 0.0628,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.0073732490049938084
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0074,
+        "prediction_set": [],
+        "uncertainty": 0.0628,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000002b9",
+        "trans_datetime": "2020-08-20T04:00:00",
+        "amount": 2307.42,
+        "category": "shopping_net",
+        "merch_lat": 52.169326789350634,
+        "merch_long": -105.01905384929526,
+        "customer": {
+          "dob": "1975-07-21",
+          "gender": "M",
+          "state": "NY",
+          "city_pop": 796017,
+          "lat": 48.24531546166614,
+          "long": -104.93317168338177
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.015929,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.1179,
+        "alpha": 0.02,
+        "decision": "BLOQUER",
+        "raw_probability": 0.01592891218693641
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0159,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.1179,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000002ce",
+        "trans_datetime": "2020-08-18T03:00:00",
+        "amount": 3774.53,
+        "category": "personal_care",
+        "merch_lat": 43.382328339023786,
+        "merch_long": -98.48690689430924,
+        "customer": {
+          "dob": "1930-10-21",
+          "gender": "M",
+          "state": "FL",
+          "city_pop": 20543,
+          "lat": 43.176948797114854,
+          "long": -97.48090186887174
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.005744,
+        "prediction_set": [],
+        "uncertainty": 0.051,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.0057443281626392536
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0057,
+        "prediction_set": [],
+        "uncertainty": 0.051,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000002e2",
+        "trans_datetime": "2020-06-23T22:00:00",
+        "amount": 614.34,
+        "category": "travel",
+        "merch_lat": 30.761078779662608,
+        "merch_long": -72.67577230353308,
+        "customer": {
+          "dob": "1934-09-21",
+          "gender": "F",
+          "state": "NY",
+          "city_pop": 367508,
+          "lat": 28.25885981503825,
+          "long": -75.57364035303479
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.007563,
+        "prediction_set": [],
+        "uncertainty": 0.0642,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.007562848224127792
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0076,
+        "prediction_set": [],
+        "uncertainty": 0.0642,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000002f3",
+        "trans_datetime": "2020-06-18T02:00:00",
+        "amount": 3578.57,
+        "category": "health_fitness",
+        "merch_lat": 27.940175912588114,
+        "merch_long": -90.03909858396433,
+        "customer": {
+          "dob": "1960-02-04",
+          "gender": "M",
+          "state": "FL",
+          "city_pop": 33402,
+          "lat": 29.614243219035895,
+          "long": -87.85140430136946
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.008504,
+        "prediction_set": [],
+        "uncertainty": 0.0707,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.008504142145308709
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0085,
+        "prediction_set": [],
+        "uncertainty": 0.0707,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000002ff",
+        "trans_datetime": "2020-06-16T05:00:00",
+        "amount": 1932.43,
+        "category": "food_dining",
+        "merch_lat": 34.791042747470726,
+        "merch_long": -101.5004105582716,
+        "customer": {
+          "dob": "1986-05-08",
+          "gender": "F",
+          "state": "TX",
+          "city_pop": 723071,
+          "lat": 37.20928535683264,
+          "long": -104.97055848330015
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.005089,
+        "prediction_set": [],
+        "uncertainty": 0.0461,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005089314423957174
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0051,
+        "prediction_set": [],
+        "uncertainty": 0.0461,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000328",
+        "trans_datetime": "2020-08-01T20:00:00",
+        "amount": 1844.84,
+        "category": "health_fitness",
+        "merch_lat": 37.216733717013334,
+        "merch_long": -67.21507444159452,
+        "customer": {
+          "dob": "1956-01-03",
+          "gender": "M",
+          "state": "NY",
+          "city_pop": 879045,
+          "lat": 40.50830004664182,
+          "long": -67.91800416475849
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.007878,
+        "prediction_set": [],
+        "uncertainty": 0.0664,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.007877682324057651
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0079,
+        "prediction_set": [],
+        "uncertainty": 0.0664,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000349",
+        "trans_datetime": "2020-06-27T22:00:00",
+        "amount": 7.95,
+        "category": "health_fitness",
+        "merch_lat": 36.288332421405286,
+        "merch_long": -76.0296172107384,
+        "customer": {
+          "dob": "1954-07-20",
+          "gender": "M",
+          "state": "NY",
+          "city_pop": 512619,
+          "lat": 39.78876335109743,
+          "long": -73.3864747863393
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.005698,
+        "prediction_set": [],
+        "uncertainty": 0.0507,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005698397679803424
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0057,
+        "prediction_set": [],
+        "uncertainty": 0.0507,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000360",
+        "trans_datetime": "2020-06-21T01:00:00",
+        "amount": 467.79,
+        "category": "misc_pos",
+        "merch_lat": 34.99583425682927,
+        "merch_long": -96.97943413765694,
+        "customer": {
+          "dob": "1995-09-20",
+          "gender": "F",
+          "state": "IL",
+          "city_pop": 132943,
+          "lat": 33.4999497991855,
+          "long": -96.44625541038772
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.00638,
+        "prediction_set": [],
+        "uncertainty": 0.0557,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.006380424188654979
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0064,
+        "prediction_set": [],
+        "uncertainty": 0.0557,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-00000000037a",
+        "trans_datetime": "2020-06-16T07:00:00",
+        "amount": 887.94,
+        "category": "shopping_pos",
+        "merch_lat": 28.262817861269042,
+        "merch_long": -73.79431542835519,
+        "customer": {
+          "dob": "1961-01-12",
+          "gender": "F",
+          "state": "WA",
+          "city_pop": 715233,
+          "lat": 27.004021970222276,
+          "long": -76.28470073589266
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.005041,
+        "prediction_set": [],
+        "uncertainty": 0.0457,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005040832557365532
+      },
+      "expected_serving": {
+        "fraud_probability": 0.005,
+        "prediction_set": [],
+        "uncertainty": 0.0457,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000003d2",
+        "trans_datetime": "2020-06-09T02:00:00",
+        "amount": 6.81,
+        "category": "grocery_pos",
+        "merch_lat": 26.902606642268612,
+        "merch_long": -89.3365764767039,
+        "customer": {
+          "dob": "1962-07-16",
+          "gender": "F",
+          "state": "MA",
+          "city_pop": 174185,
+          "lat": 26.540595568806918,
+          "long": -92.32955277206065
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.005229,
+        "prediction_set": [],
+        "uncertainty": 0.0472,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005229027940022622
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0052,
+        "prediction_set": [],
+        "uncertainty": 0.0472,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-0000000003fa",
+        "trans_datetime": "2020-07-17T19:00:00",
+        "amount": 19.36,
+        "category": "grocery_net",
+        "merch_lat": 36.87070232474518,
+        "merch_long": -104.75733496530563,
+        "customer": {
+          "dob": "1934-08-08",
+          "gender": "F",
+          "state": "CA",
+          "city_pop": 293608,
+          "lat": 36.1375847176458,
+          "long": -107.32485896170303
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.00599,
+        "prediction_set": [],
+        "uncertainty": 0.0528,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005990141602795728
+      },
+      "expected_serving": {
+        "fraud_probability": 0.006,
+        "prediction_set": [],
+        "uncertainty": 0.0528,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000501",
+        "trans_datetime": "2020-08-29T09:00:00",
+        "amount": 1730.84,
+        "category": "kids_pets",
+        "merch_lat": 38.118136879713774,
+        "merch_long": -78.75289765743304,
+        "customer": {
+          "dob": "1988-09-10",
+          "gender": "M",
+          "state": "MA",
+          "city_pop": 219043,
+          "lat": 39.23582081357003,
+          "long": -76.54644412765398
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.005387,
+        "prediction_set": [],
+        "uncertainty": 0.0484,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005387222984776246
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0054,
+        "prediction_set": [],
+        "uncertainty": 0.0484,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000512",
+        "trans_datetime": "2020-06-05T05:00:00",
+        "amount": 13.54,
+        "category": "travel",
+        "merch_lat": 37.38232308948957,
+        "merch_long": -108.91005927790994,
+        "customer": {
+          "dob": "1972-10-02",
+          "gender": "M",
+          "state": "FL",
+          "city_pop": 857972,
+          "lat": 39.22090357291009,
+          "long": -106.46289145578638
+        }
+      },
+      "expected": {
+        "fraud_probability": 0.00571,
+        "prediction_set": [],
+        "uncertainty": 0.0508,
+        "alpha": 0.02,
+        "decision": "REVUE",
+        "raw_probability": 0.005709635903604574
+      },
+      "expected_serving": {
+        "fraud_probability": 0.0057,
+        "prediction_set": [],
+        "uncertainty": 0.0508,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    }
+  ],
+  "d44_cases": [
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000000",
+        "trans_datetime": "2020-06-01T02:00:00",
+        "amount": 31.06,
+        "category": "entertainment",
+        "merch_lat": 40.1,
+        "merch_long": -73.1,
+        "customer": {
+          "dob": "1980-01-01",
+          "gender": "M",
+          "state": "NY",
+          "city_pop": 50000,
+          "lat": 40.0,
+          "long": -73.0
+        }
+      },
+      "expected": {
+        "prediction": 0,
+        "fraud_probability": 0.0,
+        "raw_probability": 1.4487198667894929e-05,
+        "prediction_set": [
+          0
+        ],
+        "uncertainty": 0.0003,
+        "alpha": 0.02,
+        "decision": "APPROUVER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000002",
+        "trans_datetime": "2020-06-01T17:00:00",
+        "amount": 470.56,
+        "category": "entertainment",
+        "merch_lat": 40.1,
+        "merch_long": -73.1,
+        "customer": {
+          "dob": "1980-01-01",
+          "gender": "F",
+          "state": "NY",
+          "city_pop": 50000,
+          "lat": 40.0,
+          "long": -73.0
+        }
+      },
+      "expected": {
+        "prediction": 0,
+        "fraud_probability": 0.0689,
+        "raw_probability": 0.0689355093598992,
+        "prediction_set": [
+          1
+        ],
+        "uncertainty": 0.3619,
+        "alpha": 0.02,
+        "decision": "BLOQUER"
+      }
+    },
+    {
+      "input": {
+        "transaction_id": "00000000-0000-4000-8000-000000000066",
+        "trans_datetime": "2020-06-01T01:00:00",
+        "amount": 11.35,
+        "category": "grocery_pos",
+        "merch_lat": 40.1,
+        "merch_long": -73.1,
+        "customer": {
+          "dob": "1960-01-01",
+          "gender": "M",
+          "state": "NY",
+          "city_pop": 50000,
+          "lat": 40.0,
+          "long": -73.0
+        }
+      },
+      "expected": {
+        "prediction": 0,
+        "fraud_probability": 0.0063,
+        "raw_probability": 0.006327430248784685,
+        "prediction_set": [],
+        "uncertainty": 0.0553,
+        "alpha": 0.02,
+        "decision": "REVUE"
+      }
+    }
+  ],
+  "d44_parity": "Historical pre-correction D44 references retained verbatim in d44_cases; they are not corrected serving references.",
+  "qualificatif": "synthétique, stratifié, non représentatif",
+  "original_reference_sha256": "4fd0edec898b16d29dd7cc3b249b2cc9acf113721d3e3a17467ba37a756ae057",
+  "original_selected_decision_counts": {
+    "APPROUVER": 34,
+    "BLOQUER": 33,
+    "REVUE": 33
+  },
+  "reference_prediction_set_counts": {
+    "[0]": 34,
+    "[1]": 35,
+    "[]": 31
+  }
+}
