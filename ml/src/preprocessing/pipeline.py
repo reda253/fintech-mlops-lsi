@@ -380,8 +380,11 @@ def _transform_one_with_fitted_pipeline(pipeline: Pipeline, record: dict) -> np.
     numeric_transformer = column_step.named_transformers_["numeric"]
     numeric_output = np.asarray([numeric_by_name[name] for name in CONTINUOUS_FEATURES], dtype=np.float32)
     if isinstance(numeric_transformer, StandardScaler):
-        numeric_output -= numeric_transformer.mean_
-        numeric_output /= numeric_transformer.scale_
+        # Match StandardScaler: cast its statistics before float32 arithmetic.
+        if numeric_transformer.with_mean:
+            numeric_output -= numeric_transformer.mean_.astype(numeric_output.dtype)
+        if numeric_transformer.with_std:
+            numeric_output /= numeric_transformer.scale_.astype(numeric_output.dtype)
     unscaled = np.asarray([numeric_by_name[name] for name in UNSCALED_FEATURES], dtype=np.float32)
 
     categorical_parts = [numeric_output, unscaled]
@@ -459,4 +462,3 @@ def get_raw_input_specs() -> list[tuple[str, str, str]]:
     """Retourne les champs bruts attendus: nom, type et usage."""
 
     return list(RAW_INPUT_SPECS)
-
