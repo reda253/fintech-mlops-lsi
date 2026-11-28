@@ -94,11 +94,7 @@ EXCLUDED_COLUMNS = {
 }
 
 RAW_INPUT_SPECS = [
-    (
-        DATE_COLUMN,
-        "datetime string",
-        "format %Y-%m-%d %H:%M:%S, temps local naïf sans conversion",
-    ),
+    (DATE_COLUMN, "datetime string", "format %Y-%m-%d %H:%M:%S, temps local naïf sans conversion"),
     (DOB_COLUMN, "date string", "format %Y-%m-%d"),
     ("amt", "float", "montant >= 0, source de amount_log"),
     ("category", "string", "categorie transactionnelle encodee"),
@@ -125,80 +121,19 @@ class FeatureSpec:
 
 FEATURE_SPECS = [
     FeatureSpec("amount_log", "numeric", "log1p(amt)", "Montant asymetrique.", True),
-    FeatureSpec(
-        "hour_sin", "numeric", "sin(2*pi*hour/24)", "Circularite; sans standardisation."
-    ),
-    FeatureSpec(
-        "hour_cos", "numeric", "cos(2*pi*hour/24)", "Circularite; sans standardisation."
-    ),
-    FeatureSpec(
-        "day_of_week_sin",
-        "numeric",
-        "sin(2*pi*dow/7)",
-        "Circularite; sans standardisation.",
-    ),
-    FeatureSpec(
-        "day_of_week_cos",
-        "numeric",
-        "cos(2*pi*dow/7)",
-        "Circularite; sans standardisation.",
-    ),
-    FeatureSpec(
-        "is_weekend",
-        "binary",
-        "day_of_week in {5,6}",
-        "Indicateur 0/1 sans standardisation.",
-    ),
-    FeatureSpec(
-        "is_night",
-        "binary",
-        "hour in {22,23,0,1,2,3}",
-        "Palier horaire et rappel des fraudes; indicateur 0/1.",
-    ),
-    FeatureSpec(
-        "age",
-        "numeric",
-        "annees revolues a la transaction",
-        "Age entier pour reduire la precision identifiante.",
-        True,
-    ),
-    FeatureSpec(
-        "distance_km",
-        "numeric",
-        "haversine client-marchand",
-        "Distance transactionnelle.",
-        True,
-    ),
-    FeatureSpec(
-        "city_pop_log", "numeric", "log1p(city_pop)", "Population asymetrique.", True
-    ),
-    FeatureSpec(
-        "gender",
-        "categorical",
-        "OneHotEncoder(handle_unknown=ignore, drop=if_binary)",
-        "Conserve, avec audit d'equite.",
-        False,
-    ),
-    FeatureSpec(
-        "category",
-        "categorical",
-        "OneHotEncoder(handle_unknown=ignore)",
-        "Cardinalite faible.",
-        False,
-    ),
-    FeatureSpec(
-        "state",
-        "categorical",
-        "OneHotEncoder(handle_unknown=ignore)",
-        "Cardinalite moderee sur Sparkov.",
-        False,
-    ),
-    FeatureSpec(
-        "hour",
-        "categorical",
-        "OneHotEncoder(categories=0..23) optionnel",
-        "Option pour effets horaires non sinusoidaux.",
-    ),
+    FeatureSpec("hour_sin", "numeric", "sin(2*pi*hour/24)", "Circularite; sans standardisation."),
+    FeatureSpec("hour_cos", "numeric", "cos(2*pi*hour/24)", "Circularite; sans standardisation."),
+    FeatureSpec("day_of_week_sin", "numeric", "sin(2*pi*dow/7)", "Circularite; sans standardisation."),
+    FeatureSpec("day_of_week_cos", "numeric", "cos(2*pi*dow/7)", "Circularite; sans standardisation."),
+    FeatureSpec("is_weekend", "binary", "day_of_week in {5,6}", "Indicateur 0/1 sans standardisation."),
+    FeatureSpec("is_night", "binary", "hour in {22,23,0,1,2,3}", "Palier horaire et rappel des fraudes; indicateur 0/1."),
+    FeatureSpec("age", "numeric", "annees revolues a la transaction", "Age entier pour reduire la precision identifiante.", True),
+    FeatureSpec("distance_km", "numeric", "haversine client-marchand", "Distance transactionnelle.", True),
+    FeatureSpec("city_pop_log", "numeric", "log1p(city_pop)", "Population asymetrique.", True),
+    FeatureSpec("gender", "categorical", "OneHotEncoder(handle_unknown=ignore, drop=if_binary)", "Conserve, avec audit d'equite.", False),
+    FeatureSpec("category", "categorical", "OneHotEncoder(handle_unknown=ignore)", "Cardinalite faible.", False),
+    FeatureSpec("state", "categorical", "OneHotEncoder(handle_unknown=ignore)", "Cardinalite moderee sur Sparkov.", False),
+    FeatureSpec("hour", "categorical", "OneHotEncoder(categories=0..23) optionnel", "Option pour effets horaires non sinusoidaux."),
 ]
 
 
@@ -213,9 +148,7 @@ def _ensure_no_missing_or_infinite(data: pd.DataFrame) -> None:
         bad = numeric.columns[numeric.isna().any()].tolist()
         raise ValueError(f"Colonnes numeriques non convertibles: {bad}")
     if not np.isfinite(numeric.to_numpy(dtype="float64")).all():
-        raise ValueError(
-            "Valeur infinie detectee dans les colonnes numeriques requises."
-        )
+        raise ValueError("Valeur infinie detectee dans les colonnes numeriques requises.")
 
     for column in CATEGORICAL_REQUIRED_COLUMNS:
         if (data[column].astype("string").str.len() == 0).any():
@@ -262,49 +195,35 @@ class SparkovFeatureEngineer(BaseEstimator, TransformerMixin):
     def transform(self, X):
         self._validate_input(X)
         data = X.copy()
-        transaction_dates = _parse_datetime_strict(
-            data[DATE_COLUMN], DATE_COLUMN, TRANSACTION_DATETIME_FORMAT
-        )
-        birth_dates = _parse_datetime_strict(
-            data[DOB_COLUMN], DOB_COLUMN, DOB_DATE_FORMAT
-        )
+        transaction_dates = _parse_datetime_strict(data[DATE_COLUMN], DATE_COLUMN, TRANSACTION_DATETIME_FORMAT)
+        birth_dates = _parse_datetime_strict(data[DOB_COLUMN], DOB_COLUMN, DOB_DATE_FORMAT)
 
         numeric = data[NUMERIC_REQUIRED_COLUMNS].apply(pd.to_numeric, errors="raise")
         if (numeric["amt"] < 0).any():
             raise ValueError("La colonne amt contient au moins un montant negatif.")
         if (numeric["city_pop"] < 0).any():
-            raise ValueError(
-                "La colonne city_pop contient au moins une valeur negative."
-            )
+            raise ValueError("La colonne city_pop contient au moins une valeur negative.")
         self._validate_geo_ranges(numeric)
 
         hour = transaction_dates.dt.hour.astype("int16")
         day_of_week = transaction_dates.dt.dayofweek.astype("int16")
-        before_birthday = (transaction_dates.dt.month < birth_dates.dt.month) | (
-            (transaction_dates.dt.month == birth_dates.dt.month)
-            & (transaction_dates.dt.day < birth_dates.dt.day)
+        before_birthday = (
+            (transaction_dates.dt.month < birth_dates.dt.month)
+            | ((transaction_dates.dt.month == birth_dates.dt.month)
+               & (transaction_dates.dt.day < birth_dates.dt.day))
         )
-        age = (
-            transaction_dates.dt.year
-            - birth_dates.dt.year
-            - before_birthday.astype(int)
-        ).astype("float32")
+        age = (transaction_dates.dt.year - birth_dates.dt.year
+               - before_birthday.astype(int)).astype("float32")
         if ((age < 0) | (age > 120)).any():
             raise ValueError("Age aberrant detecte hors de l'intervalle [0, 120].")
 
-        distance = haversine_km(
-            numeric["lat"], numeric["long"], numeric["merch_lat"], numeric["merch_long"]
-        )
+        distance = haversine_km(numeric["lat"], numeric["long"], numeric["merch_lat"], numeric["merch_long"])
         result = pd.DataFrame(index=data.index)
         result["amount_log"] = np.log1p(numeric["amt"]).astype("float32")
         result["hour_sin"] = np.sin(2 * np.pi * hour / 24).astype("float32")
         result["hour_cos"] = np.cos(2 * np.pi * hour / 24).astype("float32")
-        result["day_of_week_sin"] = np.sin(2 * np.pi * day_of_week / 7).astype(
-            "float32"
-        )
-        result["day_of_week_cos"] = np.cos(2 * np.pi * day_of_week / 7).astype(
-            "float32"
-        )
+        result["day_of_week_sin"] = np.sin(2 * np.pi * day_of_week / 7).astype("float32")
+        result["day_of_week_cos"] = np.cos(2 * np.pi * day_of_week / 7).astype("float32")
         result["is_weekend"] = day_of_week.isin([5, 6]).astype("int8")
         result["is_night"] = hour.isin(self.night_hours).astype("int8")
         result["age"] = age
@@ -342,11 +261,7 @@ class SparkovFeatureEngineer(BaseEstimator, TransformerMixin):
 
 
 def _record_missing_message(missing_columns: list[str]) -> str:
-    return (
-        "Valeurs manquantes detectees: {"
-        + ", ".join(f"'{name}': 1" for name in missing_columns)
-        + "}"
-    )
+    return "Valeurs manquantes detectees: {" + ", ".join(f"'{name}': 1" for name in missing_columns) + "}"
 
 
 def _parse_record_datetime(value, column: str, fmt: str) -> datetime:
@@ -374,9 +289,7 @@ def _record_float(record: dict, column: str) -> float:
     except Exception as exc:
         raise ValueError(f"Colonnes numeriques non convertibles: ['{column}']") from exc
     if not math.isfinite(number):
-        raise ValueError(
-            "Valeur infinie detectee dans les colonnes numeriques requises."
-        )
+        raise ValueError("Valeur infinie detectee dans les colonnes numeriques requises.")
     return number
 
 
@@ -404,20 +317,13 @@ def _haversine_one(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
     lon2_rad = math.radians(lon2)
     dlat = lat2_rad - lat1_rad
     dlon = lon2_rad - lon1_rad
-    a = (
-        math.sin(dlat / 2) ** 2
-        + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
-    )
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1_rad) * math.cos(lat2_rad) * math.sin(dlon / 2) ** 2
     return 2 * radius * math.asin(math.sqrt(min(1.0, max(0.0, a))))
 
 
-def _engineer_record(
-    record: dict, night_hours: tuple[int, ...]
-) -> tuple[list[float], list[str]]:
+def _engineer_record(record: dict, night_hours: tuple[int, ...]) -> tuple[list[float], list[str]]:
     _validate_record_columns(record)
-    transaction_date = _parse_record_datetime(
-        record[DATE_COLUMN], DATE_COLUMN, TRANSACTION_DATETIME_FORMAT
-    )
+    transaction_date = _parse_record_datetime(record[DATE_COLUMN], DATE_COLUMN, TRANSACTION_DATETIME_FORMAT)
     birth_date = _parse_record_datetime(record[DOB_COLUMN], DOB_COLUMN, DOB_DATE_FORMAT)
 
     amt = _record_float(record, "amt")
@@ -441,13 +347,8 @@ def _engineer_record(
         if value < -180 or value > 180:
             raise ValueError(f"{column} hors de l'intervalle [-180, 180].")
 
-    age = (
-        transaction_date.year
-        - birth_date.year
-        - (
-            (transaction_date.month, transaction_date.day)
-            < (birth_date.month, birth_date.day)
-        )
+    age = transaction_date.year - birth_date.year - (
+        (transaction_date.month, transaction_date.day) < (birth_date.month, birth_date.day)
     )
     if age < 0 or age > 120:
         raise ValueError("Age aberrant detecte hors de l'intervalle [0, 120].")
@@ -470,13 +371,41 @@ def _engineer_record(
 
 
 def _transform_one_with_fitted_pipeline(pipeline: Pipeline, record: dict) -> np.ndarray:
-    """Use the fitted batch transform, including its exact dtype conversions.
+    feature_step = pipeline.named_steps["features"]
+    column_step = pipeline.named_steps["columns"]
+    check_is_fitted(column_step)
+    numeric_values, categorical_values = _engineer_record(record, tuple(feature_step.night_hours))
 
-    Reimplementing scaling with in-place float32 operations can change tree
-    branches. A single canonical transform also shares validation and encoding.
-    """
-    check_is_fitted(pipeline.named_steps["columns"])
-    return np.asarray(pipeline.transform(pd.DataFrame([record])))[0]
+    numeric_by_name = dict(zip(NUMERIC_ENGINEERED_FEATURES, numeric_values))
+    numeric_transformer = column_step.named_transformers_["numeric"]
+    numeric_output = np.asarray([numeric_by_name[name] for name in CONTINUOUS_FEATURES], dtype=np.float32)
+    if isinstance(numeric_transformer, StandardScaler):
+        # Match StandardScaler: cast its statistics before float32 arithmetic.
+        if numeric_transformer.with_mean:
+            numeric_output -= numeric_transformer.mean_.astype(numeric_output.dtype)
+        if numeric_transformer.with_std:
+            numeric_output /= numeric_transformer.scale_.astype(numeric_output.dtype)
+    unscaled = np.asarray([numeric_by_name[name] for name in UNSCALED_FEATURES], dtype=np.float32)
+
+    categorical_parts = [numeric_output, unscaled]
+    for transformer_name, values in [
+        ("gender", categorical_values[:1]), ("categorical", categorical_values[1:])
+    ]:
+        encoder = column_step.named_transformers_[transformer_name]
+        for i, (value, categories) in enumerate(zip(values, encoder.categories_)):
+            encoded = np.asarray(categories == value, dtype=np.float32)
+            if encoder.drop_idx_ is not None and encoder.drop_idx_[i] is not None:
+                encoded = np.delete(encoded, int(encoder.drop_idx_[i]))
+            categorical_parts.append(encoded)
+    if "hour" in column_step.named_transformers_:
+        categories = column_step.named_transformers_["hour"].categories_[0]
+        hour = _parse_record_datetime(record[DATE_COLUMN], DATE_COLUMN, TRANSACTION_DATETIME_FORMAT).hour
+        encoded = np.zeros(len(categories), dtype=np.float32)
+        matches = np.flatnonzero(categories == hour)
+        if matches.size:
+            encoded[int(matches[0])] = 1.0
+        categorical_parts.append(encoded)
+    return np.concatenate(categorical_parts).astype(np.float32)
 
 
 def split_features_target(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
@@ -488,7 +417,7 @@ def split_features_target(data: pd.DataFrame) -> tuple[pd.DataFrame, pd.Series]:
 
 
 class SparkovPreprocessingPipeline(Pipeline):
-    """Pipeline sklearn avec transformation identique en batch et en serving."""
+    """Pipeline sklearn avec chemin serving rapide pour une transaction."""
 
     def transform_one(self, record: dict) -> np.ndarray:
         """Transforme une transaction déjà en dictionnaire avec les paramètres ajustés."""
@@ -502,45 +431,25 @@ def build_preprocessing_pipeline(
     """Construit le pipeline sklearn de preprocessing."""
 
     numeric_transformer = StandardScaler() if scale_numeric else "passthrough"
-    encoder = OneHotEncoder(
-        handle_unknown="ignore", sparse_output=False, dtype=np.float32
-    )
+    encoder = OneHotEncoder(handle_unknown="ignore", sparse_output=False, dtype=np.float32)
     transformers = [
         ("numeric", numeric_transformer, CONTINUOUS_FEATURES),
         ("unscaled", "passthrough", UNSCALED_FEATURES),
-        (
-            "gender",
-            OneHotEncoder(
-                handle_unknown="ignore",
-                drop="if_binary",
-                sparse_output=False,
-                dtype=np.float32,
-            ),
-            ["gender"],
-        ),
+        ("gender", OneHotEncoder(handle_unknown="ignore", drop="if_binary",
+                                 sparse_output=False, dtype=np.float32), ["gender"]),
         ("categorical", encoder, ["category", "state"]),
     ]
     if hour_onehot:
-        transformers.append(
-            (
-                "hour",
-                OneHotEncoder(
-                    categories=[np.arange(24)],
-                    handle_unknown="ignore",
-                    sparse_output=False,
-                    dtype=np.float32,
-                ),
-                ["hour"],
-            )
-        )
+        transformers.append((
+            "hour", OneHotEncoder(categories=[np.arange(24)], handle_unknown="ignore",
+                                  sparse_output=False, dtype=np.float32), ["hour"]
+        ))
     column_transformer = ColumnTransformer(
         transformers=transformers,
         remainder="drop",
         verbose_feature_names_out=True,
     )
-    return SparkovPreprocessingPipeline(
-        steps=[("features", SparkovFeatureEngineer()), ("columns", column_transformer)]
-    )
+    return SparkovPreprocessingPipeline(steps=[("features", SparkovFeatureEngineer()), ("columns", column_transformer)])
 
 
 def get_excluded_columns() -> dict[str, str]:

@@ -74,3 +74,33 @@ def test_reference_structure_and_counts():
         counts[str(served["prediction_set"])] += 1
     assert counts == {"[0]": 34, "[1]": 35, "[]": 31}
     assert dict(counts) == payload["reference_prediction_set_counts"]
+
+
+@pytest.mark.parametrize("with_mean", [False, True])
+@pytest.mark.parametrize("with_std", [False, True])
+def test_fast_path_is_exact_with_scaler_and_without_dataframe(
+    monkeypatch, with_mean, with_std
+):
+    rows = [adapt_to_sparkov_record(c["input"]) for c in reference()["cases"]]
+    pipeline = build_preprocessing_pipeline(scale_numeric=True)
+    pipeline.set_params(
+        columns__numeric__with_mean=with_mean,
+        columns__numeric__with_std=with_std,
+    )
+    pipeline.fit(pd.DataFrame(rows[:50]))
+    scaler = pipeline.named_steps["columns"].named_transformers_["numeric"]
+    assert scaler.with_mean == with_mean
+    assert scaler.with_std == with_std
+    expected = pipeline.transform(pd.DataFrame(rows))
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("transform_one must keep its fast path")
+
+    monkeypatch.setattr(pd, "DataFrame", forbidden)
+    monkeypatch.setattr(pipeline, "transform", forbidden)
+    monkeypatch.setattr(pipeline.named_steps["columns"], "transform", forbidden)
+    for record, batch_row in zip(rows, expected, strict=True):
+        actual = pipeline.transform_one(record)
+        np.testing.assert_array_equal(actual, batch_row)
+        assert actual.dtype == batch_row.dtype
+        assert actual.tobytes() == batch_row.tobytes()
