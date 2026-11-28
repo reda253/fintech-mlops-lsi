@@ -59,7 +59,9 @@ Rule (§10.7): **every new architecture decision is added here**, in the PR that
 | D49 | 2026-11-21 | Outbox and idempotent consumer in `common` use plain JDBC (`JdbcClient`), not a JPA entity. The relay sends the stored envelope bytes unchanged (`message_id`, `X-Correlation-Id`, persistent, publisher confirm awaited before marking). Every AMQP service declares the whole durable topology of `contracts/events.md` (exchanges, queues, DLQs, bindings). Retry/DLQ rules (3 attempts, then reject → `fintech.dlx`) and `publisher-confirm-type=correlated` are lowest-priority defaults set by `common`. The relay is opt-in (`fintech.outbox.enabled=true`: auth, transaction, risk). Services pin `spring.datasource.hikari.schema` so plain JDBC hits their schema | JPA `OutboxEvent` entity; re-serialize at publish time; each consumer declares only its own queue; retry settings copied into every `application.yml` | Native `FOR UPDATE SKIP LOCKED`, `jsonb` and `ON CONFLICT` with no `@EntityScan` across packages, and the insert still joins the JPA transaction. A queue that does not exist yet makes the topic exchange drop the event while the confirm still says ack, so producers must declare it too. One place for delivery rules ("write it once") |
 | D50 | 2026-11-22 | customer-service loads the Sparkov cardholders at startup from the raw CSV files named in `CUSTOMER_SEED_PATH` (one customer per `cc_num`, customer columns only, never `is_fraud`), computing the HMAC fingerprint with `CARD_HMAC_KEY`. It runs only when the table is empty, in one transaction, with `ON CONFLICT DO NOTHING`, before readiness. The card-number pattern is widened to 11–19 digits in the customer and transaction contracts | Flyway SQL data migration; admin CSV import endpoint; one-shot K8s Job | A SQL migration cannot compute the HMAC without the key, and committing card numbers or a key-dependent seed is out of the question. An import endpoint needs a manual step after every fresh deploy. A Job adds a manifest for the same result. Sparkov has 11-digit card numbers, which the old 12–19 pattern rejected |
 | D48 | 2026-11-12 | **Post hoc**, accord écrit d’Omar transmis par Basma : accord conditionnel pour une seule seconde mesure du candidat D44 figé : aucune exécution avant merge des correctifs, CI verte et intégration de l’option B. Seule la CLI `evaluate_final_candidate.py` lit la source finale ; le Job consomme ses artefacts vérifiés | Réévaluer avec réglage du modèle ; deux lecteurs officiels du jeu final ; relances par simple changement de motif | Compléter les IC bootstrap et l’audit d’équité absents le 10 novembre, sans nouvelle sélection ni promotion. Seconde mesure post hoc, non indépendante ; conditions détaillées ci-dessous |
-| D49 | 2026-11-22 | Reprise `--resume` d'une exécution D48 interrompue après `predictions_saved` : métriques et IC reconstruits depuis `predictions.csv` vérifié, manifeste complété, `completed` enregistré avec le même `launch_id`, sans relire le jeu final | Relancer la mesure (seconde lecture) ; éditer le journal ; laisser la réservation bloquer D48 | La source finale reste lue une seule fois ; le protocole approuvé est inchangé |
+| D51 | 2026-11-22 | Reprise `--resume` d'une exécution D48 interrompue après `predictions_saved` : métriques et IC reconstruits depuis `predictions.csv` vérifié, manifeste complété, `completed` enregistré avec le même `launch_id`, sans relire le jeu final | Relancer la mesure (seconde lecture) ; éditer le journal ; laisser la réservation bloquer D48 | La source finale reste lue une seule fois ; le protocole approuvé est inchangé |
+| D52 | 2026-11-28 | **Constat d'équité D48 documenté et modèle conservé** : les écarts mesurés (blocage automatique F 94,42 % vs M 98,17 % ; légitimes bloqués 1,60 % vs 1,06 % ; revue 0,84 % vs 0,51 % ; 7 506 légitimes bloqués pour 2 062 fraudes, précision 21,55 % ; 60 fraudes approuvées automatiquement, 2,80 %) sont publiés tels quels, sans réglage post-mesure. La future évaluation indépendante utilisera des **données nouvelles** (trafic de production avec étiquettes de chargeback, D19, ou jeu acquis séparément), avec protocole pré-enregistré avant toute remédiation, développée sur le développement uniquement | Régler les seuils sur le test final ; réutiliser `fraudTest.csv` pour valider la remédiation ; retirer les attributs | Le test final a été lu deux fois (10 novembre et D48) et aucun bloc n'en reste inutilisé ; toute remédiation validée sur ce même jeu serait circulaire. Le constat reste descriptif : causes non établies, indépendance des transactions supposée, comparaisons d'âge exploratoires |
+| D53 | 2026-11-28 | **Dérogation unique** pour une nouvelle tentative après interruption : document signé ciblant un `launch_id`, l'état constaté et les empreintes modèle/source/protocole/journal ; consommée sous `journal_lock` (clôture `failed` si nécessaire, puis réservation avec `supersedes`), compteur dans le journal, rejeu impossible. Garde renforcée : toute tentative D48 antérieure bloque, `completed` refuse toujours | Contourner le blocage par un nouveau `decision_id` ; expiration automatique ; réutiliser la dérogation | Préserve la lecture unique et l'immutabilité du journal ; une interruption entre `failed` et `reserved` reste bloquante et exige une nouvelle revue. Proposée, non implémentée |
 
 ## D48 — autorisation conditionnelle de seconde mesure
 
@@ -118,7 +120,7 @@ par cette décision documentaire.
   changement post hoc des définitions après observation. XGBoost reste
   **provisional** ; aucune promotion n’est autorisée dans cette mesure.
 
-## D49 — Résolution d'une exécution D48 interrompue
+## D51 — Résolution d'une exécution D48 interrompue
 
 Décision du **22 novembre 2026**, après incident.
 
@@ -149,3 +151,115 @@ toutes les 500 réplications ; la reprise reste une opération manuelle et
 explicite, jamais automatique. Une interruption avant `predictions_saved` ne
 laisse aucune reprise possible : `record_event` n'écrit pas d'entrée `failed`,
 ce qui reste une lacune connue du journal.
+
+**Numérotation.** Cette décision a d'abord été publiée sous `D49`, en collision
+avec `D49` (outbox et consommateur idempotent, 21 novembre). Elle est renumérotée
+`D51` après confirmation de P1 le 28 novembre ; `D49` reste réservé à l'outbox et
+n'est pas modifié. Le journal réel de la mesure n'a enregistré que des entrées
+`D48` : aucun journal ne porte `D49` pour cette reprise, il n'y a donc rien à
+réécrire.
+
+## D52 — Équité : constat, conservation du modèle, surveillance
+
+Décision du **28 novembre 2026**, après l'audit d'équité de D48. Proposition
+soumise à la validation de P1 (Reda) et de P2 (Basma).
+
+**Constat (descriptif, test final, IC 95 %, 10 000 tirages).**
+
+| Groupe | N | Fraudes | Bloquées auto | Légitimes bloqués | Revue |
+|---|---:|---:|---|---|---|
+| F | 304 886 | 1 164 | 94,42 % [93,04 ; 95,71] | 1,60 % [1,55 ; 1,64] | 0,84 % [0,80 ; 0,87] |
+| M | 250 833 | 981 | 98,17 % [97,28 ; 98,95] | 1,06 % [1,02 ; 1,10] | 0,51 % [0,49 ; 0,54] |
+
+Au total, 7 506 légitimes bloquées pour 2 062 fraudes bloquées, soit 3,64 pour 1
+et une précision des blocages de 21,55 % ; 60 fraudes ont été approuvées
+automatiquement (2,80 %). Par tranche d'âge, le blocage automatique va de
+94,39 % (26–35) à 98,64 % (0–25), écarts exploratoires.
+
+**Décision.** Publier ces écarts tels quels et **conserver le modèle actuel**,
+sans aucun réglage post-mesure : ni seuil conformal, ni calibration, ni
+sélection. Aucun verdict binaire d'équité n'est tiré de l'audit ; les causes ne
+sont pas établies, les comparaisons d'âge restent exploratoires et
+l'indépendance des transactions est supposée (la corrélation par carte n'est pas
+corrigée).
+
+**Évaluation indépendante future.** Le test final a été lu deux fois
+(10 novembre et D48) et aucun bloc n'en reste inutilisé : une future évaluation
+ne peut donc pas venir de `fraudTest.csv`. Elle utilisera **des données
+nouvelles** — trafic de production postérieur au déploiement avec étiquettes de
+chargeback (D19), ou un jeu acquis séparément — avec un protocole pré-enregistré
+**avant** tout travail de remédiation. La remédiation elle-même se développe
+uniquement sur le développement ; aucun chiffre du test final ne sert à la
+valider.
+
+**Acceptation et surveillance.** Acceptation de l'écart F/M en l'état :
+P1 (Reda) et P2 (Basma), date à consigner. Surveillance : audit hors ligne
+mensuel (`ml.fairness.audit` sur les prédictions sauvegardées) lu par P2, et
+tableau de bord agrégé par P5 (Hakima). Seuil d'alerte à fixer par l'équipe ;
+proposition : écart de blocage automatique F/M supérieur à 5 points, ou rapport
+de taux de revue supérieur à 2.
+
+Limite technique : le service n'expose pas de dimension genre ou tranche d'âge
+dans Prometheus (`ml_predictions_total{model_version,prediction_set}`). La
+surveillance par groupe est donc hors ligne, à partir des prédictions
+sauvegardées ; ajouter ces labels serait un changement de code et de
+cardinalité, à décider séparément.
+
+## D53 — Dérogation unique pour une nouvelle tentative
+
+Décision du **28 novembre 2026**, proposition soumise à revue. Non implémentée :
+aucun code, aucun test, aucune lecture du test final.
+
+**Objet.** Une interruption sans entrée terminale bloque la source pour toute
+nouvelle réservation, y compris avec un nouveau `decision_id`. La dérogation est
+un document signé qui **clôture** une tentative bloquée et autorise **une**
+réservation supplémentaire pour cette source. Elle ne contourne pas la garde,
+elle la débloque explicitement.
+
+**Interdits.** Elle ne peut servir ni à sélectionner ni à régler un modèle, ni à
+changer de seuil, ni à promouvoir, ni à relire le jeu final. Elle ne remplace
+pas `--resume` (D51), qui reste le seul chemin sans nouvelle décision et
+uniquement après `predictions_saved`.
+
+**Garde renforcée.** Toute nouvelle réservation est refusée s'il existe déjà une
+tentative D48 pour cette source, quel que soit son statut (`reserved` pendant,
+`failed`, `predictions_saved`, `completed`), sauf dérogation valide. Une entrée
+`completed` refuse toujours, dérogation comprise. Les ancres historiques du
+10 novembre ne comptent pas comme tentative : elles n'ont pas de `decision_id`.
+
+**Document.** `decision_id: D53`, `launch_id` visé, état constaté
+(`unknown_source_state`), `model_sha256`, `source_sha256`, `protocol_sha256`
+(protocole D48 approuvé), `journal_sha256` des octets relus, `approved: true`.
+Toute empreinte différente des constantes approuvées ou du journal courant est
+refusée : la dérogation est liée à un état précis.
+
+**Deux situations couvertes.** (a) *réservation pendante sans `failed`* : la
+dérogation autorise l'ajout d'une entrée terminale `failed` pour ce
+`launch_id` — `decision_id: D48`, catégorie fermée `unknown`,
+`derogation_decision_id: D53`, `derogation_sha256` — puis la nouvelle
+réservation ; (b) *tentative déjà `failed`* : aucune entrée `failed`
+supplémentaire, seulement la réservation avec `supersedes: <launch_id>`. Dans
+les deux cas la réservation porte `decision_id: D48`,
+`derogation_decision_id: D53`, `supersedes` et `derogation_sha256`. La mesure
+initiale et la décision qui la rouvre restent distinctes sur la même ligne.
+
+**Usage unique et verrou.** Lecture du journal, contrôle de la cible, contrôle
+que `derogation_sha256` n'apparaît nulle part, clôture éventuelle et écriture de
+la réservation se font sous le **même `journal_lock`**. Le compteur est dans le
+journal : une copie du document ne permet aucun rejeu, un second processus
+trouve le hash déjà enregistré et refuse.
+
+**Interruption entre les deux écritures.** Si `failed` est écrit et la
+réservation de remplacement ne l'est pas, l'état reste bloquant : une relance
+normale est refusée (une tentative D48 existe), la même dérogation est refusée
+(hash déjà consommé), et seule une **nouvelle** dérogation ciblant la tentative
+désormais `failed` permet de continuer. C'est une revue manuelle explicite, pas
+une reprise automatique.
+
+**Tests prévus.** Refus si modèle, source, protocole ou journal diffèrent ;
+refus si le `launch_id` est inconnu, `completed` ou déjà `predictions_saved` ;
+chemin « pendante » avec ajout de `failed` puis réservation ; chemin « déjà
+failed » sans nouvelle entrée `failed` ; rejeu refusé ; concurrence : une seule
+réservation ; interruption entre les deux écritures : relance et ancienne
+dérogation refusées, nouvelle dérogation acceptée ; `completed` refuse même avec
+dérogation. Responsable : P3 (Omar).
