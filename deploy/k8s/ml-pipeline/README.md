@@ -101,3 +101,39 @@ run is opened. The artifact directory is produced once by
 `evaluate_final_candidate.py`; `step_evaluate` verifies every hash, the approved
 source (`7e50d0ce…`), metric bounds and consistency, and refuses a missing or
 inconsistent directory. No final-test source is mounted in this Job.
+
+## Real evaluation mode (D48, option B)
+
+`job.yaml` runs the synthetic `--test-mode` pipeline (smoke, no final data).
+`job-evaluate.yaml` runs the **real** path: it consumes the verified D48
+artifacts and logs `5_evaluate` + quality gates to MLflow without reading
+`fraudTest.csv`.
+
+One-time preparation of the artifact bundle (21 MB, PVC `d48-artifacts`, 1 Gi):
+
+```bash
+kubectl -n ml apply -f deploy/k8s/ml-pipeline/pvc.yaml
+kubectl -n ml run d48-loader --image=busybox --restart=Never \
+  --overrides='{"spec":{"containers":[{"name":"d48-loader","image":"busybox","command":["sleep","3600"],"volumeMounts":[{"name":"data","mountPath":"/data"}]}],"volumes":[{"name":"data","persistentVolumeClaim":{"claimName":"d48-artifacts"}}]}}'
+kubectl -n ml wait --for=condition=Ready pod/d48-loader
+kubectl -n ml exec d48-loader -- mkdir -p /data/d48
+kubectl -n ml cp ~/d48/results d48-loader:/data/d48/results
+kubectl -n ml cp ~/d48/candidate_model.joblib d48-loader:/data/d48/candidate_model.joblib
+kubectl -n ml exec d48-loader -- chmod -R a+rX /data/d48
+kubectl -n ml delete pod d48-loader
+```
+
+Then:
+
+```bash
+kubectl -n ml apply -f deploy/k8s/ml-pipeline/job-evaluate.yaml
+kubectl -n ml wait --for=condition=complete job/ml-pipeline-evaluate --timeout=10m
+kubectl -n ml logs job/ml-pipeline-evaluate | grep "D48 evaluation logged"
+```
+
+`load_verified_final_evaluation` re-checks every artifact hash: a corrupted or
+partial copy is refused before any metric is logged. The Job never reserves the
+journal, never reads the source and never promotes.
+
+Note: the PVC contains labelled predictions; it stays in the cluster and is
+never committed.

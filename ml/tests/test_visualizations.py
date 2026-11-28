@@ -33,6 +33,30 @@ def test_projections_shapes():
     assert np.isfinite(umap).all()
 
 
+def test_umap_is_not_a_pca_duplicate():
+    rng = np.random.default_rng(7)
+    X = rng.normal(size=(80, 5))
+
+    pca = compute_pca(X, n_components=2)
+    umap = compute_umap(X, n_components=2, n_neighbors=5)
+
+    # umap-learn is a locked dependency: the UMAP view must not be PCA again.
+    assert not np.allclose(pca, umap)
+
+
+def test_umap_falls_back_to_pca_without_the_dependency(monkeypatch):
+    import sys
+
+    rng = np.random.default_rng(7)
+    X = rng.normal(size=(30, 4))
+    monkeypatch.setitem(sys.modules, "umap", None)
+
+    pca = compute_pca(X, n_components=2)
+    fallback = compute_umap(X, n_components=2, n_neighbors=5)
+
+    assert np.allclose(pca, fallback)
+
+
 def test_generate_all_projections_facets():
     df = generate_synthetic_data(n_samples=100)
     features = ["amt", "lat", "long", "city_pop"]

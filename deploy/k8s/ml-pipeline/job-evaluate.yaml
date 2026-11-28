@@ -1,0 +1,67 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ml-pipeline-evaluate
+  namespace: ml
+  labels:
+    app: ml-pipeline
+    mode: evaluate
+spec:
+  # One shot: a refused verification must not be retried automatically.
+  backoffLimit: 0
+  activeDeadlineSeconds: 1800
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels:
+        app: ml-pipeline
+        mode: evaluate
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10002
+        runAsGroup: 10002
+        # The artifacts PVC is filled from a loader pod (root); the group keeps
+        # the copied files readable without world permissions.
+        fsGroup: 10002
+      containers:
+        - name: pipeline-runner
+          image: fintech-ml-pipeline:dev
+          imagePullPolicy: IfNotPresent
+          command:
+            - python
+            - -m
+            - ml.src.pipeline.run
+          args:
+            # Option B: consume the verified D48 artifacts, never the source.
+            - --mode=evaluate
+            - --tracking-uri=$(MLFLOW_TRACKING_URI)
+            - --experiment=$(PIPELINE_EXPERIMENT)
+            - --evaluation-dir=/data/d48/results
+            - --candidate-model=/data/d48/candidate_model.joblib
+            - --model-uri=models:/fraud-detector/1
+            - --baseline-pr-auc=0.36970357094266615
+          envFrom:
+            - configMapRef:
+                name: ml-pipeline-config
+          resources:
+            requests:
+              cpu: 500m
+              memory: 1Gi
+            limits:
+              cpu: 2000m
+              memory: 2Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: d48-artifacts
+              mountPath: /data
+              readOnly: true
+      volumes:
+        - name: d48-artifacts
+          persistentVolumeClaim:
+            claimName: d48-artifacts

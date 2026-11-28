@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: d48-artifacts
+  namespace: ml
+  labels:
+    app: ml-pipeline
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      # Verified D48 bundle: predictions.csv (20 MB) + metrics, report,
+      # fairness, intervals, manifest and the frozen candidate joblib.
+      storage: 1Gi

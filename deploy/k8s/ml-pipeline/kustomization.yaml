@@ -5,5 +5,9 @@ namespace: ml
 
 resources:
   - configmap.yaml
+  - pvc.yaml
   - job.yaml
   - cronjob.yaml
+
+# job-evaluate.yaml is applied manually: it is a one-shot that consumes the
+# verified D48 bundle from the d48-artifacts PVC.
