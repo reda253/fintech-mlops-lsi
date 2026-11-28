@@ -134,4 +134,4 @@ Les estimations ne prouvent ni les causes des écarts ni une absence de discrimi
 - La non-régression compare la PR-AUC du test final à `0,36970357094266615`, moyenne LogReg du benchmark de développement 10 × 5 : les périmètres ne sont pas identiques. Sources : `results/final_metrics.json`, `quality_gates.non_regression`, et `results/stats/results.json`.
 - La couverture fraude de 0,961305 dépasse le plancher 0,96 de **0,001305**, environ 0,13 point de pourcentage ; son IC 95 % descend sous ce plancher. Sources : `results/final_metrics.json` et `results/bootstrap_intervals.json`.
 
-D51 : non vu, à documenter par Omar.
+D51 : reprise `--resume` d'une exécution D48 interrompue, désormais documentée dans `docs/decisions.md` (PR #133). Aucun journal réel ne porte `D49` pour cette reprise.

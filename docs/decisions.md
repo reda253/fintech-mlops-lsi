@@ -192,12 +192,22 @@ chargeback (D19), ou un jeu acquis séparément — avec un protocole pré-enreg
 uniquement sur le développement ; aucun chiffre du test final ne sert à la
 valider.
 
-**Acceptation et surveillance.** Acceptation de l'écart F/M en l'état :
-P1 (Reda) et P2 (Basma), date à consigner. Surveillance : audit hors ligne
-mensuel (`ml.fairness.audit` sur les prédictions sauvegardées) lu par P2, et
-tableau de bord agrégé par P5 (Hakima). Seuil d'alerte à fixer par l'équipe ;
-proposition : écart de blocage automatique F/M supérieur à 5 points, ou rapport
-de taux de revue supérieur à 2.
+**Statut : proposition, en attente de validation.** Aucun accord écrit n'est
+consigné à ce jour. La date et les références des accords P1 (Reda) et P2
+(Basma) seront ajoutées ici dès qu'elles existeront ; tant qu'elles manquent, la
+mention reste « en attente de validation ».
+
+**Acceptation et surveillance (proposées).** Acceptation de l'écart F/M en
+l'état par P1 (Reda) et P2 (Basma). Surveillance : audit hors ligne mensuel
+(`ml.fairness.audit` sur les prédictions sauvegardées) lu par P2, et tableau de
+bord agrégé par P5 (Hakima). Seuil d'alerte **proposé**, à fixer par l'équipe :
+écart de blocage automatique F/M supérieur à 5 points, ou rapport de taux de
+revue supérieur à 2.
+
+**Portée.** Conserver le candidat sans réglage ne vaut **ni approbation de
+l'alias `champion` existant, ni clôture de #32**. La promotion est traitée
+séparément : l'alias a été déplacé le 27 novembre sans accord écrit, et D52 ne
+régularise pas cet état.
 
 Limite technique : le service n'expose pas de dimension genre ou tranche d'âge
 dans Prometheus (`ml_predictions_total{model_version,prediction_set}`). La
@@ -216,10 +226,18 @@ un document signé qui **clôture** une tentative bloquée et autorise **une**
 réservation supplémentaire pour cette source. Elle ne contourne pas la garde,
 elle la débloque explicitement.
 
+**Mécanisme et autorisation sont distincts.** D53 décrit un mécanisme futur, pas
+une autorisation. Il ne s'active que sur un document signé distinct, ciblant un
+`launch_id` précis et un état constaté ; sans ce document, la garde refuse toute
+réservation. Et il ne peut concerner qu'une mesure **non terminée** : D48 est
+`completed`, donc D53 ne peut ni rouvrir D48 ni provoquer une nouvelle lecture
+du test final. **Cette PR n'autorise aucune nouvelle lecture du test final,
+aucune relance de D48 et aucune promotion.**
+
 **Interdits.** Elle ne peut servir ni à sélectionner ni à régler un modèle, ni à
-changer de seuil, ni à promouvoir, ni à relire le jeu final. Elle ne remplace
-pas `--resume` (D51), qui reste le seul chemin sans nouvelle décision et
-uniquement après `predictions_saved`.
+changer de seuil, ni à promouvoir, ni à provoquer une nouvelle lecture du test
+final. Elle ne remplace pas `--resume` (D51), qui reste le seul chemin sans
+nouvelle décision et uniquement après `predictions_saved`.
 
 **Garde renforcée.** Toute nouvelle réservation est refusée s'il existe déjà une
 tentative D48 pour cette source, quel que soit son statut (`reserved` pendant,
