@@ -1003,12 +1003,12 @@ def test_final_cli_refuses_a_non_d48_decision_before_opening_source(
 ):
     args, source, journal, output = synthetic_launch
     monkeypatch.setattr(evaluation, "FINAL_DECISION_ID", "D48")
-    args[args.index("--decision-id") + 1] = "D49"
+    args[args.index("--decision-id") + 1] = "D99"
     original_journal = journal.read_bytes()
     opened = deny_source(monkeypatch, source)
     with pytest.raises(SystemExit):
         evaluation.main(args)
-    assert "D49" in capsys.readouterr().err and not opened
+    assert "D99" in capsys.readouterr().err and not opened
     assert journal.read_bytes() == original_journal and not output.exists()
 
 
@@ -1037,14 +1037,14 @@ def test_shared_validator_refuses_d47_entries_for_any_decision(tmp_path):
             "protocol_sha256": "f" * 64,
         },
     )
-    auth = approved(journal, "D49", journal_api.LEGACY_SOURCE, journal_api.LEGACY_MODEL)
+    auth = approved(journal, "D99", journal_api.LEGACY_SOURCE, journal_api.LEGACY_MODEL)
     with pytest.raises(ValueError, match="Entrée D47"):
         journal_api.check_authorization(
             journal,
             auth,
             source_sha256=journal_api.LEGACY_SOURCE,
             model_sha256=journal_api.LEGACY_MODEL,
-            decision_id="D49",
+            decision_id="D99",
             protocol_sha256="c" * 64,
             reason="synthetic",
         )

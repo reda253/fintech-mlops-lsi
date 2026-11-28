@@ -342,7 +342,7 @@ def test_main_returns_two_on_failure(env, capsys):
 
 
 def test_non_d48_decision_is_refused_before_any_read(env):
-    args = _args(env, decision_id="D49")
+    args = _args(env, decision_id="D99")
 
     with pytest.raises(ValueError, match="D48 requise"):
         d48_preflight.preflight(args)
@@ -372,7 +372,7 @@ def test_authorization_approved_must_be_the_boolean_true(env, approved):
 def test_wrong_authorization_field_is_refused(env, field):
     args = _args(env)
     payload = json.loads(args.authorization.read_text(encoding="utf-8"))
-    payload[field] = "D49" if field == "decision_id" else "b" * 64
+    payload[field] = "D99" if field == "decision_id" else "b" * 64
     _write_json(args.authorization, payload)
 
     with pytest.raises(ValueError, match="Autorisation"):
